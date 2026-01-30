@@ -1,0 +1,14 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+
+# Temporary files
+temp_xlsx/
+*.tmp
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
