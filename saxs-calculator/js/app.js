@@ -314,12 +314,16 @@ function initSAXSSection() {
     const theoreticalRgDisplay = document.getElementById('theoreticalRgDisplay');
     const predictedRgDisplay = document.getElementById('predictedRgDisplay');
     const theoreticalDmaxDisplay = document.getElementById('theoreticalDmaxDisplay');
-    const theoreticalMWSource = document.getElementById('theoreticalMWSource');
+    const theoreticalMWInput = document.getElementById('theoreticalMWInput');
 
     // Function to update all theoretical values display
     function updateTheoreticalValues() {
         const concentration = parseFloat(concentrationInput.value) || 1.0;
-        const proteinMw = AppState.proteinData?.molecularWeight;
+        // Use manual MW input if available, otherwise use protein data MW
+        let proteinMw = parseFloat(theoreticalMWInput?.value);
+        if (isNaN(proteinMw) || proteinMw <= 0) {
+            proteinMw = AppState.proteinData?.molecularWeight;
+        }
 
         if (proteinMw) {
             // Calculate all theoretical parameters at once
@@ -337,21 +341,28 @@ function initSAXSSection() {
             if (theoreticalDmaxDisplay) {
                 theoreticalDmaxDisplay.textContent = result.theoreticalDmax.toFixed(0);
             }
-            if (theoreticalMWSource) {
-                theoreticalMWSource.textContent = `MW: ${proteinMw.toFixed(0)} Da`;
-            }
+            // MW input already has the value, no need to update
         } else {
             if (theoreticalI0Display) theoreticalI0Display.textContent = '--';
             if (theoreticalRgDisplay) theoreticalRgDisplay.textContent = '--';
             if (predictedRgDisplay) predictedRgDisplay.textContent = '--';
             if (theoreticalDmaxDisplay) theoreticalDmaxDisplay.textContent = '--';
-            if (theoreticalMWSource) theoreticalMWSource.textContent = '請先分析序列';
+            // Clear input placeholder if no valid MW
+            if (theoreticalMWInput && !theoreticalMWInput.value) {
+                theoreticalMWInput.placeholder = '--';
+            }
         }
     }
 
     // Update theoretical values when concentration changes
     if (concentrationInput) {
         concentrationInput.addEventListener('input', updateTheoreticalValues);
+    }
+
+    // Update theoretical values when MW input changes
+    if (theoreticalMWInput) {
+        theoreticalMWInput.addEventListener('input', updateTheoreticalValues);
+        theoreticalMWInput.addEventListener('change', updateTheoreticalValues);
     }
 
     // Initial update if protein data exists
@@ -415,7 +426,7 @@ function updateTheoreticalValuesFromProtein() {
     const theoreticalRgDisplay = document.getElementById('theoreticalRgDisplay');
     const predictedRgDisplay = document.getElementById('predictedRgDisplay');
     const theoreticalDmaxDisplay = document.getElementById('theoreticalDmaxDisplay');
-    const theoreticalMWSource = document.getElementById('theoreticalMWSource');
+    const theoreticalMWInput = document.getElementById('theoreticalMWInput');
 
     // Detector distance elements
     const detectorDistanceSource = document.getElementById('detectorDistanceSource');
@@ -443,8 +454,9 @@ function updateTheoreticalValuesFromProtein() {
         if (theoreticalDmaxDisplay) {
             theoreticalDmaxDisplay.textContent = result.theoreticalDmax.toFixed(0);
         }
-        if (theoreticalMWSource) {
-            theoreticalMWSource.textContent = `MW: ${proteinMw.toFixed(0)} Da`;
+        // Update MW input field with protein MW from sequence analysis
+        if (theoreticalMWInput) {
+            theoreticalMWInput.value = proteinMw.toFixed(0);
         }
 
         // Calculate and display detector distance recommendations using MW
