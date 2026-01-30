@@ -219,9 +219,15 @@
                                 <div
                                     style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                     <div style="color: rgba(255,255,255,0.9); font-size: 0.85rem; font-weight: 600;">📊
-                                        理論預測值 (從序列 MW 計算)</div>
-                                    <div style="color: rgba(255,255,255,0.8); font-size: 0.75rem;"
-                                        id="theoreticalMWSource">MW: -- Da</div>
+                                        理論預測值</div>
+                                    <div style="display: flex; align-items: center; gap: 0.3rem;">
+                                        <span style="color: rgba(255,255,255,0.8); font-size: 0.75rem;">MW:</span>
+                                        <input type="number" id="theoreticalMWInput" style="width: 80px; padding: 0.2rem 0.4rem; font-size: 0.75rem; 
+                                                   background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.3); 
+                                                   border-radius: 4px; color: #fff; text-align: right;"
+                                            placeholder="--" step="1" min="0">
+                                        <span style="color: rgba(255,255,255,0.8); font-size: 0.75rem;">Da</span>
+                                    </div>
                                 </div>
 
                                 <!-- 三個理論值並排顯示 -->
