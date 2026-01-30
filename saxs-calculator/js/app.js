@@ -312,6 +312,7 @@ function initSAXSSection() {
     const concentrationInput = document.getElementById('sampleConcentration');
     const theoreticalI0Display = document.getElementById('theoreticalI0Display');
     const theoreticalRgDisplay = document.getElementById('theoreticalRgDisplay');
+    const predictedRgDisplay = document.getElementById('predictedRgDisplay');
     const theoreticalDmaxDisplay = document.getElementById('theoreticalDmaxDisplay');
     const theoreticalMWSource = document.getElementById('theoreticalMWSource');
 
@@ -330,6 +331,9 @@ function initSAXSSection() {
             if (theoreticalRgDisplay) {
                 theoreticalRgDisplay.textContent = result.theoreticalRg.toFixed(1);
             }
+            if (predictedRgDisplay) {
+                predictedRgDisplay.textContent = result.predictedRg.toFixed(2);
+            }
             if (theoreticalDmaxDisplay) {
                 theoreticalDmaxDisplay.textContent = result.theoreticalDmax.toFixed(0);
             }
@@ -339,6 +343,7 @@ function initSAXSSection() {
         } else {
             if (theoreticalI0Display) theoreticalI0Display.textContent = '--';
             if (theoreticalRgDisplay) theoreticalRgDisplay.textContent = '--';
+            if (predictedRgDisplay) predictedRgDisplay.textContent = '--';
             if (theoreticalDmaxDisplay) theoreticalDmaxDisplay.textContent = '--';
             if (theoreticalMWSource) theoreticalMWSource.textContent = '請先分析序列';
         }
@@ -408,6 +413,7 @@ function updateTheoreticalValuesFromProtein() {
     const concentrationInput = document.getElementById('sampleConcentration');
     const theoreticalI0Display = document.getElementById('theoreticalI0Display');
     const theoreticalRgDisplay = document.getElementById('theoreticalRgDisplay');
+    const predictedRgDisplay = document.getElementById('predictedRgDisplay');
     const theoreticalDmaxDisplay = document.getElementById('theoreticalDmaxDisplay');
     const theoreticalMWSource = document.getElementById('theoreticalMWSource');
 
@@ -430,6 +436,9 @@ function updateTheoreticalValuesFromProtein() {
         }
         if (theoreticalRgDisplay) {
             theoreticalRgDisplay.textContent = result.theoreticalRg.toFixed(1);
+        }
+        if (predictedRgDisplay) {
+            predictedRgDisplay.textContent = result.predictedRg.toFixed(2);
         }
         if (theoreticalDmaxDisplay) {
             theoreticalDmaxDisplay.textContent = result.theoreticalDmax.toFixed(0);

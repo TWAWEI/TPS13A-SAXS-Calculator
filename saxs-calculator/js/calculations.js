@@ -167,9 +167,13 @@ function calculateTheoreticalI0(mw, concentration, partialSpecificVolume = 0.73)
  * @returns {object} 理論 Rg 計算結果
  * 
  * 經驗公式:
- *   球狀蛋白質 (globular): Rg = 0.77 × MW^0.37 (最常用)
+ *   球狀蛋白質 (globular): Rg = 0.77 × MW^0.37 (最常用, 文獻公式)
  *   展開蛋白質 (unfolded): Rg = 2.54 × MW^0.522
  *   本質無序蛋白 (IDP): Rg = 2.49 × MW^0.509
+ * 
+ * Excel Predicted Rg (實驗校正):
+ *   Predicted Rg = 0.7347 × MW^(1/3) (基於 TPS13A 實驗數據)
+ *   BSA (MW=66463) → Predicted Rg ≈ 29.76 Å
  * 
  * 參考文獻:
  *   Fischer et al. (2004) Protein Science
@@ -205,12 +209,20 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
 
     Rg = coefficient * Math.pow(mw, exponent);
 
+    // Excel Predicted Rg (基於 TPS13A 實驗數據校正)
+    // 公式: Predicted Rg = 0.7347 × MW^(1/3)
+    // 校正自: BSA (MW=66463) → Predicted Rg = 29.76 Å
+    const PREDICTED_RG_COEFF = 0.7347;
+    const predictedRg = PREDICTED_RG_COEFF * Math.pow(mw, 1 / 3);
+
     // 也計算 qRg 建議範圍 (Guinier 適用範圍: qRg < 1.3)
     const qMaxGuinier = 1.3 / Rg;  // Å⁻¹
 
     return {
-        theoreticalRg: Rg,           // Å
+        theoreticalRg: Rg,           // Å (文獻公式)
+        predictedRg: predictedRg,    // Å (Excel 實驗校正)
         formula: formula,
+        predictedFormula: 'Rg = 0.7347 × MW^(1/3)',
         proteinType: proteinType,
         coefficient: coefficient,
         exponent: exponent,
@@ -300,9 +312,12 @@ function calculateAllTheoreticalParams(mw, concentration, proteinType = 'globula
         // I(0) 理論值
         theoreticalI0: i0Result.theoreticalI0,
 
-        // Rg 理論值
+        // Rg 理論值 (文獻公式)
         theoreticalRg: rgResult.theoreticalRg,
+        // Predicted Rg (Excel 實驗校正)
+        predictedRg: rgResult.predictedRg,
         rgFormula: rgResult.formula,
+        predictedRgFormula: rgResult.predictedFormula,
         qMaxGuinier: rgResult.qMaxGuinier,
 
         // Dmax 理論值

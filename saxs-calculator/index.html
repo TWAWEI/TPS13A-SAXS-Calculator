@@ -235,13 +235,22 @@
                                         <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">cm⁻¹</div>
                                     </div>
 
-                                    <!-- 理論 Rg -->
+                                    <!-- 理論 Rg (文獻) -->
                                     <div
                                         style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
                                         <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 Rg</div>
                                         <div style="color: #fff; font-size: 1rem; font-weight: 700;"
                                             id="theoreticalRgDisplay">--</div>
                                         <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å</div>
+                                    </div>
+
+                                    <!-- Predicted Rg (Excel 實驗校正) -->
+                                    <div
+                                        style="background: rgba(255,0,255,0.25); padding: 0.5rem; border-radius: 6px; text-align: center; border: 1px solid rgba(255,0,255,0.4);">
+                                        <div style="color: #ff99ff; font-size: 0.65rem;">Predicted Rg</div>
+                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
+                                            id="predictedRgDisplay">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å (Excel)</div>
                                     </div>
 
                                     <!-- 理論 Dmax -->
@@ -256,7 +265,8 @@
 
                                 <div
                                     style="color: rgba(255,255,255,0.6); font-size: 0.6rem; margin-top: 0.5rem; line-height: 1.3;">
-                                    公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | Dmax≈2.8×Rg
+                                    公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | <span style="color: #ff99ff;">Predicted
+                                        Rg=0.7347×MW^⅓</span> | Dmax≈2.8×Rg
                                 </div>
                             </div>
 
