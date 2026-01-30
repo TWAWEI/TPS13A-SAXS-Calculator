@@ -172,7 +172,7 @@ function calculateTheoreticalI0(mw, concentration, partialSpecificVolume = 0.73)
  *   本質無序蛋白 (IDP): Rg = 2.49 × MW^0.509
  * 
  * Excel Predicted Rg (實驗校正):
- *   Predicted Rg = 0.7347 × MW^(1/3) (基於 TPS13A 實驗數據)
+ *   Predicted Rg = 0.6543 × MW^(1/3) (基於 TPS13A Excel 數據)
  *   BSA (MW=66463) → Predicted Rg ≈ 29.76 Å
  * 
  * 參考文獻:
@@ -209,10 +209,10 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
 
     Rg = coefficient * Math.pow(mw, exponent);
 
-    // Excel Predicted Rg (基於 TPS13A 實驗數據校正)
-    // 公式: Predicted Rg = 0.7347 × MW^(1/3)
-    // 校正自: BSA (MW=66463) → Predicted Rg = 29.76 Å
-    const PREDICTED_RG_COEFF = 0.7347;
+    // Excel Predicted Rg (基於 TPS13A Excel 數據校正)
+    // 公式: Predicted Rg = 0.6543 × MW^(1/3)
+    // 校正自: Excel MW=20000 → Rg=17.76
+    const PREDICTED_RG_COEFF = 0.6543;
     const predictedRg = PREDICTED_RG_COEFF * Math.pow(mw, 1 / 3);
 
     // 也計算 qRg 建議範圍 (Guinier 適用範圍: qRg < 1.3)
@@ -222,7 +222,7 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
         theoreticalRg: Rg,           // Å (文獻公式)
         predictedRg: predictedRg,    // Å (Excel 實驗校正)
         formula: formula,
-        predictedFormula: 'Rg = 0.7347 × MW^(1/3)',
+        predictedFormula: 'Rg = 0.6543 × MW^(1/3)',
         proteinType: proteinType,
         coefficient: coefficient,
         exponent: exponent,
