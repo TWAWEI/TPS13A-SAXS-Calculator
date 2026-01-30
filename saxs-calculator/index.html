@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TPS13A SAXS Calculator - 蛋白質溶液小角X射線散射參數計算工具">
+    <title>TPS13A SAXS Calculator</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">🔬</div>
+                    <span class="logo-text">TPS13A SAXS</span>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">分析工具</div>
+
+                    <div class="nav-item active" data-section="protein">
+                        <span class="nav-item-icon">🧬</span>
+                        <span class="nav-item-text">蛋白質分析</span>
+                    </div>
+
+                    <div class="nav-item" data-section="saxs">
+                        <span class="nav-item-icon">📊</span>
+                        <span class="nav-item-text">SAXS 參數</span>
+                    </div>
+
+                    <div class="nav-item" data-section="hplc">
+                        <span class="nav-item-icon">🧪</span>
+                        <span class="nav-item-text">HPLC 設定</span>
+                    </div>
+
+                    <div class="nav-item" data-section="sample">
+                        <span class="nav-item-icon">⚗️</span>
+                        <span class="nav-item-text">樣品計算</span>
+                    </div>
+
+                    <div class="nav-item" data-section="mw">
+                        <span class="nav-item-icon">📐</span>
+                        <span class="nav-item-text">分子量解析</span>
+                    </div>
+
+                    <div class="nav-item" data-section="centrifuge">
+                        <span class="nav-item-icon">⚙️</span>
+                        <span class="nav-item-text">離心參數</span>
+                    </div>
+
+                    <div class="nav-item" data-section="detector">
+                        <span class="nav-item-icon">📡</span>
+                        <span class="nav-item-text">偵測器距離</span>
+                    </div>
+                </div>
+
+                <div class="nav-section">
+                    <div class="nav-section-title">輸出</div>
+
+                    <div class="nav-item" data-section="iucr">
+                        <span class="nav-item-icon">📋</span>
+                        <span class="nav-item-text">IUCr 表格</span>
+                    </div>
+                </div>
+            </nav>
+
+            <div
+                style="padding: 1rem; border-top: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted);">
+                NSRRC TPS 13A Beamline<br>
+                Version 1.0
+            </div>
+        </aside>
+
+        <!-- Mobile Menu Button -->
+        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- Section: Protein Analysis -->
+            <section class="section active" id="section-protein">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">🧬</span>
+                        蛋白質序列分析
+                    </h1>
+                    <p class="page-subtitle">輸入蛋白質序列，自動計算分子量、消光係數、體積等參數</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <!-- Input Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📝 序列輸入</h3>
+                            <button class="btn btn-sm btn-secondary" id="loadSampleSequence">載入範例</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">蛋白質名稱</label>
+                                <input type="text" class="form-input" id="proteinName" placeholder="例: Cytochrome c">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">單字母氨基酸序列</label>
+                                <textarea class="form-textarea" id="proteinSequence" rows="6"
+                                    placeholder="輸入蛋白質序列，例如:&#10;MGSSHHHHHHSQDPNSLRHLVL..."></textarea>
+                                <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                                    <span class="stat-sub" id="sequenceLength">長度: 0 殘基</span>
+                                    <button class="btn btn-sm btn-secondary" id="clearSequence">清除</button>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">
+                                    <input type="checkbox" id="reducedCysteine">
+                                    還原態半胱氨酸 (無二硫鍵)
+                                </label>
+                            </div>
+                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="analyzeProtein">
+                                分析序列
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Results Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 分析結果</h3>
+                        </div>
+                        <div class="card-body" id="proteinResults">
+                            <div class="alert alert-info">
+                                請輸入蛋白質序列後點擊「分析序列」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="grid grid-4" style="margin-top: 1.5rem;" id="proteinStats" style="display: none;">
+                </div>
+
+                <!-- Composition Chart -->
+                <div class="card" style="margin-top: 1.5rem;" id="compositionCard" style="display: none;">
+                    <div class="card-header">
+                        <h3 class="card-title">📈 氨基酸組成</h3>
+                        <div class="tabs" style="margin: 0;">
+                            <button class="tab active" data-chart="bar">長條圖</button>
+                            <button class="tab" data-chart="doughnut">圓餅圖</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" id="chartContainer-bar">
+                            <canvas id="compositionBarChart"></canvas>
+                        </div>
+                        <div class="chart-container" id="chartContainer-doughnut" style="display: none;">
+                            <canvas id="compositionDoughnutChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: SAXS Parameters -->
+            <section class="section" id="section-saxs">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">📊</span>
+                        SAXS 結構參數
+                    </h1>
+                    <p class="page-subtitle">計算 Rg、I(0)、Dmax、Porod Volume 等散射參數</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 參數輸入</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <strong>提示：</strong>請先在「蛋白質分析」頁面輸入序列，分子量等參數會自動帶入。
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">樣品濃度</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="sampleConcentration" value="1.0"
+                                        step="0.1" min="0">
+                                    <span class="input-unit">mg/mL</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">X 射線能量</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="xrayEnergy" value="15" step="0.1"
+                                        min="1">
+                                    <span class="input-unit">keV</span>
+                                </div>
+                            </div>
+
+                            <!-- 理論值顯示區塊 -->
+                            <div class="form-group"
+                                style="padding: 0.75rem; background: linear-gradient(135deg, #059669 0%, #10b981 100%); border-radius: 8px; margin-top: 0.5rem;">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="color: rgba(255,255,255,0.9); font-size: 0.85rem; font-weight: 600;">📊
+                                        理論預測值 (從序列 MW 計算)</div>
+                                    <div style="color: rgba(255,255,255,0.8); font-size: 0.75rem;"
+                                        id="theoreticalMWSource">MW: -- Da</div>
+                                </div>
+
+                                <!-- 三個理論值並排顯示 -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                                    <!-- 理論 I(0) -->
+                                    <div
+                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 I(0)</div>
+                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
+                                            id="theoreticalI0Display">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">cm⁻¹</div>
+                                    </div>
+
+                                    <!-- 理論 Rg -->
+                                    <div
+                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 Rg</div>
+                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
+                                            id="theoreticalRgDisplay">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å</div>
+                                    </div>
+
+                                    <!-- 理論 Dmax -->
+                                    <div
+                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 Dmax</div>
+                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
+                                            id="theoreticalDmaxDisplay">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å</div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    style="color: rgba(255,255,255,0.6); font-size: 0.6rem; margin-top: 0.5rem; line-height: 1.3;">
+                                    公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | Dmax≈2.8×Rg
+                                </div>
+                            </div>
+
+                            <!-- 偵測器距離建議區塊 -->
+                            <div class="form-group"
+                                style="padding: 0.75rem; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 8px; margin-top: 0.5rem;">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <div style="color: rgba(255,255,255,0.9); font-size: 0.85rem; font-weight: 600;">📡
+                                        偵測器距離建議</div>
+                                    <div style="color: rgba(255,255,255,0.8); font-size: 0.75rem;"
+                                        id="detectorDistanceSource">Rg: -- Å</div>
+                                </div>
+
+                                <!-- 三個值並排顯示 -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                                    <!-- qmin -->
+                                    <div
+                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">qmin</div>
+                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
+                                            id="suggestedQminDisplay">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å⁻¹</div>
+                                    </div>
+
+                                    <!-- 9M SD -->
+                                    <div
+                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">建議 9M SD</div>
+                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
+                                            id="suggestedSDDisplay">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">mm</div>
+                                    </div>
+
+                                    <!-- q-range -->
+                                    <div
+                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">建議 q-range</div>
+                                        <div style="color: #fff; font-size: 0.85rem; font-weight: 700;"
+                                            id="suggestedQrangeDisplay">--</div>
+                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å⁻¹</div>
+                                    </div>
+                                </div>
+
+                                <div
+                                    style="color: rgba(255,255,255,0.6); font-size: 0.6rem; margin-top: 0.5rem; line-height: 1.3;">
+                                    公式: qmin=1.3/(3×Rg) | SD=(Rg/28)×8000 (參考:BSA Rg=28Å, SD=8m)
+                                </div>
+                            </div>
+
+                            <div class="section-divider"><span>量測結果輸入</span></div>
+
+                            <div class="form-group">
+                                <label class="form-label">I(0) from Guinier</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="i0Guinier" step="0.0001"
+                                        placeholder="例: 0.0526">
+                                    <span class="input-unit">cm⁻¹</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Rg from Guinier</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="rgGuinier" step="0.01"
+                                        placeholder="例: 27.88">
+                                    <span class="input-unit">Å</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">I(0) from P(r)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="i0Pr" step="0.0001"
+                                        placeholder="例: 0.03887">
+                                    <span class="input-unit">cm⁻¹</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Rg from P(r)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="rgPr" step="0.01"
+                                        placeholder="例: 13.17">
+                                    <span class="input-unit">Å</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Dmax</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="dmax" step="1" placeholder="例: 43">
+                                    <span class="input-unit">Å</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Porod Volume</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="porodVolume" step="100"
+                                        placeholder="例: 13051">
+                                    <span class="input-unit">Å³</span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateSAXS">
+                                計算 SAXS 參數
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 計算結果</h3>
+                        </div>
+                        <div class="card-body" id="saxsResults">
+                            <div class="alert alert-info">
+                                請輸入量測數據後點擊「計算 SAXS 參數」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: HPLC Settings -->
+            <section class="section" id="section-hplc">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">🧪</span>
+                        HPLC-SAXS 實驗設定
+                    </h1>
+                    <p class="page-subtitle">從 pre-run HPLC 結果計算 SAXS 實驗的 step 設定</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <!-- Pre-run Parameters Input -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 Pre-run 參數輸入 (3μL)</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info" style="padding: 0.5rem; font-size: 0.85rem;">
+                                <strong>提示：</strong>先用 3μL 樣品做 pre-run HPLC，記錄峰的位置和寬度。
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <label class="form-label" style="font-size: 0.85rem;">Peak center (min) from 3μL
+                                    pre-run</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="hplcPeakCenter" value="10.937"
+                                        step="0.001" min="0">
+                                    <span class="input-unit">min</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <label class="form-label" style="font-size: 0.85rem;">Peak width (FWHM) (min) from 3μL
+                                    pre-run</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="hplcPeakFWHM" value="1" step="0.1"
+                                        min="0">
+                                    <span class="input-unit">min</span>
+                                </div>
+                            </div>
+
+                            <div class="section-divider" style="margin: 0.5rem 0;"><span style="font-size: 0.8rem;">SAXS
+                                    實驗設定</span></div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <label class="form-label" style="font-size: 0.85rem;">Volume to inject in SAXS
+                                    exp</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="hplcInjectionVolume" value="100"
+                                        step="1" min="1">
+                                    <span class="input-unit">μL</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <label class="form-label" style="font-size: 0.85rem;">Target flow rate around
+                                    peak</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="hplcTargetFlowRate" value="0.35"
+                                        step="0.01" min="0.01">
+                                    <span class="input-unit">mL/min</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <label class="form-label" style="font-size: 0.85rem;">Initial flow rate</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="hplcInitialFlowRate" value="0.35"
+                                        step="0.01" min="0.01">
+                                    <span class="input-unit">mL/min</span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg" style="width: 100%; margin-top: 0.5rem;"
+                                id="calculateHPLCSAXS">
+                                計算 HPLC-SAXS 設定
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Detector Settings Table (MOVED TO TOP) -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title" style="color: #f59e0b;">📡 Detector Setting</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-wrapper">
+                                <table class="table" id="detectorSettingsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Step</th>
+                                            <th>Mode</th>
+                                            <th>Frame</th>
+                                            <th>Wait</th>
+                                            <th>Exposure</th>
+                                            <th>Hold (sec)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detectorSettingsTableBody">
+                                        <tr>
+                                            <td colspan="6" style="text-align: center; color: var(--color-text-muted);">
+                                                請先計算
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div
+                                style="margin-top: 1rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 8px;">
+                                <strong>Report Stoptime:</strong> <span id="reportStoptime"
+                                    style="color: var(--color-primary); font-size: 1.25rem; font-weight: 700;">--</span>
+                                min
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Second Row: Flow Rate Table + Fraction Collector -->
+                <div class="grid grid-2" style="margin-top: 1.5rem;">
+                    <!-- Flow Rate Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">⏱️ Flow Rate Table</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-wrapper">
+                                <table class="table" id="flowRateTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Time (min)</th>
+                                            <th>Flow Rate (mL/min)</th>
+                                            <th>Note</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="flowRateTableBody">
+                                        <tr>
+                                            <td colspan="3" style="text-align: center; color: var(--color-text-muted);">
+                                                請先計算</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fraction Collector -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title" style="color: #8b5cf6;">🧫 Fraction Collector</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="stat-card"
+                                style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);">
+                                <div class="stat-label" style="color: #fff;">Start Time</div>
+                                <div class="stat-value" style="color: #fff;" id="fractionStartTime">--</div>
+                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            </div>
+                            <div class="stat-card"
+                                style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); margin-top: 1rem;">
+                                <div class="stat-label" style="color: #fff;">Stop Time</div>
+                                <div class="stat-value" style="color: #fff;" id="fractionStopTime">--</div>
+                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            </div>
+                            <div class="stat-card"
+                                style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); margin-top: 1rem;">
+                                <div class="stat-label" style="color: #fff;">Time/Fraction</div>
+                                <div class="stat-value" style="color: #fff;" id="timePerFraction">--</div>
+                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Third Row: Suggested Values (smaller) -->
+                <div class="card" style="margin-top: 1.5rem;">
+                    <div class="card-header">
+                        <h3 class="card-title" style="color: var(--color-accent);">📋 Pre-run 10μL 建議值 (用於下次 pre-run)
+                        </h3>
+                    </div>
+                    <div class="card-body" id="hplcSuggestedValues">
+                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                            <div class="stat-card"
+                                style="background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%); flex: 1; min-width: 150px;">
+                                <div class="stat-label" style="color: #fff;">Suggested Peak Center</div>
+                                <div class="stat-value" style="color: #fff;" id="suggestPeakCenter">--</div>
+                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            </div>
+                            <div class="stat-card"
+                                style="background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%); flex: 1; min-width: 150px;">
+                                <div class="stat-label" style="color: #fff;">Suggested Peak Width</div>
+                                <div class="stat-value" style="color: #fff;" id="suggestPeakWidth">--</div>
+                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            </div>
+                            <div class="stat-card"
+                                style="background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%); flex: 1; min-width: 150px;">
+                                <div class="stat-label" style="color: #fff;">Suggested Sample Volume</div>
+                                <div class="stat-value" style="color: #fff;" id="suggestSampleVolume">--</div>
+                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">μL</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- Section: Sample Calculations -->
+            <section class="section" id="section-sample">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">⚗️</span>
+                        樣品計算
+                    </h1>
+                    <p class="page-subtitle">UV/RI 計算、濃度估算、稀釋因子</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 UV 測量參數</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">UV 吸光值</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="uvAbsorbance" step="0.001"
+                                        placeholder="例: 0.8053">
+                                    <span class="input-unit">AU</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">光徑長度</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="pathLength" value="0.2" step="0.01"
+                                        min="0">
+                                    <span class="input-unit">cm</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">消光係數 ε</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="inputEpsilon" step="0.1"
+                                        placeholder="自動從蛋白質序列計算">
+                                    <span class="input-unit">M⁻¹cm⁻¹</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">分子量</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="inputMw" step="0.01"
+                                        placeholder="自動從蛋白質序列計算">
+                                    <span class="input-unit">Da</span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateSample">
+                                計算濃度
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 計算結果</h3>
+                        </div>
+                        <div class="card-body" id="sampleResults">
+                            <div class="alert alert-info">
+                                請輸入 UV 測量參數後點擊「計算濃度」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: MW Resolution -->
+            <section class="section" id="section-mw">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">📐</span>
+                        分子量解析度
+                    </h1>
+                    <p class="page-subtitle">從分子量計算預期滯留時間（SEC 管柱）</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 輸入參數</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <strong>提示：</strong>如已分析蛋白質序列，分子量會自動帶入。
+                            </div>
+
+                            <div class="section-divider"><span>MW → 滯留時間</span></div>
+
+                            <div class="form-group">
+                                <label class="form-label">分子量 (Input protein Mw)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="mwInput" step="0.01"
+                                        placeholder="來自序列分析或手動輸入">
+                                    <span class="input-unit">Da</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Oligomer 數</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="mwOligomer" step="1" value="1" min="1"
+                                        placeholder="1">
+                                    <span class="input-unit">mer</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">注入體積 (Injection Volume)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="mwInjectionVolume" step="0.1" value="3"
+                                        placeholder="3">
+                                    <span class="input-unit">μL</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">流速 (Flow Rate)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="mwFlowRate" step="0.01" value="0.35"
+                                        placeholder="0.35">
+                                    <span class="input-unit">mL/min</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">管柱孔徑 (Column Pore Size)</label>
+                                <select class="form-select" id="poreSize">
+                                    <option value="100">100 Å</option>
+                                    <option value="150">150 Å</option>
+                                    <option value="300">300 Å</option>
+                                </select>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateMW">
+                                計算滯留時間
+                            </button>
+
+                            <div class="section-divider" style="margin-top: 1.5rem;"><span>滯留時間 → MW</span></div>
+
+                            <div class="form-group">
+                                <label class="form-label">滯留時間 (Input Retention Time)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="retentionTimeInput" step="0.001"
+                                        placeholder="例: 9.481">
+                                    <span class="input-unit">min</span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-secondary btn-lg" style="width: 100%;" id="calculateMWReverse">
+                                從滯留時間估算 MW
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 計算結果</h3>
+                        </div>
+                        <div class="card-body" id="mwResults">
+                            <div class="alert alert-info">
+                                請輸入分子量後點擊「計算滯留時間」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Centrifuge -->
+            <section class="section" id="section-centrifuge">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">⚙️</span>
+                        離心參數計算
+                    </h1>
+                    <p class="page-subtitle">RCF、沉降係數、離心距離計算</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 離心機參數</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label">轉速</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="rpm" value="15000" step="100" min="0">
+                                    <span class="input-unit">rpm</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">轉子半徑</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="rotorRadius" value="9.5" step="0.1"
+                                        min="0">
+                                    <span class="input-unit">cm</span>
+                                </div>
+                            </div>
+
+                            <div class="section-divider"><span>樣品參數</span></div>
+
+                            <div class="form-group">
+                                <label class="form-label">分子量</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="centrifugeMw" value="66500" step="100">
+                                    <span class="input-unit">Da</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">黏度 (水 @ 20°C)</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="viscosity" value="0.001002"
+                                        step="0.000001">
+                                    <span class="input-unit">Pa·s</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">部分比容 v̄</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="vbar" value="0.73" step="0.01">
+                                    <span class="input-unit">cm³/g</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">溶劑密度</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="solventDensity" value="0.998"
+                                        step="0.001">
+                                    <span class="input-unit">g/cm³</span>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">離心時間</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="centrifugeTime" value="15" step="1"
+                                        min="1">
+                                    <span class="input-unit">min</span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateCentrifuge">
+                                計算離心參數
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 計算結果</h3>
+                        </div>
+                        <div class="card-body" id="centrifugeResults">
+                            <div class="alert alert-info">
+                                請輸入離心機參數後點擊「計算離心參數」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: IUCr Table -->
+            <section class="section" id="section-iucr">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">📋</span>
+                        IUCr 表格輸出
+                    </h1>
+                    <p class="page-subtitle">產生符合 IUCr 標準格式的 SAXS 參數表格</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">📄 IUCr Protein Solution SAXS Parameters Table</h3>
+                        <button class="btn btn-secondary" id="copyIUCrTable">📋 複製表格</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning" id="iucrWarning">
+                            <strong>提示：</strong>請先完成「蛋白質分析」和「SAXS 參數」頁面的輸入，數據會自動填入表格。
+                        </div>
+
+                        <div class="table-wrapper">
+                            <table class="table iucr-table" id="iucrTable">
+                                <thead>
+                                    <tr>
+                                        <th colspan="2">Parameter</th>
+                                        <th>Value</th>
+                                        <th>±</th>
+                                        <th>Unit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
+                                            Sample
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Protein</td>
+                                        <td id="iucr-protein">-</td>
+                                        <td></td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
+                                            Data-collection parameters
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Instrument</td>
+                                        <td id="iucr-instrument">Synchrotron 23A SWAXS endstation of NSRRC</td>
+                                        <td></td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Beam geometry</td>
+                                        <td>0.5 mm diameter beam</td>
+                                        <td></td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Wavelength</td>
+                                        <td id="iucr-wavelength">0.82825</td>
+                                        <td></td>
+                                        <td>Å</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>q-range</td>
+                                        <td>0.007-0.39</td>
+                                        <td></td>
+                                        <td>Å⁻¹</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Exposure time</td>
+                                        <td>300s (5×60s)</td>
+                                        <td></td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Concentration range</td>
+                                        <td id="iucr-concentration">-</td>
+                                        <td></td>
+                                        <td>mg/mL</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Temperature</td>
+                                        <td>288</td>
+                                        <td></td>
+                                        <td>K</td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
+                                            Structural parameters
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>I(0) [from P(r)]</td>
+                                        <td id="iucr-i0-pr">-</td>
+                                        <td id="iucr-i0-pr-err">-</td>
+                                        <td>cm⁻¹</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Rg [from P(r)]</td>
+                                        <td id="iucr-rg-pr">-</td>
+                                        <td id="iucr-rg-pr-err">-</td>
+                                        <td>Å</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>I(0) [from Guinier]</td>
+                                        <td id="iucr-i0-guinier">-</td>
+                                        <td id="iucr-i0-guinier-err">-</td>
+                                        <td>cm⁻¹</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Rg [from Guinier]</td>
+                                        <td id="iucr-rg-guinier">-</td>
+                                        <td id="iucr-rg-guinier-err">-</td>
+                                        <td>Å</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>D<sub>max</sub></td>
+                                        <td id="iucr-dmax">-</td>
+                                        <td id="iucr-dmax-err">-</td>
+                                        <td>Å</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Porod volume estimate</td>
+                                        <td id="iucr-porod">-</td>
+                                        <td id="iucr-porod-err">-</td>
+                                        <td>Å³</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Dry volume from sequence</td>
+                                        <td id="iucr-dryvol">-</td>
+                                        <td></td>
+                                        <td>Å³</td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
+                                            Molecular-mass determination
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>Partial specific volume</td>
+                                        <td id="iucr-vbar">-</td>
+                                        <td></td>
+                                        <td>cm³/g</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>MW from sequence</td>
+                                        <td id="iucr-mw-seq">-</td>
+                                        <td></td>
+                                        <td>Da</td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>MW from Porod volume</td>
+                                        <td id="iucr-mw-porod">-</td>
+                                        <td></td>
+                                        <td>Da</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Detector Distance Section -->
+            <section id="section-detector" class="section hidden">
+                <div class="section-header">
+                    <h1>📡 偵測器距離計算</h1>
+                    <p>根據蛋白質分子量計算建議的 SAXS 樣品到偵測器距離 (9M position)</p>
+                </div>
+
+                <div class="section-content">
+                    <div class="content-grid">
+                        <!-- Reference Proteins Table -->
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-icon">📋</span>
+                                <span class="card-title">標準蛋白質參考值</span>
+                            </div>
+                            <div class="card-content">
+                                <table class="data-table"
+                                    style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                                    <thead>
+                                        <tr style="background: var(--color-bg-tertiary);">
+                                            <th
+                                                style="padding: 0.75rem; text-align: left; border-bottom: 2px solid var(--color-border);">
+                                                蛋白質</th>
+                                            <th
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
+                                                MW (Da)</th>
+                                            <th
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
+                                                Rg (Å)</th>
+                                            <th
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
+                                                qmin (Å⁻¹)</th>
+                                            <th
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
+                                                9M SD (mm)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="referenceProteinsTable">
+                                        <tr>
+                                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
+                                                BSA monomer</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                66,500</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                28.00</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                0.0080</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                1,900</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
+                                                BSA dimer</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                130,000</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                35.01</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                0.0064</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                2,376</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
+                                                Cytochrome c</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                12,700</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                16.12</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                0.0139</td>
+                                            <td
+                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
+                                                1,094</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <div
+                                    style="margin-top: 1rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 8px; font-size: 0.8rem; color: var(--color-text-muted);">
+                                    <strong>公式說明：</strong><br>
+                                    • Rg = 0.69 × MW<sup>1/3</sup> (基於 BSA 校正)<br>
+                                    • qmin = 0.224 / Rg<br>
+                                    • 9M SD = 67.86 × Rg
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Target Protein Calculator -->
+                        <div class="card">
+                            <div class="card-header">
+                                <span class="card-icon">🎯</span>
+                                <span class="card-title">目標蛋白質計算</span>
+                            </div>
+                            <div class="card-content">
+                                <!-- Input Mode Toggle -->
+                                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                                    <button class="btn" id="modeByMW"
+                                        style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-primary); color: white; border: none; cursor: pointer;">
+                                        MW → Rg, SD
+                                    </button>
+                                    <button class="btn" id="modeByRg"
+                                        style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-bg-tertiary); color: var(--color-text); border: 1px solid var(--color-border); cursor: pointer;">
+                                        Rg → MW, SD
+                                    </button>
+                                </div>
+
+                                <!-- MW Input (shown by default) -->
+                                <div class="form-group" id="mwInputGroup">
+                                    <label class="form-label">目標蛋白質分子量 (MW)</label>
+                                    <div class="input-group">
+                                        <input type="number" id="targetProteinMW" class="form-input"
+                                            placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
+                                        <span class="input-suffix">Da</span>
+                                    </div>
+                                </div>
+
+                                <!-- Rg Input (hidden by default) -->
+                                <div class="form-group" id="rgInputGroup" style="display: none;">
+                                    <label class="form-label">目標蛋白質 Rg (迴旋半徑)</label>
+                                    <div class="input-group">
+                                        <input type="number" id="targetProteinRg" class="form-input"
+                                            placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
+                                        <span class="input-suffix">Å</span>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" id="calculateDetectorBtn"
+                                    style="width: 100%; margin-top: 1rem; padding: 0.75rem; font-size: 1rem;">
+                                    🔬 計算偵測器距離
+                                </button>
+
+                                <!-- Results Display -->
+                                <div id="detectorResults" style="margin-top: 1.5rem;">
+                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                                        <!-- MW Result (shown in Rg mode) -->
+                                        <div id="mwResultCard"
+                                            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 1rem; border-radius: 8px; text-align: center; display: none;">
+                                            <div
+                                                style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                                預測 MW</div>
+                                            <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
+                                                id="detectorMwResult">66,500</div>
+                                            <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Da</div>
+                                        </div>
+
+                                        <!-- Rg Result (shown in MW mode) -->
+                                        <div id="rgResultCard"
+                                            style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
+                                            <div
+                                                style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                                理論 Rg</div>
+                                            <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
+                                                id="detectorRgResult">28.00</div>
+                                            <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å</div>
+                                        </div>
+
+                                        <!-- qmin Result -->
+                                        <div
+                                            style="background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
+                                            <div
+                                                style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                                qmin</div>
+                                            <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
+                                                id="detectorQminResult">0.0080</div>
+                                            <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å⁻¹</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 9M SD Result (Full Width) -->
+                                    <div
+                                        style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 1.25rem; border-radius: 8px; text-align: center; margin-top: 1rem;">
+                                        <div
+                                            style="color: rgba(255,255,255,0.8); font-size: 0.85rem; margin-bottom: 0.25rem;">
+                                            建議 9M 偵測器距離 (SD)</div>
+                                        <div style="color: #fff; font-size: 2rem; font-weight: 700;"
+                                            id="detectorSDResult">1,900</div>
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">mm (<span
+                                                id="detectorSDMeters">1.9</span> m)</div>
+                                    </div>
+                                </div>
+
+                                <!-- Quick Reference -->
+                                <div
+                                    style="margin-top: 1.5rem; padding: 1rem; background: var(--color-bg-secondary); border-radius: 8px; border: 1px solid var(--color-border);">
+                                    <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text);">💡
+                                        快速參考</div>
+                                    <div style="font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.6;">
+                                        • <strong>小蛋白質</strong> (&lt;20 kDa): SD ≈ 1,000-1,500 mm<br>
+                                        • <strong>中型蛋白質</strong> (20-100 kDa): SD ≈ 1,500-2,500 mm<br>
+                                        • <strong>大蛋白質/複合體</strong> (&gt;100 kDa): SD ≈ 2,500+ mm
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/protein.js"></script>
+    <script src="js/calculations.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>

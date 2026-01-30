@@ -1,0 +1,35 @@
+{
+  "aminoAcids": {
+    "A": {"name": "Ala", "name3": "Ala", "mw": 89.09, "volume": 88.6, "electrons": 38, "hydropathy": 1.8},
+    "R": {"name": "Arg", "name3": "Arg", "mw": 174.20, "volume": 173.4, "electrons": 86, "hydropathy": -4.5},
+    "N": {"name": "Asn", "name3": "Asn", "mw": 132.12, "volume": 114.1, "electrons": 66, "hydropathy": -3.5},
+    "D": {"name": "Asp", "name3": "Asp", "mw": 133.10, "volume": 111.1, "electrons": 62, "hydropathy": -3.5},
+    "C": {"name": "Cys", "name3": "Cys", "mw": 121.16, "volume": 108.5, "electrons": 54, "hydropathy": 2.5},
+    "E": {"name": "Glu", "name3": "Glu", "mw": 147.13, "volume": 138.4, "electrons": 70, "hydropathy": -3.5},
+    "Q": {"name": "Gln", "name3": "Gln", "mw": 146.15, "volume": 143.8, "electrons": 72, "hydropathy": -3.5},
+    "G": {"name": "Gly", "name3": "Gly", "mw": 75.07, "volume": 60.1, "electrons": 30, "hydropathy": -0.4},
+    "H": {"name": "His", "name3": "His", "mw": 155.16, "volume": 153.2, "electrons": 72, "hydropathy": -3.2},
+    "I": {"name": "Ile", "name3": "Ile", "mw": 131.18, "volume": 166.7, "electrons": 62, "hydropathy": 4.5},
+    "L": {"name": "Leu", "name3": "Leu", "mw": 131.18, "volume": 166.7, "electrons": 62, "hydropathy": 3.8},
+    "K": {"name": "Lys", "name3": "Lys", "mw": 146.19, "volume": 168.6, "electrons": 70, "hydropathy": -3.9},
+    "M": {"name": "Met", "name3": "Met", "mw": 149.21, "volume": 162.9, "electrons": 70, "hydropathy": 1.9},
+    "F": {"name": "Phe", "name3": "Phe", "mw": 165.19, "volume": 189.9, "electrons": 78, "hydropathy": 2.8},
+    "P": {"name": "Pro", "name3": "Pro", "mw": 115.13, "volume": 112.7, "electrons": 50, "hydropathy": -1.6},
+    "S": {"name": "Ser", "name3": "Ser", "mw": 105.09, "volume": 89.0, "electrons": 46, "hydropathy": -0.8},
+    "T": {"name": "Thr", "name3": "Thr", "mw": 119.12, "volume": 116.1, "electrons": 54, "hydropathy": -0.7},
+    "W": {"name": "Trp", "name3": "Trp", "mw": 204.23, "volume": 227.8, "electrons": 98, "hydropathy": -0.9},
+    "Y": {"name": "Tyr", "name3": "Tyr", "mw": 181.19, "volume": 193.6, "electrons": 86, "hydropathy": -1.3},
+    "V": {"name": "Val", "name3": "Val", "mw": 117.15, "volume": 140.0, "electrons": 54, "hydropathy": 4.2}
+  },
+  "constants": {
+    "waterMw": 18.015,
+    "avogadro": 6.022e23,
+    "electronClassicalRadius": 2.8179e-13,
+    "waterElectronDensity": 334e-3
+  },
+  "extinctionCoeffs": {
+    "W": 5500,
+    "Y": 1490,
+    "C": 125
+  }
+}
