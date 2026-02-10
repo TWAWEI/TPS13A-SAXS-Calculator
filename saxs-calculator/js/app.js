@@ -498,6 +498,46 @@ function displaySAXSResults(data) {
     const proteinMw = AppState.proteinData?.molecularWeight;
     const dryVolume = AppState.proteinData?.dryVolume;
 
+    // Calculate MW from I(0) if concentration and I(0) are valid
+    let mwFromI0Guinier = null;
+    let mwFromI0Pr = null;
+    if (data.concentration > 0) {
+        if (!isNaN(data.i0Guinier) && data.i0Guinier > 0) {
+            mwFromI0Guinier = SAXSCalculations.calculateMwFromI0(data.i0Guinier, data.concentration);
+        }
+        if (!isNaN(data.i0Pr) && data.i0Pr > 0) {
+            mwFromI0Pr = SAXSCalculations.calculateMwFromI0(data.i0Pr, data.concentration);
+        }
+    }
+
+    // Build MW comparison alert
+    let mwAlertHtml = '';
+    if (proteinMw) {
+        const comparisons = [];
+        if (data.mwFromPorod) {
+            const ratio = data.mwFromPorod / proteinMw;
+            comparisons.push(`Porod / 序列 = ${ratio.toFixed(2)}`);
+        }
+        if (mwFromI0Guinier) {
+            const ratio = mwFromI0Guinier / proteinMw;
+            comparisons.push(`I(0) Guinier / 序列 = ${ratio.toFixed(2)}`);
+        }
+        if (mwFromI0Pr) {
+            const ratio = mwFromI0Pr / proteinMw;
+            comparisons.push(`I(0) P(r) / 序列 = ${ratio.toFixed(2)}`);
+        }
+        if (comparisons.length > 0) {
+            // Use the first available MW ratio for color coding
+            const firstMw = data.mwFromPorod || mwFromI0Guinier || mwFromI0Pr;
+            const isClose = Math.abs(firstMw - proteinMw) / proteinMw < 0.2;
+            mwAlertHtml = `
+            <div class="alert ${isClose ? 'alert-success' : 'alert-warning'}" style="margin-top: 1rem;">
+                <strong>MW 比較：</strong>${comparisons.join(' | ')}
+                <br>${isClose ? '✓ 符合預期 (單體)' : '⚠️ 可能有聚集或複合物形成'}
+            </div>`;
+        }
+    }
+
     resultsDiv.innerHTML = `
         <div class="result-grid">
             <div class="result-item">
@@ -509,9 +549,9 @@ function displaySAXSResults(data) {
                 <div class="result-value">${data.concentration} <span style="font-size: 0.75rem;">mg/mL</span></div>
             </div>
         </div>
-        
+
         <div class="section-divider"><span>Guinier 分析</span></div>
-        
+
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">I(0) from Guinier</div>
@@ -522,9 +562,9 @@ function displaySAXSResults(data) {
                 <div class="result-value">${isNaN(data.rgGuinier) ? '-' : data.rgGuinier.toFixed(2)} <span style="font-size: 0.75rem;">Å</span></div>
             </div>
         </div>
-        
+
         <div class="section-divider"><span>P(r) 分析</span></div>
-        
+
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">I(0) from P(r)</div>
@@ -539,9 +579,9 @@ function displaySAXSResults(data) {
                 <div class="result-value">${isNaN(data.dmax) ? '-' : data.dmax} <span style="font-size: 0.75rem;">Å</span></div>
             </div>
         </div>
-        
+
         <div class="section-divider"><span>體積與分子量</span></div>
-        
+
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">Porod Volume</div>
@@ -559,16 +599,17 @@ function displaySAXSResults(data) {
                 <div class="result-label">MW from 序列</div>
                 <div class="result-value">${proteinMw ? proteinMw.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
             </div>
+            <div class="result-item">
+                <div class="result-label">MW from I(0) Guinier</div>
+                <div class="result-value">${mwFromI0Guinier ? mwFromI0Guinier.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
+            </div>
+            <div class="result-item">
+                <div class="result-label">MW from I(0) P(r)</div>
+                <div class="result-value">${mwFromI0Pr ? mwFromI0Pr.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
+            </div>
         </div>
-        
-        ${data.mwFromPorod && proteinMw ? `
-        <div class="alert ${Math.abs(data.mwFromPorod - proteinMw) / proteinMw < 0.2 ? 'alert-success' : 'alert-warning'}" style="margin-top: 1rem;">
-            <strong>MW 比較：</strong>Porod / 序列 = ${(data.mwFromPorod / proteinMw).toFixed(2)}
-            ${Math.abs(data.mwFromPorod - proteinMw) / proteinMw < 0.2 ?
-                '✓ 符合預期 (單體)' :
-                '⚠️ 可能有聚集或複合物形成'}
-        </div>
-        ` : ''}
+
+        ${mwAlertHtml}
     `;
 }
 
@@ -722,6 +763,9 @@ function initSampleSection() {
             absorbance, epsilon, pathLength, mw
         );
 
+        // Store latest UV concentration for dilution factor use
+        AppState.lastUVConcentration = concentration;
+
         displaySampleResults({
             absorbance,
             pathLength,
@@ -731,6 +775,23 @@ function initSampleSection() {
             concentrationMolar: (concentration * 1000 / mw) * 1e6 // μM
         });
     });
+
+    // Dilution factor estimation
+    const dfBtn = document.getElementById('calculateDilutionFactor');
+    if (dfBtn) {
+        dfBtn.addEventListener('click', () => {
+            const injVol = parseFloat(document.getElementById('dfInjectionVolume').value);
+            if (isNaN(injVol) || injVol <= 0) {
+                showAlert('dilutionFactorResults', 'error', '注射體積必須大於 0');
+                return;
+            }
+
+            const df = SAXSCalculations.calculateDilutionFactorEmpirical(injVol);
+            const uvConc = AppState.lastUVConcentration;
+
+            displayDilutionFactorResults({ injectedVolume: injVol, dilutionFactor: df, uvConcentration: uvConc });
+        });
+    }
 }
 
 function displaySampleResults(data) {
@@ -767,6 +828,46 @@ function displaySampleResults(data) {
                 <div class="result-label">分子量</div>
                 <div class="result-value">${data.mw.toFixed(2)} Da</div>
             </div>
+        </div>
+    `;
+}
+
+function displayDilutionFactorResults(data) {
+    const resultsDiv = document.getElementById('dilutionFactorResults');
+    const onColumnConc = (data.uvConcentration && data.uvConcentration > 0)
+        ? (data.uvConcentration / data.dilutionFactor)
+        : null;
+
+    resultsDiv.innerHTML = `
+        <div class="result-grid">
+            <div class="result-item" style="border-left-color: #f59e0b;">
+                <div class="result-label">稀釋因子 (DF)</div>
+                <div class="result-value">${data.dilutionFactor.toFixed(2)}</div>
+            </div>
+            <div class="result-item">
+                <div class="result-label">注射體積</div>
+                <div class="result-value">${data.injectedVolume} <span style="font-size: 0.75rem;">μL</span></div>
+            </div>
+        </div>
+        ${onColumnConc !== null ? `
+        <div class="section-divider"><span>On-column 濃度估算</span></div>
+        <div class="result-grid">
+            <div class="result-item" style="border-left-color: #10b981;">
+                <div class="result-label">UV 量測濃度</div>
+                <div class="result-value">${data.uvConcentration.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
+            </div>
+            <div class="result-item" style="border-left-color: #10b981;">
+                <div class="result-label">On-column 濃度</div>
+                <div class="result-value">${onColumnConc.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
+            </div>
+        </div>
+        ` : `
+        <div class="alert alert-info" style="margin-top: 0.75rem;">
+            先計算 UV 濃度，即可同時顯示 on-column 濃度估算
+        </div>
+        `}
+        <div class="alert alert-warning" style="margin-top: 0.75rem;">
+            <strong>注意：</strong>此為經驗公式估算，誤差約 ±7.33%
         </div>
     `;
 }
