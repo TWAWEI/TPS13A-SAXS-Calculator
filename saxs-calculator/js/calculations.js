@@ -856,6 +856,20 @@ function calculateDetectorDistance(mwOrRg, inputType = 'mw') {
 }
 
 
+/**
+ * 經驗稀釋因子估算 (TPS 13A SEC-HPLC 校正)
+ * 公式: DF = 1.907 + 12.981 × exp(-0.0431 × V)
+ * 校準值: 100μL→2, 50μL→3.66, 30μL→5.25, 15μL→8.77
+ * 誤差: ±7.33%
+ *
+ * @param {number} injectedVolume - 注射體積 (μL)
+ * @returns {number} 稀釋因子
+ */
+function calculateDilutionFactorEmpirical(injectedVolume) {
+    const df = 1.907 + 12.981 * Math.exp(-0.0431 * injectedVolume);
+    return df;
+}
+
 // 導出函數
 window.SAXSCalculations = {
     // SAXS 分析
@@ -877,6 +891,7 @@ window.SAXSCalculations = {
 
     // HPLC 計算
     calculateDilutionFactor,
+    calculateDilutionFactorEmpirical,
     calculateConcentrationFromUV,
     calculateMwFromRetentionTime,
     calculateRetentionTimeFromMw,
