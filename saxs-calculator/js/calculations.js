@@ -8,73 +8,6 @@
 // ========================
 
 /**
- * Guinier 分析計算 I(0) 和 Rg
- * @param {Array} qValues - q 值陣列
- * @param {Array} intensities - 散射強度陣列
- * @param {number} qMin - 擬合範圍最小 q
- * @param {number} qMax - 擬合範圍最大 q
- * @returns {object} Guinier 分析結果
- */
-function guinierAnalysis(qValues, intensities, qMin = 0, qMax = Infinity) {
-    // 選取擬合範圍內的數據
-    const data = [];
-    for (let i = 0; i < qValues.length; i++) {
-        const q = qValues[i];
-        const I = intensities[i];
-        if (q >= qMin && q <= qMax && I > 0) {
-            data.push({
-                q2: q * q,
-                lnI: Math.log(I)
-            });
-        }
-    }
-
-    if (data.length < 3) {
-        return { error: true, message: '數據點不足' };
-    }
-
-    // 線性迴歸: ln(I) = ln(I0) - (Rg²/3) × q²
-    const n = data.length;
-    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-
-    for (const point of data) {
-        sumX += point.q2;
-        sumY += point.lnI;
-        sumXY += point.q2 * point.lnI;
-        sumX2 += point.q2 * point.q2;
-    }
-
-    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-    const intercept = (sumY - slope * sumX) / n;
-
-    const I0 = Math.exp(intercept);
-    const Rg = Math.sqrt(-3 * slope);
-
-    // 計算 R² 和誤差
-    const yMean = sumY / n;
-    let ssTot = 0, ssRes = 0;
-
-    for (const point of data) {
-        const yPred = intercept + slope * point.q2;
-        ssTot += (point.lnI - yMean) ** 2;
-        ssRes += (point.lnI - yPred) ** 2;
-    }
-
-    const r2 = 1 - ssRes / ssTot;
-
-    return {
-        error: false,
-        I0: I0,
-        Rg: Rg,
-        slope: slope,
-        intercept: intercept,
-        r2: r2,
-        dataPoints: n,
-        qRgMax: Math.sqrt(qMax * qMax) * Rg
-    };
-}
-
-/**
  * 從分子量計算理論 I(0)
  * 用於與實驗值比較，驗證樣品單分散性
  * 
@@ -226,7 +159,7 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
         theoreticalRg: Rg,           // Å (文獻公式)
         predictedRg: predictedRg,    // Å (Excel 實驗校正)
         formula: formula,
-        predictedFormula: 'Rg = 0.2508 × MW^0.43',
+        predictedFormula: 'Rg = 0.2508 × MW^0.4301',
         proteinType: proteinType,
         coefficient: coefficient,
         exponent: exponent,
@@ -565,33 +498,6 @@ function calculateMassResolution(mw, peakWidth, flowRate = 0.35, poreSize = '100
     const peakVolume = peakWidth * flowRate;
     // ΔM ≈ |peakVolume / b| × MW (因為 Ve = a + b×ln(MW), dVe/dMW = b/MW)
     return Math.abs(peakVolume / b) * mw;
-}
-
-// ========================
-// RI/UV 雙組分分析
-// ========================
-
-/**
- * 計算雙組分系統中的莫爾比
- * @param {number} riSignal - RI 信號
- * @param {number} uvSignal - UV 信號
- * @param {object} componentA - 組分 A 參數 { dndc, epsilon, mw }
- * @param {object} componentB - 組分 B 參數 { dndc, epsilon, mw }
- * @returns {object} 莫爾比結果
- */
-function calculateMolarRatio(riSignal, uvSignal, componentA, componentB) {
-    // 使用 RI 和 UV 信號解聯立方程式
-    // RI = (dndc_A × c_A + dndc_B × c_B) × k_RI
-    // UV = (ε_A × c_A + ε_B × c_B) × k_UV
-
-    // 簡化版：假設已知總濃度
-    const ratio = (uvSignal * componentB.dndc - riSignal * componentB.epsilon) /
-        (riSignal * componentA.epsilon - uvSignal * componentA.dndc);
-
-    return {
-        molarRatioAB: ratio,
-        massRatioAB: ratio * componentA.mw / componentB.mw
-    };
 }
 
 // ========================
@@ -953,7 +859,6 @@ function calculateDetectorDistance(mwOrRg, inputType = 'mw') {
 // 導出函數
 window.SAXSCalculations = {
     // SAXS 分析
-    guinierAnalysis,
     calculateMwFromI0,
     calculatePorodVolume,
     estimateMwFromPorodVolume,
@@ -981,8 +886,5 @@ window.SAXSCalculations = {
     calculatePeakWidthScaling,
     calculateTimeOffset,
     calculateHPLCSAXSSettings,
-    calculateSuggestedParams,
-
-    // 雙組分分析
-    calculateMolarRatio
+    calculateSuggestedParams
 };

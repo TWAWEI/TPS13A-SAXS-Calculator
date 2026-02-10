@@ -378,6 +378,16 @@ function initSAXSSection() {
         const dmax = parseFloat(document.getElementById('dmax').value);
         const porodVolume = parseFloat(document.getElementById('porodVolume').value);
 
+        // Validate required inputs
+        if (isNaN(concentration) || concentration <= 0) {
+            showAlert('saxsResults', 'error', '樣品濃度必須大於 0');
+            return;
+        }
+        if (isNaN(xrayEnergy) || xrayEnergy <= 0) {
+            showAlert('saxsResults', 'error', 'X 射線能量必須大於 0');
+            return;
+        }
+
         // Calculate wavelength from energy
         const wavelength = 12.398 / xrayEnergy; // Å
 
@@ -703,6 +713,10 @@ function initSampleSection() {
             showAlert('sampleResults', 'error', '請填入所有必要參數');
             return;
         }
+        if (epsilon <= 0 || mw <= 0 || pathLength <= 0) {
+            showAlert('sampleResults', 'error', '消光係數、分子量和光徑長度必須大於 0');
+            return;
+        }
 
         const concentration = SAXSCalculations.calculateConcentrationFromUV(
             absorbance, epsilon, pathLength, mw
@@ -946,6 +960,24 @@ function initCentrifugeSection() {
         const vbar = parseFloat(document.getElementById('vbar').value);
         const rho = parseFloat(document.getElementById('solventDensity').value);
         const time = parseFloat(document.getElementById('centrifugeTime').value);
+
+        // Validate inputs
+        if (isNaN(rpm) || rpm <= 0 || isNaN(radius) || radius <= 0) {
+            showAlert('centrifugeResults', 'error', '轉速和轉子半徑必須大於 0');
+            return;
+        }
+        if (isNaN(mw) || mw <= 0) {
+            showAlert('centrifugeResults', 'error', '分子量必須大於 0');
+            return;
+        }
+        if (isNaN(viscosity) || viscosity <= 0 || isNaN(vbar) || vbar <= 0 || isNaN(rho) || rho <= 0) {
+            showAlert('centrifugeResults', 'error', '黏度、部分比容和溶劑密度必須大於 0');
+            return;
+        }
+        if (isNaN(time) || time <= 0) {
+            showAlert('centrifugeResults', 'error', '離心時間必須大於 0');
+            return;
+        }
 
         // Calculate RCF
         const rcf = SAXSCalculations.calculateRCF(rpm, radius);

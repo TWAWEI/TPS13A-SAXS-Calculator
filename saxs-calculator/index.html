@@ -152,11 +152,11 @@
                 </div>
 
                 <!-- Stats Grid -->
-                <div class="grid grid-4" style="margin-top: 1.5rem;" id="proteinStats" style="display: none;">
+                <div class="grid grid-4" style="margin-top: 1.5rem; display: none;" id="proteinStats">
                 </div>
 
                 <!-- Composition Chart -->
-                <div class="card" style="margin-top: 1.5rem;" id="compositionCard" style="display: none;">
+                <div class="card" style="margin-top: 1.5rem; display: none;" id="compositionCard">
                     <div class="card-header">
                         <h3 class="card-title">📈 氨基酸組成</h3>
                         <div class="tabs" style="margin: 0;">
@@ -272,7 +272,7 @@
                                 <div
                                     style="color: rgba(255,255,255,0.6); font-size: 0.6rem; margin-top: 0.5rem; line-height: 1.3;">
                                     公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | <span style="color: #ff99ff;">Predicted
-                                        Rg=0.2508×MW^0.43</span> | Dmax≈2.8×Rg
+                                        Rg=0.2508×MW^0.4301</span> | Dmax≈2.8×Rg
                                 </div>
                             </div>
 
@@ -922,7 +922,7 @@
                                     <tr>
                                         <td></td>
                                         <td>Instrument</td>
-                                        <td id="iucr-instrument">Synchrotron 23A SWAXS endstation of NSRRC</td>
+                                        <td id="iucr-instrument">Synchrotron TPS 13A BioSAXS endstation of NSRRC</td>
                                         <td></td>
                                         <td></td>
                                     </tr>
@@ -1056,208 +1056,171 @@
             </section>
 
             <!-- Detector Distance Section -->
-            <section id="section-detector" class="section hidden">
-                <div class="section-header">
-                    <h1>📡 偵測器距離計算</h1>
-                    <p>根據蛋白質分子量計算建議的 SAXS 樣品到偵測器距離 (9M position)</p>
+            <section id="section-detector" class="section">
+                <div class="page-header">
+                    <h1 class="page-title">
+                        <span class="page-title-icon">📡</span>
+                        偵測器距離計算
+                    </h1>
+                    <p class="page-subtitle">根據蛋白質分子量計算建議的 SAXS 樣品到偵測器距離 (9M position)</p>
                 </div>
 
-                <div class="section-content">
-                    <div class="content-grid">
-                        <!-- Reference Proteins Table -->
-                        <div class="card">
-                            <div class="card-header">
-                                <span class="card-icon">📋</span>
-                                <span class="card-title">標準蛋白質參考值</span>
-                            </div>
-                            <div class="card-content">
-                                <table class="data-table"
-                                    style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <div class="grid grid-2">
+                    <!-- Reference Proteins Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📋 標準蛋白質參考值</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-wrapper">
+                                <table class="table">
                                     <thead>
-                                        <tr style="background: var(--color-bg-tertiary);">
-                                            <th
-                                                style="padding: 0.75rem; text-align: left; border-bottom: 2px solid var(--color-border);">
-                                                蛋白質</th>
-                                            <th
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
-                                                MW (Da)</th>
-                                            <th
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
-                                                Rg (Å)</th>
-                                            <th
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
-                                                qmin (Å⁻¹)</th>
-                                            <th
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 2px solid var(--color-border);">
-                                                9M SD (mm)</th>
+                                        <tr>
+                                            <th>蛋白質</th>
+                                            <th style="text-align: right;">MW (Da)</th>
+                                            <th style="text-align: right;">Rg (Å)</th>
+                                            <th style="text-align: right;">qmin (Å⁻¹)</th>
+                                            <th style="text-align: right;">9M SD (mm)</th>
                                         </tr>
                                     </thead>
                                     <tbody id="referenceProteinsTable">
                                         <tr>
-                                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
-                                                BSA monomer</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                66,500</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                28.00</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                0.0080</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                1,900</td>
+                                            <td>BSA monomer</td>
+                                            <td style="text-align: right;">66,500</td>
+                                            <td style="text-align: right;">28.00</td>
+                                            <td style="text-align: right;">0.0080</td>
+                                            <td style="text-align: right;">1,900</td>
                                         </tr>
                                         <tr>
-                                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
-                                                BSA dimer</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                130,000</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                35.01</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                0.0064</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                2,376</td>
+                                            <td>BSA dimer</td>
+                                            <td style="text-align: right;">130,000</td>
+                                            <td style="text-align: right;">35.01</td>
+                                            <td style="text-align: right;">0.0064</td>
+                                            <td style="text-align: right;">2,376</td>
                                         </tr>
                                         <tr>
-                                            <td style="padding: 0.75rem; border-bottom: 1px solid var(--color-border);">
-                                                Cytochrome c</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                12,700</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                16.12</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                0.0139</td>
-                                            <td
-                                                style="padding: 0.75rem; text-align: right; border-bottom: 1px solid var(--color-border);">
-                                                1,094</td>
+                                            <td>Cytochrome c</td>
+                                            <td style="text-align: right;">12,700</td>
+                                            <td style="text-align: right;">16.12</td>
+                                            <td style="text-align: right;">0.0139</td>
+                                            <td style="text-align: right;">1,094</td>
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
 
-                                <div
-                                    style="margin-top: 1rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 8px; font-size: 0.8rem; color: var(--color-text-muted);">
-                                    <strong>公式說明：</strong><br>
-                                    • Rg = 0.69 × MW<sup>1/3</sup> (基於 BSA 校正)<br>
-                                    • qmin = 0.224 / Rg<br>
-                                    • 9M SD = 67.86 × Rg
-                                </div>
+                            <div
+                                style="margin-top: 1rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 8px; font-size: 0.8rem; color: var(--color-text-muted);">
+                                <strong>公式說明：</strong><br>
+                                • Rg = 0.69 × MW<sup>1/3</sup> (基於 BSA 校正)<br>
+                                • qmin = 0.224 / Rg<br>
+                                • 9M SD = 67.86 × Rg
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Target Protein Calculator -->
-                        <div class="card">
-                            <div class="card-header">
-                                <span class="card-icon">🎯</span>
-                                <span class="card-title">目標蛋白質計算</span>
-                            </div>
-                            <div class="card-content">
-                                <!-- Input Mode Toggle -->
-                                <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                    <button class="btn" id="modeByMW"
-                                        style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-primary); color: white; border: none; cursor: pointer;">
-                                        MW → Rg, SD
-                                    </button>
-                                    <button class="btn" id="modeByRg"
-                                        style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-bg-tertiary); color: var(--color-text); border: 1px solid var(--color-border); cursor: pointer;">
-                                        Rg → MW, SD
-                                    </button>
-                                </div>
-
-                                <!-- MW Input (shown by default) -->
-                                <div class="form-group" id="mwInputGroup">
-                                    <label class="form-label">目標蛋白質分子量 (MW)</label>
-                                    <div class="input-group">
-                                        <input type="number" id="targetProteinMW" class="form-input"
-                                            placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
-                                        <span class="input-suffix">Da</span>
-                                    </div>
-                                </div>
-
-                                <!-- Rg Input (hidden by default) -->
-                                <div class="form-group" id="rgInputGroup" style="display: none;">
-                                    <label class="form-label">目標蛋白質 Rg (迴旋半徑)</label>
-                                    <div class="input-group">
-                                        <input type="number" id="targetProteinRg" class="form-input"
-                                            placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
-                                        <span class="input-suffix">Å</span>
-                                    </div>
-                                </div>
-
-                                <button class="btn btn-primary" id="calculateDetectorBtn"
-                                    style="width: 100%; margin-top: 1rem; padding: 0.75rem; font-size: 1rem;">
-                                    🔬 計算偵測器距離
+                    <!-- Target Protein Calculator -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">🎯 目標蛋白質計算</h3>
+                        </div>
+                        <div class="card-body">
+                            <!-- Input Mode Toggle -->
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                                <button class="btn" id="modeByMW"
+                                    style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-primary); color: white; border: none; cursor: pointer;">
+                                    MW → Rg, SD
                                 </button>
+                                <button class="btn" id="modeByRg"
+                                    style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-bg-tertiary); color: var(--color-text); border: 1px solid var(--color-border); cursor: pointer;">
+                                    Rg → MW, SD
+                                </button>
+                            </div>
 
-                                <!-- Results Display -->
-                                <div id="detectorResults" style="margin-top: 1.5rem;">
-                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
-                                        <!-- MW Result (shown in Rg mode) -->
-                                        <div id="mwResultCard"
-                                            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 1rem; border-radius: 8px; text-align: center; display: none;">
-                                            <div
-                                                style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                                預測 MW</div>
-                                            <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
-                                                id="detectorMwResult">66,500</div>
-                                            <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Da</div>
-                                        </div>
+                            <!-- MW Input (shown by default) -->
+                            <div class="form-group" id="mwInputGroup">
+                                <label class="form-label">目標蛋白質分子量 (MW)</label>
+                                <div class="form-input-group">
+                                    <input type="number" id="targetProteinMW" class="form-input"
+                                        placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
+                                    <span class="input-unit">Da</span>
+                                </div>
+                            </div>
 
-                                        <!-- Rg Result (shown in MW mode) -->
-                                        <div id="rgResultCard"
-                                            style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
-                                            <div
-                                                style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                                理論 Rg</div>
-                                            <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
-                                                id="detectorRgResult">28.00</div>
-                                            <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å</div>
-                                        </div>
+                            <!-- Rg Input (hidden by default) -->
+                            <div class="form-group" id="rgInputGroup" style="display: none;">
+                                <label class="form-label">目標蛋白質 Rg (迴旋半徑)</label>
+                                <div class="form-input-group">
+                                    <input type="number" id="targetProteinRg" class="form-input"
+                                        placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
+                                    <span class="input-unit">Å</span>
+                                </div>
+                            </div>
 
-                                        <!-- qmin Result -->
+                            <button class="btn btn-primary btn-lg" id="calculateDetectorBtn"
+                                style="width: 100%; margin-top: 1rem;">
+                                計算偵測器距離
+                            </button>
+
+                            <!-- Results Display -->
+                            <div id="detectorResults" style="margin-top: 1.5rem;">
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                                    <!-- MW Result (shown in Rg mode) -->
+                                    <div id="mwResultCard"
+                                        style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 1rem; border-radius: 8px; text-align: center; display: none;">
                                         <div
-                                            style="background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
-                                            <div
-                                                style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                                qmin</div>
-                                            <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
-                                                id="detectorQminResult">0.0080</div>
-                                            <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å⁻¹</div>
-                                        </div>
+                                            style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                            預測 MW</div>
+                                        <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
+                                            id="detectorMwResult">66,500</div>
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Da</div>
                                     </div>
 
-                                    <!-- 9M SD Result (Full Width) -->
-                                    <div
-                                        style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 1.25rem; border-radius: 8px; text-align: center; margin-top: 1rem;">
+                                    <!-- Rg Result (shown in MW mode) -->
+                                    <div id="rgResultCard"
+                                        style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
                                         <div
-                                            style="color: rgba(255,255,255,0.8); font-size: 0.85rem; margin-bottom: 0.25rem;">
-                                            建議 9M 偵測器距離 (SD)</div>
-                                        <div style="color: #fff; font-size: 2rem; font-weight: 700;"
-                                            id="detectorSDResult">1,900</div>
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">mm (<span
-                                                id="detectorSDMeters">1.9</span> m)</div>
+                                            style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                            理論 Rg</div>
+                                        <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
+                                            id="detectorRgResult">28.00</div>
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å</div>
+                                    </div>
+
+                                    <!-- qmin Result -->
+                                    <div
+                                        style="background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
+                                        <div
+                                            style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
+                                            qmin</div>
+                                        <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
+                                            id="detectorQminResult">0.0080</div>
+                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å⁻¹</div>
                                     </div>
                                 </div>
 
-                                <!-- Quick Reference -->
+                                <!-- 9M SD Result (Full Width) -->
                                 <div
-                                    style="margin-top: 1.5rem; padding: 1rem; background: var(--color-bg-secondary); border-radius: 8px; border: 1px solid var(--color-border);">
-                                    <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text);">💡
-                                        快速參考</div>
-                                    <div style="font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.6;">
-                                        • <strong>小蛋白質</strong> (&lt;20 kDa): SD ≈ 1,000-1,500 mm<br>
-                                        • <strong>中型蛋白質</strong> (20-100 kDa): SD ≈ 1,500-2,500 mm<br>
-                                        • <strong>大蛋白質/複合體</strong> (&gt;100 kDa): SD ≈ 2,500+ mm
-                                    </div>
+                                    style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 1.25rem; border-radius: 8px; text-align: center; margin-top: 1rem;">
+                                    <div
+                                        style="color: rgba(255,255,255,0.8); font-size: 0.85rem; margin-bottom: 0.25rem;">
+                                        建議 9M 偵測器距離 (SD)</div>
+                                    <div style="color: #fff; font-size: 2rem; font-weight: 700;"
+                                        id="detectorSDResult">1,900</div>
+                                    <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">mm (<span
+                                            id="detectorSDMeters">1.9</span> m)</div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Reference -->
+                            <div
+                                style="margin-top: 1.5rem; padding: 1rem; background: var(--color-bg-secondary); border-radius: 8px; border: 1px solid var(--color-border);">
+                                <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text);">
+                                    快速參考</div>
+                                <div style="font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.6;">
+                                    • <strong>小蛋白質</strong> (&lt;20 kDa): SD ≈ 1,000-1,500 mm<br>
+                                    • <strong>中型蛋白質</strong> (20-100 kDa): SD ≈ 1,500-2,500 mm<br>
+                                    • <strong>大蛋白質/複合體</strong> (&gt;100 kDa): SD ≈ 2,500+ mm
                                 </div>
                             </div>
                         </div>

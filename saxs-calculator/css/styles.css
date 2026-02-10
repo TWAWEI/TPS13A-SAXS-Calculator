@@ -56,6 +56,12 @@
     /* Layout */
     --sidebar-width: 260px;
     --header-height: 60px;
+
+    /* Aliases (used in inline styles) */
+    --color-primary: var(--color-accent-primary);
+    --color-text: var(--color-text-primary);
+    --color-accent: var(--color-accent-tertiary);
+    --color-primary-rgb: 99, 102, 241;
 }
 
 /* ===== Reset & Base ===== */
