@@ -15,16 +15,19 @@
         rel="stylesheet">
 
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 
     <!-- Styles -->
     <link rel="stylesheet" href="css/styles.css">
 </head>
 
 <body>
+    <!-- Skip Link -->
+    <a href="#main-content" class="skip-link">跳到主要內容</a>
+
     <div class="app-layout">
         <!-- Sidebar Navigation -->
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar" id="sidebar" aria-label="主導航">
             <div class="sidebar-header">
                 <div class="logo">
                     <div class="logo-icon">🔬</div>
@@ -32,74 +35,76 @@
                 </div>
             </div>
 
-            <nav class="sidebar-nav">
+            <nav class="sidebar-nav" aria-label="分析工具導航">
                 <div class="nav-section">
-                    <div class="nav-section-title">分析工具</div>
+                    <div class="nav-section-title" id="nav-tools-label">分析工具</div>
 
-                    <div class="nav-item active" data-section="protein">
-                        <span class="nav-item-icon">🧬</span>
+                    <button class="nav-item active" data-section="protein" aria-current="page">
+                        <span class="nav-item-icon" aria-hidden="true">🧬</span>
                         <span class="nav-item-text">蛋白質分析</span>
-                    </div>
+                    </button>
 
-                    <div class="nav-item" data-section="saxs">
-                        <span class="nav-item-icon">📊</span>
-                        <span class="nav-item-text">SAXS 參數</span>
-                    </div>
+                    <button class="nav-item" data-section="saxs">
+                        <span class="nav-item-icon" aria-hidden="true">📊</span>
+                        <span class="nav-item-text">SAXS 結構參數</span>
+                    </button>
 
-                    <div class="nav-item" data-section="hplc">
-                        <span class="nav-item-icon">🧪</span>
-                        <span class="nav-item-text">HPLC 設定</span>
-                    </div>
+                    <button class="nav-item" data-section="hplc">
+                        <span class="nav-item-icon" aria-hidden="true">🧪</span>
+                        <span class="nav-item-text">HPLC-SAXS 設定</span>
+                    </button>
 
-                    <div class="nav-item" data-section="sample">
-                        <span class="nav-item-icon">⚗️</span>
+                    <button class="nav-item" data-section="sample">
+                        <span class="nav-item-icon" aria-hidden="true">⚗️</span>
                         <span class="nav-item-text">樣品計算</span>
-                    </div>
+                    </button>
 
-                    <div class="nav-item" data-section="mw">
-                        <span class="nav-item-icon">📐</span>
-                        <span class="nav-item-text">分子量解析</span>
-                    </div>
+                    <button class="nav-item" data-section="mw">
+                        <span class="nav-item-icon" aria-hidden="true">📐</span>
+                        <span class="nav-item-text">分子量解析度</span>
+                    </button>
 
-                    <div class="nav-item" data-section="centrifuge">
-                        <span class="nav-item-icon">⚙️</span>
+                    <button class="nav-item" data-section="centrifuge">
+                        <span class="nav-item-icon" aria-hidden="true">⚙️</span>
                         <span class="nav-item-text">離心參數</span>
-                    </div>
+                    </button>
 
-                    <div class="nav-item" data-section="detector">
-                        <span class="nav-item-icon">📡</span>
+                    <button class="nav-item" data-section="detector">
+                        <span class="nav-item-icon" aria-hidden="true">📡</span>
                         <span class="nav-item-text">偵測器距離</span>
-                    </div>
+                    </button>
                 </div>
 
                 <div class="nav-section">
-                    <div class="nav-section-title">輸出</div>
+                    <div class="nav-section-title" id="nav-output-label">輸出</div>
 
-                    <div class="nav-item" data-section="iucr">
-                        <span class="nav-item-icon">📋</span>
+                    <button class="nav-item" data-section="iucr">
+                        <span class="nav-item-icon" aria-hidden="true">📋</span>
                         <span class="nav-item-text">IUCr 表格</span>
-                    </div>
+                    </button>
                 </div>
             </nav>
 
-            <div
-                style="padding: 1rem; border-top: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted);">
+            <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
                 Version 1.5
             </div>
         </aside>
 
+        <!-- Mobile Sidebar Overlay -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
         <!-- Mobile Menu Button -->
-        <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+        <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="開啟選單" aria-expanded="false">☰</button>
 
         <!-- Main Content -->
-        <main class="main-content">
+        <main class="main-content" id="main-content">
 
             <!-- Section: Protein Analysis -->
-            <section class="section active" id="section-protein">
+            <section class="section active" id="section-protein" aria-labelledby="protein-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">🧬</span>
+                    <h1 class="page-title" id="protein-title">
+                        <span class="page-title-icon" aria-hidden="true">🧬</span>
                         蛋白質序列分析
                     </h1>
                     <p class="page-subtitle">輸入蛋白質序列，自動計算分子量、消光係數、體積等參數</p>
@@ -114,14 +119,14 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label">蛋白質名稱</label>
+                                <label class="form-label" for="proteinName">蛋白質名稱</label>
                                 <input type="text" class="form-input" id="proteinName" placeholder="例: Cytochrome c">
                             </div>
                             <div class="form-group">
-                                <label class="form-label">單字母氨基酸序列</label>
+                                <label class="form-label" for="proteinSequence">單字母氨基酸序列</label>
                                 <textarea class="form-textarea" id="proteinSequence" rows="6"
                                     placeholder="輸入蛋白質序列，例如:&#10;MGSSHHHHHHSQDPNSLRHLVL..."></textarea>
-                                <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                                <div class="sequence-meta">
                                     <span class="stat-sub" id="sequenceLength">長度: 0 殘基</span>
                                     <button class="btn btn-sm btn-secondary" id="clearSequence">清除</button>
                                 </div>
@@ -132,7 +137,7 @@
                                     還原態半胱氨酸 (無二硫鍵)
                                 </label>
                             </div>
-                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="analyzeProtein">
+                            <button class="btn btn-primary btn-lg btn-full" id="analyzeProtein">
                                 分析序列
                             </button>
                         </div>
@@ -152,14 +157,14 @@
                 </div>
 
                 <!-- Stats Grid -->
-                <div class="grid grid-4" style="margin-top: 1.5rem; display: none;" id="proteinStats">
+                <div class="grid grid-4 mt-lg hidden" id="proteinStats">
                 </div>
 
                 <!-- Composition Chart -->
-                <div class="card" style="margin-top: 1.5rem; display: none;" id="compositionCard">
+                <div class="card mt-lg hidden" id="compositionCard">
                     <div class="card-header">
                         <h3 class="card-title">📈 氨基酸組成</h3>
-                        <div class="tabs" style="margin: 0;">
+                        <div class="tabs tabs--inline">
                             <button class="tab active" data-chart="bar">長條圖</button>
                             <button class="tab" data-chart="doughnut">圓餅圖</button>
                         </div>
@@ -168,7 +173,7 @@
                         <div class="chart-container" id="chartContainer-bar">
                             <canvas id="compositionBarChart"></canvas>
                         </div>
-                        <div class="chart-container" id="chartContainer-doughnut" style="display: none;">
+                        <div class="chart-container hidden" id="chartContainer-doughnut">
                             <canvas id="compositionDoughnutChart"></canvas>
                         </div>
                     </div>
@@ -176,10 +181,10 @@
             </section>
 
             <!-- Section: SAXS Parameters -->
-            <section class="section" id="section-saxs">
+            <section class="section" id="section-saxs" aria-labelledby="saxs-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">📊</span>
+                    <h1 class="page-title" id="saxs-title">
+                        <span class="page-title-icon" aria-hidden="true">📊</span>
                         SAXS 結構參數
                     </h1>
                     <p class="page-subtitle">計算 Rg、I(0)、Dmax、Porod Volume 等散射參數</p>
@@ -196,7 +201,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">樣品濃度</label>
+                                <label class="form-label" for="sampleConcentration">樣品濃度</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="sampleConcentration" value="1.0"
                                         step="0.1" min="0">
@@ -205,7 +210,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">X 射線能量</label>
+                                <label class="form-label" for="xrayEnergy">X 射線能量</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="xrayEnergy" value="15" step="0.1"
                                         min="1">
@@ -214,111 +219,86 @@
                             </div>
 
                             <!-- 理論值顯示區塊 -->
-                            <div class="form-group"
-                                style="padding: 0.75rem; background: linear-gradient(135deg, #059669 0%, #10b981 100%); border-radius: 8px; margin-top: 0.5rem;">
-                                <div
-                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                    <div style="color: rgba(255,255,255,0.9); font-size: 0.85rem; font-weight: 600;">📊
-                                        理論預測值</div>
-                                    <div style="display: flex; align-items: center; gap: 0.3rem;">
-                                        <span style="color: rgba(255,255,255,0.8); font-size: 0.75rem;">MW:</span>
-                                        <input type="number" id="theoreticalMWInput" style="width: 80px; padding: 0.2rem 0.4rem; font-size: 0.75rem; 
-                                                   background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.3); 
-                                                   border-radius: 4px; color: #fff; text-align: right;"
+                            <div class="form-group info-panel info-panel--success">
+                                <div class="info-panel-header">
+                                    <div class="info-panel-title">📊 理論預測值</div>
+                                    <div class="info-panel-header-right">
+                                        <span class="info-panel-header-label">MW:</span>
+                                        <input type="number" id="theoreticalMWInput" class="info-panel-mw-input"
                                             placeholder="--" step="1" min="0">
-                                        <span style="color: rgba(255,255,255,0.8); font-size: 0.75rem;">Da</span>
+                                        <span class="info-panel-header-label">Da</span>
                                     </div>
                                 </div>
 
                                 <!-- 三個理論值並排顯示 -->
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                                <div class="info-panel-grid">
                                     <!-- 理論 I(0) -->
-                                    <div
-                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 I(0)</div>
-                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
-                                            id="theoreticalI0Display">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">cm⁻¹</div>
+                                    <div class="info-panel-item">
+                                        <div class="info-panel-label">理論 I(0)</div>
+                                        <div class="info-panel-value" id="theoreticalI0Display">--</div>
+                                        <div class="info-panel-unit">cm⁻¹</div>
                                     </div>
 
                                     <!-- 理論 Rg (文獻) -->
-                                    <div
-                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 Rg</div>
-                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
-                                            id="theoreticalRgDisplay">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å</div>
+                                    <div class="info-panel-item">
+                                        <div class="info-panel-label">理論 Rg</div>
+                                        <div class="info-panel-value" id="theoreticalRgDisplay">--</div>
+                                        <div class="info-panel-unit">Å</div>
                                     </div>
 
                                     <!-- Predicted Rg (Excel 實驗校正) -->
-                                    <div
-                                        style="background: rgba(255,0,255,0.25); padding: 0.5rem; border-radius: 6px; text-align: center; border: 1px solid rgba(255,0,255,0.4);">
-                                        <div style="color: #ff99ff; font-size: 0.65rem;">Predicted Rg</div>
-                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
-                                            id="predictedRgDisplay">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å (Excel)</div>
+                                    <div class="info-panel-item info-panel-item--highlight">
+                                        <div class="info-panel-label info-panel-label--highlight">Predicted Rg</div>
+                                        <div class="info-panel-value" id="predictedRgDisplay">--</div>
+                                        <div class="info-panel-unit">Å (Excel)</div>
                                     </div>
 
                                     <!-- 理論 Dmax -->
-                                    <div
-                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">理論 Dmax</div>
-                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
-                                            id="theoreticalDmaxDisplay">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å</div>
+                                    <div class="info-panel-item">
+                                        <div class="info-panel-label">理論 Dmax</div>
+                                        <div class="info-panel-value" id="theoreticalDmaxDisplay">--</div>
+                                        <div class="info-panel-unit">Å</div>
                                     </div>
                                 </div>
 
-                                <div
-                                    style="color: rgba(255,255,255,0.6); font-size: 0.6rem; margin-top: 0.5rem; line-height: 1.3;">
-                                    公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | <span style="color: #ff99ff;">Predicted
+                                <div class="info-panel-formula">
+                                    公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | <span class="info-panel-label--highlight">Predicted
                                         Rg=0.2508×MW^0.4301</span> | Dmax≈2.8×Rg
                                 </div>
                             </div>
 
                             <!-- 偵測器距離建議區塊 -->
-                            <div class="form-group"
-                                style="padding: 0.75rem; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border-radius: 8px; margin-top: 0.5rem;">
-                                <div
-                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                                    <div style="color: rgba(255,255,255,0.9); font-size: 0.85rem; font-weight: 600;">📡
-                                        偵測器距離建議</div>
-                                    <div style="color: rgba(255,255,255,0.8); font-size: 0.75rem;"
-                                        id="detectorDistanceSource">Rg: -- Å</div>
+                            <div class="form-group info-panel info-panel--warning">
+                                <div class="info-panel-header">
+                                    <div class="info-panel-title">📡 偵測器距離建議</div>
+                                    <div class="info-panel-source" id="detectorDistanceSource">Rg: -- Å</div>
                                 </div>
 
                                 <!-- 三個值並排顯示 -->
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">
+                                <div class="info-panel-grid">
                                     <!-- qmin -->
-                                    <div
-                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">qmin</div>
-                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
-                                            id="suggestedQminDisplay">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å⁻¹</div>
+                                    <div class="info-panel-item">
+                                        <div class="info-panel-label">qmin</div>
+                                        <div class="info-panel-value" id="suggestedQminDisplay">--</div>
+                                        <div class="info-panel-unit">Å⁻¹</div>
                                     </div>
 
                                     <!-- 9M SD -->
-                                    <div
-                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">建議 9M SD</div>
-                                        <div style="color: #fff; font-size: 1rem; font-weight: 700;"
-                                            id="suggestedSDDisplay">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">mm</div>
+                                    <div class="info-panel-item">
+                                        <div class="info-panel-label">建議 9M SD</div>
+                                        <div class="info-panel-value" id="suggestedSDDisplay">--</div>
+                                        <div class="info-panel-unit">mm</div>
                                     </div>
 
                                     <!-- q-range -->
-                                    <div
-                                        style="background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 6px; text-align: center;">
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.65rem;">建議 q-range</div>
-                                        <div style="color: #fff; font-size: 0.85rem; font-weight: 700;"
-                                            id="suggestedQrangeDisplay">--</div>
-                                        <div style="color: rgba(255,255,255,0.6); font-size: 0.6rem;">Å⁻¹</div>
+                                    <div class="info-panel-item">
+                                        <div class="info-panel-label">建議 q-range</div>
+                                        <div class="info-panel-value info-panel-value--sm" id="suggestedQrangeDisplay">--</div>
+                                        <div class="info-panel-unit">Å⁻¹</div>
                                     </div>
                                 </div>
 
-                                <div
-                                    style="color: rgba(255,255,255,0.6); font-size: 0.6rem; margin-top: 0.5rem; line-height: 1.3;">
+                                <div class="info-panel-formula">
                                     公式: qmin=1.3/(3×Rg) | SD=(Rg/28)×8000 (參考:BSA Rg=28Å, SD=8m)
                                 </div>
                             </div>
@@ -326,7 +306,7 @@
                             <div class="section-divider"><span>量測結果輸入</span></div>
 
                             <div class="form-group">
-                                <label class="form-label">I(0) from Guinier</label>
+                                <label class="form-label" for="i0Guinier">I(0) from Guinier</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="i0Guinier" step="0.0001"
                                         placeholder="例: 0.0526">
@@ -335,7 +315,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Rg from Guinier</label>
+                                <label class="form-label" for="rgGuinier">Rg from Guinier</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="rgGuinier" step="0.01"
                                         placeholder="例: 27.88">
@@ -344,7 +324,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">I(0) from P(r)</label>
+                                <label class="form-label" for="i0Pr">I(0) from P(r)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="i0Pr" step="0.0001"
                                         placeholder="例: 0.03887">
@@ -353,7 +333,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Rg from P(r)</label>
+                                <label class="form-label" for="rgPr">Rg from P(r)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="rgPr" step="0.01"
                                         placeholder="例: 13.17">
@@ -362,7 +342,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Dmax</label>
+                                <label class="form-label" for="dmax">Dmax</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="dmax" step="1" placeholder="例: 43">
                                     <span class="input-unit">Å</span>
@@ -370,7 +350,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Porod Volume</label>
+                                <label class="form-label" for="porodVolume">Porod Volume</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="porodVolume" step="100"
                                         placeholder="例: 13051">
@@ -378,7 +358,7 @@
                                 </div>
                             </div>
 
-                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateSAXS">
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateSAXS">
                                 計算 SAXS 參數
                             </button>
                         </div>
@@ -398,10 +378,10 @@
             </section>
 
             <!-- Section: HPLC Settings -->
-            <section class="section" id="section-hplc">
+            <section class="section" id="section-hplc" aria-labelledby="hplc-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">🧪</span>
+                    <h1 class="page-title" id="hplc-title">
+                        <span class="page-title-icon" aria-hidden="true">🧪</span>
                         HPLC-SAXS 實驗設定
                     </h1>
                     <p class="page-subtitle">從 pre-run HPLC 結果計算 SAXS 實驗的 step 設定</p>
@@ -414,12 +394,12 @@
                             <h3 class="card-title">📥 Pre-run 參數輸入 (3μL)</h3>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info" style="padding: 0.5rem; font-size: 0.85rem;">
+                            <div class="alert alert-info alert--compact">
                                 <strong>提示：</strong>先用 3μL 樣品做 pre-run HPLC，記錄峰的位置和寬度。
                             </div>
 
-                            <div class="form-group" style="margin-bottom: 0.75rem;">
-                                <label class="form-label" style="font-size: 0.85rem;">Peak center (min) from 3μL
+                            <div class="form-group form-group--compact">
+                                <label class="form-label form-label--sm" for="hplcPeakCenter">Peak center (min) from 3μL
                                     pre-run</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="hplcPeakCenter" value="10.937"
@@ -428,8 +408,8 @@
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-bottom: 0.75rem;">
-                                <label class="form-label" style="font-size: 0.85rem;">Peak width (FWHM) (min) from 3μL
+                            <div class="form-group form-group--compact">
+                                <label class="form-label form-label--sm" for="hplcPeakFWHM">Peak width (FWHM) (min) from 3μL
                                     pre-run</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="hplcPeakFWHM" value="1" step="0.1"
@@ -438,11 +418,10 @@
                                 </div>
                             </div>
 
-                            <div class="section-divider" style="margin: 0.5rem 0;"><span style="font-size: 0.8rem;">SAXS
-                                    實驗設定</span></div>
+                            <div class="section-divider section-divider--compact"><span>SAXS 實驗設定</span></div>
 
-                            <div class="form-group" style="margin-bottom: 0.75rem;">
-                                <label class="form-label" style="font-size: 0.85rem;">Volume to inject in SAXS
+                            <div class="form-group form-group--compact">
+                                <label class="form-label form-label--sm" for="hplcInjectionVolume">Volume to inject in SAXS
                                     exp</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="hplcInjectionVolume" value="100"
@@ -451,8 +430,8 @@
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-bottom: 0.75rem;">
-                                <label class="form-label" style="font-size: 0.85rem;">Target flow rate around
+                            <div class="form-group form-group--compact">
+                                <label class="form-label form-label--sm" for="hplcTargetFlowRate">Target flow rate around
                                     peak</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="hplcTargetFlowRate" value="0.35"
@@ -461,8 +440,8 @@
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-bottom: 0.75rem;">
-                                <label class="form-label" style="font-size: 0.85rem;">Initial flow rate</label>
+                            <div class="form-group form-group--compact">
+                                <label class="form-label form-label--sm" for="hplcInitialFlowRate">Initial flow rate</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="hplcInitialFlowRate" value="0.35"
                                         step="0.01" min="0.01">
@@ -470,17 +449,16 @@
                                 </div>
                             </div>
 
-                            <button class="btn btn-primary btn-lg" style="width: 100%; margin-top: 0.5rem;"
-                                id="calculateHPLCSAXS">
+                            <button class="btn btn-primary btn-lg btn-full mt-sm" id="calculateHPLCSAXS">
                                 計算 HPLC-SAXS 設定
                             </button>
                         </div>
                     </div>
 
-                    <!-- Detector Settings Table (MOVED TO TOP) -->
+                    <!-- Detector Settings Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title" style="color: #f59e0b;">📡 Detector Setting</h3>
+                            <h3 class="card-title card-title--warning">📡 Detector Setting</h3>
                         </div>
                         <div class="card-body">
                             <div class="table-wrapper">
@@ -497,17 +475,16 @@
                                     </thead>
                                     <tbody id="detectorSettingsTableBody">
                                         <tr>
-                                            <td colspan="6" style="text-align: center; color: var(--color-text-muted);">
+                                            <td colspan="6" class="text-center" style="color: var(--color-text-muted);">
                                                 請先計算
                                             </td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
-                            <div
-                                style="margin-top: 1rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 8px;">
+                            <div class="report-stoptime-box">
                                 <strong>Report Stoptime:</strong> <span id="reportStoptime"
-                                    style="color: var(--color-primary); font-size: 1.25rem; font-weight: 700;">--</span>
+                                    class="report-stoptime-value">--</span>
                                 min
                             </div>
                         </div>
@@ -515,7 +492,7 @@
                 </div>
 
                 <!-- Second Row: Flow Rate Table + Fraction Collector -->
-                <div class="grid grid-2" style="margin-top: 1.5rem;">
+                <div class="grid grid-2 mt-lg">
                     <!-- Flow Rate Table -->
                     <div class="card">
                         <div class="card-header">
@@ -533,7 +510,7 @@
                                     </thead>
                                     <tbody id="flowRateTableBody">
                                         <tr>
-                                            <td colspan="3" style="text-align: center; color: var(--color-text-muted);">
+                                            <td colspan="3" class="text-center" style="color: var(--color-text-muted);">
                                                 請先計算</td>
                                         </tr>
                                     </tbody>
@@ -545,56 +522,49 @@
                     <!-- Fraction Collector -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title" style="color: #8b5cf6;">🧫 Fraction Collector</h3>
+                            <h3 class="card-title card-title--purple">🧫 Fraction Collector</h3>
                         </div>
                         <div class="card-body">
-                            <div class="stat-card"
-                                style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);">
-                                <div class="stat-label" style="color: #fff;">Start Time</div>
-                                <div class="stat-value" style="color: #fff;" id="fractionStartTime">--</div>
-                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            <div class="gradient-stat gradient-stat--purple">
+                                <div class="stat-label">Start Time</div>
+                                <div class="stat-value" id="fractionStartTime">--</div>
+                                <div class="stat-sub">min</div>
                             </div>
-                            <div class="stat-card"
-                                style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); margin-top: 1rem;">
-                                <div class="stat-label" style="color: #fff;">Stop Time</div>
-                                <div class="stat-value" style="color: #fff;" id="fractionStopTime">--</div>
-                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            <div class="gradient-stat gradient-stat--purple mt-md">
+                                <div class="stat-label">Stop Time</div>
+                                <div class="stat-value" id="fractionStopTime">--</div>
+                                <div class="stat-sub">min</div>
                             </div>
-                            <div class="stat-card"
-                                style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); margin-top: 1rem;">
-                                <div class="stat-label" style="color: #fff;">Time/Fraction</div>
-                                <div class="stat-value" style="color: #fff;" id="timePerFraction">--</div>
-                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            <div class="gradient-stat gradient-stat--purple mt-md">
+                                <div class="stat-label">Time/Fraction</div>
+                                <div class="stat-value" id="timePerFraction">--</div>
+                                <div class="stat-sub">min</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Third Row: Suggested Values (smaller) -->
-                <div class="card" style="margin-top: 1.5rem;">
+                <!-- Third Row: Suggested Values -->
+                <div class="card mt-lg">
                     <div class="card-header">
-                        <h3 class="card-title" style="color: var(--color-accent);">📋 Pre-run 10μL 建議值 (用於下次 pre-run)
-                        </h3>
+                        <h3 class="card-title card-title--warning">📋 Pre-run 10μL 建議值 (用於下次 pre-run)</h3>
                     </div>
                     <div class="card-body" id="hplcSuggestedValues">
-                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                            <div class="stat-card"
-                                style="background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%); flex: 1; min-width: 150px;">
-                                <div class="stat-label" style="color: #fff;">Suggested Peak Center</div>
-                                <div class="stat-value" style="color: #fff;" id="suggestPeakCenter">--</div>
-                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                        <div class="suggested-values">
+                            <div class="gradient-stat gradient-stat--pink">
+                                <div class="stat-label">Suggested Peak Center</div>
+                                <div class="stat-value" id="suggestPeakCenter">--</div>
+                                <div class="stat-sub">min</div>
                             </div>
-                            <div class="stat-card"
-                                style="background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%); flex: 1; min-width: 150px;">
-                                <div class="stat-label" style="color: #fff;">Suggested Peak Width</div>
-                                <div class="stat-value" style="color: #fff;" id="suggestPeakWidth">--</div>
-                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">min</div>
+                            <div class="gradient-stat gradient-stat--pink">
+                                <div class="stat-label">Suggested Peak Width</div>
+                                <div class="stat-value" id="suggestPeakWidth">--</div>
+                                <div class="stat-sub">min</div>
                             </div>
-                            <div class="stat-card"
-                                style="background: linear-gradient(135deg, #ff69b4 0%, #ff1493 100%); flex: 1; min-width: 150px;">
-                                <div class="stat-label" style="color: #fff;">Suggested Sample Volume</div>
-                                <div class="stat-value" style="color: #fff;" id="suggestSampleVolume">--</div>
-                                <div class="stat-sub" style="color: rgba(255,255,255,0.8);">μL</div>
+                            <div class="gradient-stat gradient-stat--pink">
+                                <div class="stat-label">Suggested Sample Volume</div>
+                                <div class="stat-value" id="suggestSampleVolume">--</div>
+                                <div class="stat-sub">μL</div>
                             </div>
                         </div>
                     </div>
@@ -603,10 +573,10 @@
 
 
             <!-- Section: Sample Calculations -->
-            <section class="section" id="section-sample">
+            <section class="section" id="section-sample" aria-labelledby="sample-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">⚗️</span>
+                    <h1 class="page-title" id="sample-title">
+                        <span class="page-title-icon" aria-hidden="true">⚗️</span>
                         樣品計算
                     </h1>
                     <p class="page-subtitle">UV/RI 計算、濃度估算、稀釋因子</p>
@@ -619,7 +589,7 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label">UV 吸光值</label>
+                                <label class="form-label" for="uvAbsorbance">UV 吸光值</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="uvAbsorbance" step="0.001"
                                         placeholder="例: 0.8053">
@@ -628,7 +598,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">光徑長度</label>
+                                <label class="form-label" for="pathLength">光徑長度</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="pathLength" value="0.2" step="0.01"
                                         min="0">
@@ -637,7 +607,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">消光係數 ε</label>
+                                <label class="form-label" for="inputEpsilon">消光係數 ε</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="inputEpsilon" step="0.1"
                                         placeholder="自動從蛋白質序列計算">
@@ -646,7 +616,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">分子量</label>
+                                <label class="form-label" for="inputMw">分子量</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="inputMw" step="0.01"
                                         placeholder="自動從蛋白質序列計算">
@@ -654,7 +624,7 @@
                                 </div>
                             </div>
 
-                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateSample">
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateSample">
                                 計算濃度
                             </button>
                         </div>
@@ -673,24 +643,24 @@
                 </div>
 
                 <!-- SEC 稀釋因子估算 -->
-                <div class="grid grid-2" style="margin-top: 1.5rem;">
+                <div class="grid grid-2 mt-lg">
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">🔬 SEC 稀釋因子估算</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label">注射體積 (Injection Volume)</label>
+                                <label class="form-label" for="dfInjectionVolume">注射體積 (Injection Volume)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="dfInjectionVolume" step="1" min="1"
                                         placeholder="例: 50" value="100">
                                     <span class="input-unit">μL</span>
                                 </div>
                             </div>
-                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateDilutionFactor">
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateDilutionFactor">
                                 估算稀釋因子
                             </button>
-                            <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--color-bg-tertiary); border-radius: 6px; font-size: 0.75rem; color: var(--color-text-muted); line-height: 1.4;">
+                            <div class="formula-note">
                                 公式: DF = 1.907 + 12.981 × e<sup>(-0.0431 × V)</sup><br>
                                 校準值: 100μL→2, 50μL→3.66, 30μL→5.25, 15μL→8.77
                             </div>
@@ -711,10 +681,10 @@
             </section>
 
             <!-- Section: MW Resolution -->
-            <section class="section" id="section-mw">
+            <section class="section" id="section-mw" aria-labelledby="mw-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">📐</span>
+                    <h1 class="page-title" id="mw-title">
+                        <span class="page-title-icon" aria-hidden="true">📐</span>
                         分子量解析度
                     </h1>
                     <p class="page-subtitle">從分子量計算預期滯留時間（SEC 管柱）</p>
@@ -733,7 +703,7 @@
                             <div class="section-divider"><span>MW → 滯留時間</span></div>
 
                             <div class="form-group">
-                                <label class="form-label">分子量 (Input protein Mw)</label>
+                                <label class="form-label" for="mwInput">分子量 (Input protein Mw)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="mwInput" step="0.01"
                                         placeholder="來自序列分析或手動輸入">
@@ -742,7 +712,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">Oligomer 數</label>
+                                <label class="form-label" for="mwOligomer">Oligomer 數</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="mwOligomer" step="1" value="1" min="1"
                                         placeholder="1">
@@ -751,7 +721,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">注入體積 (Injection Volume)</label>
+                                <label class="form-label" for="mwInjectionVolume">注入體積 (Injection Volume)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="mwInjectionVolume" step="0.1" value="3"
                                         placeholder="3">
@@ -760,7 +730,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">流速 (Flow Rate)</label>
+                                <label class="form-label" for="mwFlowRate">流速 (Flow Rate)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="mwFlowRate" step="0.01" value="0.35"
                                         placeholder="0.35">
@@ -769,7 +739,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">管柱孔徑 (Column Pore Size)</label>
+                                <label class="form-label" for="poreSize">管柱孔徑 (Column Pore Size)</label>
                                 <select class="form-select" id="poreSize">
                                     <option value="100">100 Å</option>
                                     <option value="150">150 Å</option>
@@ -777,14 +747,14 @@
                                 </select>
                             </div>
 
-                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateMW">
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateMW">
                                 計算滯留時間
                             </button>
 
-                            <div class="section-divider" style="margin-top: 1.5rem;"><span>滯留時間 → MW</span></div>
+                            <div class="section-divider mt-lg"><span>滯留時間 → MW</span></div>
 
                             <div class="form-group">
-                                <label class="form-label">滯留時間 (Input Retention Time)</label>
+                                <label class="form-label" for="retentionTimeInput">滯留時間 (Input Retention Time)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="retentionTimeInput" step="0.001"
                                         placeholder="例: 9.481">
@@ -792,7 +762,7 @@
                                 </div>
                             </div>
 
-                            <button class="btn btn-secondary btn-lg" style="width: 100%;" id="calculateMWReverse">
+                            <button class="btn btn-secondary btn-lg btn-full" id="calculateMWReverse">
                                 從滯留時間估算 MW
                             </button>
                         </div>
@@ -812,10 +782,10 @@
             </section>
 
             <!-- Section: Centrifuge -->
-            <section class="section" id="section-centrifuge">
+            <section class="section" id="section-centrifuge" aria-labelledby="centrifuge-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">⚙️</span>
+                    <h1 class="page-title" id="centrifuge-title">
+                        <span class="page-title-icon" aria-hidden="true">⚙️</span>
                         離心參數計算
                     </h1>
                     <p class="page-subtitle">RCF、沉降係數、離心距離計算</p>
@@ -828,7 +798,7 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label">轉速</label>
+                                <label class="form-label" for="rpm">轉速</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="rpm" value="15000" step="100" min="0">
                                     <span class="input-unit">rpm</span>
@@ -836,7 +806,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">轉子半徑</label>
+                                <label class="form-label" for="rotorRadius">轉子半徑</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="rotorRadius" value="9.5" step="0.1"
                                         min="0">
@@ -847,7 +817,7 @@
                             <div class="section-divider"><span>樣品參數</span></div>
 
                             <div class="form-group">
-                                <label class="form-label">分子量</label>
+                                <label class="form-label" for="centrifugeMw">分子量</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="centrifugeMw" value="66500" step="100">
                                     <span class="input-unit">Da</span>
@@ -855,7 +825,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">黏度 (水 @ 20°C)</label>
+                                <label class="form-label" for="viscosity">黏度 (水 @ 20°C)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="viscosity" value="0.001002"
                                         step="0.000001">
@@ -864,7 +834,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">部分比容 v̄</label>
+                                <label class="form-label" for="vbar">部分比容 v̄</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="vbar" value="0.73" step="0.01">
                                     <span class="input-unit">cm³/g</span>
@@ -872,7 +842,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">溶劑密度</label>
+                                <label class="form-label" for="solventDensity">溶劑密度</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="solventDensity" value="0.998"
                                         step="0.001">
@@ -881,7 +851,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label">離心時間</label>
+                                <label class="form-label" for="centrifugeTime">離心時間</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="centrifugeTime" value="15" step="1"
                                         min="1">
@@ -889,7 +859,7 @@
                                 </div>
                             </div>
 
-                            <button class="btn btn-primary btn-lg" style="width: 100%;" id="calculateCentrifuge">
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateCentrifuge">
                                 計算離心參數
                             </button>
                         </div>
@@ -909,10 +879,10 @@
             </section>
 
             <!-- Section: IUCr Table -->
-            <section class="section" id="section-iucr">
+            <section class="section" id="section-iucr" aria-labelledby="iucr-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">📋</span>
+                    <h1 class="page-title" id="iucr-title">
+                        <span class="page-title-icon" aria-hidden="true">📋</span>
                         IUCr 表格輸出
                     </h1>
                     <p class="page-subtitle">產生符合 IUCr 標準格式的 SAXS 參數表格</p>
@@ -939,10 +909,8 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
-                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
-                                            Sample
-                                        </td>
+                                    <tr class="table-section-header">
+                                        <td colspan="5">Sample</td>
                                     </tr>
                                     <tr>
                                         <td></td>
@@ -951,10 +919,8 @@
                                         <td></td>
                                         <td></td>
                                     </tr>
-                                    <tr>
-                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
-                                            Data-collection parameters
-                                        </td>
+                                    <tr class="table-section-header">
+                                        <td colspan="5">Data-collection parameters</td>
                                     </tr>
                                     <tr>
                                         <td></td>
@@ -1005,10 +971,8 @@
                                         <td></td>
                                         <td>K</td>
                                     </tr>
-                                    <tr>
-                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
-                                            Structural parameters
-                                        </td>
+                                    <tr class="table-section-header">
+                                        <td colspan="5">Structural parameters</td>
                                     </tr>
                                     <tr>
                                         <td></td>
@@ -1059,10 +1023,8 @@
                                         <td></td>
                                         <td>Å³</td>
                                     </tr>
-                                    <tr>
-                                        <td colspan="5" style="background: var(--color-bg-tertiary); font-weight: 600;">
-                                            Molecular-mass determination
-                                        </td>
+                                    <tr class="table-section-header">
+                                        <td colspan="5">Molecular-mass determination</td>
                                     </tr>
                                     <tr>
                                         <td></td>
@@ -1093,10 +1055,10 @@
             </section>
 
             <!-- Detector Distance Section -->
-            <section id="section-detector" class="section">
+            <section id="section-detector" class="section" aria-labelledby="detector-title">
                 <div class="page-header">
-                    <h1 class="page-title">
-                        <span class="page-title-icon">📡</span>
+                    <h1 class="page-title" id="detector-title">
+                        <span class="page-title-icon" aria-hidden="true">📡</span>
                         偵測器距離計算
                     </h1>
                     <p class="page-subtitle">根據蛋白質分子量計算建議的 SAXS 樣品到偵測器距離 (9M position)</p>
@@ -1114,40 +1076,39 @@
                                     <thead>
                                         <tr>
                                             <th>蛋白質</th>
-                                            <th style="text-align: right;">MW (Da)</th>
-                                            <th style="text-align: right;">Rg (Å)</th>
-                                            <th style="text-align: right;">qmin (Å⁻¹)</th>
-                                            <th style="text-align: right;">9M SD (mm)</th>
+                                            <th class="text-right">MW (Da)</th>
+                                            <th class="text-right">Rg (Å)</th>
+                                            <th class="text-right">qmin (Å⁻¹)</th>
+                                            <th class="text-right">9M SD (mm)</th>
                                         </tr>
                                     </thead>
                                     <tbody id="referenceProteinsTable">
                                         <tr>
                                             <td>BSA monomer</td>
-                                            <td style="text-align: right;">66,500</td>
-                                            <td style="text-align: right;">28.00</td>
-                                            <td style="text-align: right;">0.0080</td>
-                                            <td style="text-align: right;">1,900</td>
+                                            <td class="text-right">66,500</td>
+                                            <td class="text-right">28.00</td>
+                                            <td class="text-right">0.0080</td>
+                                            <td class="text-right">1,900</td>
                                         </tr>
                                         <tr>
                                             <td>BSA dimer</td>
-                                            <td style="text-align: right;">130,000</td>
-                                            <td style="text-align: right;">35.01</td>
-                                            <td style="text-align: right;">0.0064</td>
-                                            <td style="text-align: right;">2,376</td>
+                                            <td class="text-right">130,000</td>
+                                            <td class="text-right">35.01</td>
+                                            <td class="text-right">0.0064</td>
+                                            <td class="text-right">2,376</td>
                                         </tr>
                                         <tr>
                                             <td>Cytochrome c</td>
-                                            <td style="text-align: right;">12,700</td>
-                                            <td style="text-align: right;">16.12</td>
-                                            <td style="text-align: right;">0.0139</td>
-                                            <td style="text-align: right;">1,094</td>
+                                            <td class="text-right">12,700</td>
+                                            <td class="text-right">16.12</td>
+                                            <td class="text-right">0.0139</td>
+                                            <td class="text-right">1,094</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
 
-                            <div
-                                style="margin-top: 1rem; padding: 0.75rem; background: var(--color-bg-tertiary); border-radius: 8px; font-size: 0.8rem; color: var(--color-text-muted);">
+                            <div class="formula-note mt-md">
                                 <strong>公式說明：</strong><br>
                                 • Rg = 0.69 × MW<sup>1/3</sup> (基於 BSA 校正)<br>
                                 • qmin = 0.224 / Rg<br>
@@ -1163,20 +1124,18 @@
                         </div>
                         <div class="card-body">
                             <!-- Input Mode Toggle -->
-                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                                <button class="btn" id="modeByMW"
-                                    style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-primary); color: white; border: none; cursor: pointer;">
+                            <div class="mode-toggle">
+                                <button class="btn active" id="modeByMW">
                                     MW → Rg, SD
                                 </button>
-                                <button class="btn" id="modeByRg"
-                                    style="flex: 1; padding: 0.5rem; font-size: 0.85rem; background: var(--color-bg-tertiary); color: var(--color-text); border: 1px solid var(--color-border); cursor: pointer;">
+                                <button class="btn" id="modeByRg">
                                     Rg → MW, SD
                                 </button>
                             </div>
 
                             <!-- MW Input (shown by default) -->
                             <div class="form-group" id="mwInputGroup">
-                                <label class="form-label">目標蛋白質分子量 (MW)</label>
+                                <label class="form-label" for="targetProteinMW">目標蛋白質分子量 (MW)</label>
                                 <div class="form-input-group">
                                     <input type="number" id="targetProteinMW" class="form-input"
                                         placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
@@ -1185,8 +1144,8 @@
                             </div>
 
                             <!-- Rg Input (hidden by default) -->
-                            <div class="form-group" id="rgInputGroup" style="display: none;">
-                                <label class="form-label">目標蛋白質 Rg (迴旋半徑)</label>
+                            <div class="form-group hidden" id="rgInputGroup">
+                                <label class="form-label" for="targetProteinRg">目標蛋白質 Rg (迴旋半徑)</label>
                                 <div class="form-input-group">
                                     <input type="number" id="targetProteinRg" class="form-input"
                                         placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
@@ -1194,67 +1153,47 @@
                                 </div>
                             </div>
 
-                            <button class="btn btn-primary btn-lg" id="calculateDetectorBtn"
-                                style="width: 100%; margin-top: 1rem;">
+                            <button class="btn btn-primary btn-lg btn-full mt-md" id="calculateDetectorBtn">
                                 計算偵測器距離
                             </button>
 
                             <!-- Results Display -->
-                            <div id="detectorResults" style="margin-top: 1.5rem;">
-                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                            <div id="detectorResults" class="mt-lg">
+                                <div class="detector-result-grid">
                                     <!-- MW Result (shown in Rg mode) -->
-                                    <div id="mwResultCard"
-                                        style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 1rem; border-radius: 8px; text-align: center; display: none;">
-                                        <div
-                                            style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                            預測 MW</div>
-                                        <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
-                                            id="detectorMwResult">66,500</div>
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Da</div>
+                                    <div id="mwResultCard" class="result-card result-card--success hidden">
+                                        <div class="result-card-label">預測 MW</div>
+                                        <div class="result-card-value" id="detectorMwResult">66,500</div>
+                                        <div class="result-card-unit">Da</div>
                                     </div>
 
                                     <!-- Rg Result (shown in MW mode) -->
-                                    <div id="rgResultCard"
-                                        style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
-                                        <div
-                                            style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                            理論 Rg</div>
-                                        <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
-                                            id="detectorRgResult">28.00</div>
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å</div>
+                                    <div id="rgResultCard" class="result-card result-card--primary">
+                                        <div class="result-card-label">理論 Rg</div>
+                                        <div class="result-card-value" id="detectorRgResult">28.00</div>
+                                        <div class="result-card-unit">Å</div>
                                     </div>
 
                                     <!-- qmin Result -->
-                                    <div
-                                        style="background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); padding: 1rem; border-radius: 8px; text-align: center;">
-                                        <div
-                                            style="color: rgba(255,255,255,0.8); font-size: 0.75rem; margin-bottom: 0.25rem;">
-                                            qmin</div>
-                                        <div style="color: #fff; font-size: 1.5rem; font-weight: 700;"
-                                            id="detectorQminResult">0.0080</div>
-                                        <div style="color: rgba(255,255,255,0.7); font-size: 0.7rem;">Å⁻¹</div>
+                                    <div class="result-card result-card--pink">
+                                        <div class="result-card-label">qmin</div>
+                                        <div class="result-card-value" id="detectorQminResult">0.0080</div>
+                                        <div class="result-card-unit">Å⁻¹</div>
                                     </div>
                                 </div>
 
                                 <!-- 9M SD Result (Full Width) -->
-                                <div
-                                    style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 1.25rem; border-radius: 8px; text-align: center; margin-top: 1rem;">
-                                    <div
-                                        style="color: rgba(255,255,255,0.8); font-size: 0.85rem; margin-bottom: 0.25rem;">
-                                        建議 9M 偵測器距離 (SD)</div>
-                                    <div style="color: #fff; font-size: 2rem; font-weight: 700;"
-                                        id="detectorSDResult">1,900</div>
-                                    <div style="color: rgba(255,255,255,0.7); font-size: 0.8rem;">mm (<span
-                                            id="detectorSDMeters">1.9</span> m)</div>
+                                <div class="result-card result-card--warning result-card--lg">
+                                    <div class="result-card-label">建議 9M 偵測器距離 (SD)</div>
+                                    <div class="result-card-value" id="detectorSDResult">1,900</div>
+                                    <div class="result-card-unit">mm (<span id="detectorSDMeters">1.9</span> m)</div>
                                 </div>
                             </div>
 
                             <!-- Quick Reference -->
-                            <div
-                                style="margin-top: 1.5rem; padding: 1rem; background: var(--color-bg-secondary); border-radius: 8px; border: 1px solid var(--color-border);">
-                                <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text);">
-                                    快速參考</div>
-                                <div style="font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.6;">
+                            <div class="quick-ref">
+                                <div class="quick-ref-title">快速參考</div>
+                                <div class="quick-ref-body">
                                     • <strong>小蛋白質</strong> (&lt;20 kDa): SD ≈ 1,000-1,500 mm<br>
                                     • <strong>中型蛋白質</strong> (20-100 kDa): SD ≈ 1,500-2,500 mm<br>
                                     • <strong>大蛋白質/複合體</strong> (&gt;100 kDa): SD ≈ 2,500+ mm
