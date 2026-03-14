@@ -3,19 +3,19 @@
  * 使用 Chart.js 產生視覺化圖表
  */
 
-// 顏色配置
+// 顏色配置 — light theme
 const CHART_COLORS = {
-    primary: 'rgba(99, 102, 241, 1)',      // Indigo
-    primaryLight: 'rgba(99, 102, 241, 0.2)',
-    secondary: 'rgba(16, 185, 129, 1)',    // Emerald
-    secondaryLight: 'rgba(16, 185, 129, 0.2)',
-    tertiary: 'rgba(245, 158, 11, 1)',     // Amber
-    tertiaryLight: 'rgba(245, 158, 11, 0.2)',
-    danger: 'rgba(239, 68, 68, 1)',        // Red
-    dangerLight: 'rgba(239, 68, 68, 0.2)',
-    text: 'rgba(226, 232, 240, 1)',        // Slate 200
-    grid: 'rgba(71, 85, 105, 0.3)',        // Slate 600
-    background: 'rgba(15, 23, 42, 1)'      // Slate 900
+    primary: 'rgba(45, 49, 146, 1)',        // Deep royal blue
+    primaryLight: 'rgba(45, 49, 146, 0.12)',
+    secondary: 'rgba(26, 122, 76, 1)',      // Forest green
+    secondaryLight: 'rgba(26, 122, 76, 0.12)',
+    tertiary: 'rgba(180, 83, 9, 1)',        // Amber
+    tertiaryLight: 'rgba(180, 83, 9, 0.12)',
+    danger: 'rgba(196, 43, 28, 1)',         // Red
+    dangerLight: 'rgba(196, 43, 28, 0.12)',
+    text: 'rgba(26, 26, 46, 0.7)',          // Dark navy muted
+    grid: 'rgba(26, 26, 46, 0.08)',         // Very subtle
+    background: 'rgba(248, 247, 244, 1)'    // Warm paper
 };
 
 // 通用圖表配置
@@ -26,26 +26,28 @@ const commonOptions = {
         legend: {
             labels: {
                 color: CHART_COLORS.text,
-                font: { family: "'Inter', sans-serif" }
+                font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: 500 }
             }
         },
         tooltip: {
-            backgroundColor: 'rgba(30, 41, 59, 0.95)',
-            titleColor: CHART_COLORS.text,
-            bodyColor: CHART_COLORS.text,
-            borderColor: 'rgba(71, 85, 105, 0.5)',
+            backgroundColor: 'rgba(26, 26, 46, 0.92)',
+            titleColor: '#fff',
+            bodyColor: 'rgba(255, 255, 255, 0.85)',
+            borderColor: 'rgba(26, 26, 46, 0.2)',
             borderWidth: 1,
-            cornerRadius: 8,
-            padding: 12
+            cornerRadius: 6,
+            padding: 10,
+            titleFont: { family: "'Plus Jakarta Sans', sans-serif", size: 12, weight: 600 },
+            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 }
         }
     },
     scales: {
         x: {
-            ticks: { color: CHART_COLORS.text },
+            ticks: { color: CHART_COLORS.text, font: { size: 11 } },
             grid: { color: CHART_COLORS.grid }
         },
         y: {
-            ticks: { color: CHART_COLORS.text },
+            ticks: { color: CHART_COLORS.text, font: { size: 11 } },
             grid: { color: CHART_COLORS.grid }
         }
     }
@@ -53,15 +55,11 @@ const commonOptions = {
 
 /**
  * 建立氨基酸組成圓餅圖
- * @param {string} canvasId - Canvas 元素 ID
- * @param {object} composition - 氨基酸組成
- * @returns {Chart} Chart.js 實例
  */
 function createCompositionChart(canvasId, composition) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return null;
 
-    // 排序並取前10個
     const sorted = Object.entries(composition)
         .sort((a, b) => b[1] - a[1]);
 
@@ -76,10 +74,10 @@ function createCompositionChart(canvasId, composition) {
         data.push(others);
     }
 
-    // 生成漸變顏色
+    // Muted, sophisticated palette
     const colors = labels.map((_, i) => {
-        const hue = (i * 35) % 360;
-        return `hsla(${hue}, 70%, 60%, 0.85)`;
+        const hue = (i * 33 + 220) % 360;
+        return `oklch(0.6 0.12 ${hue})`;
     });
 
     return new Chart(ctx, {
@@ -89,27 +87,28 @@ function createCompositionChart(canvasId, composition) {
             datasets: [{
                 data: data,
                 backgroundColor: colors,
-                borderColor: 'rgba(15, 23, 42, 1)',
+                borderColor: '#ffffff',
                 borderWidth: 2,
-                hoverOffset: 10
+                hoverOffset: 6
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '60%',
+            cutout: '65%',
             plugins: {
                 legend: {
                     position: 'right',
                     labels: {
                         color: CHART_COLORS.text,
-                        padding: 12,
+                        padding: 10,
                         usePointStyle: true,
-                        pointStyle: 'circle'
+                        pointStyle: 'circle',
+                        font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 }
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                    backgroundColor: 'rgba(26, 26, 46, 0.92)',
                     callbacks: {
                         label: function (context) {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
@@ -125,15 +124,11 @@ function createCompositionChart(canvasId, composition) {
 
 /**
  * 建立氨基酸組成長條圖
- * @param {string} canvasId - Canvas 元素 ID
- * @param {object} composition - 氨基酸組成
- * @returns {Chart} Chart.js 實例
  */
 function createCompositionBarChart(canvasId, composition) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return null;
 
-    // 按標準順序排列
     const aaOrder = ['A', 'R', 'N', 'D', 'C', 'E', 'Q', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V'];
     const labels = aaOrder;
     const data = aaOrder.map(aa => composition[aa] || 0);
@@ -145,12 +140,10 @@ function createCompositionBarChart(canvasId, composition) {
             datasets: [{
                 label: 'Count',
                 data: data,
-                backgroundColor: data.map((_, i) => {
-                    const hue = (i * 18) % 360;
-                    return `hsla(${hue}, 65%, 55%, 0.85)`;
-                }),
+                backgroundColor: 'rgba(45, 49, 146, 0.7)',
+                hoverBackgroundColor: 'rgba(45, 49, 146, 0.9)',
                 borderColor: 'transparent',
-                borderRadius: 4,
+                borderRadius: 3,
                 borderSkipped: false
             }]
         },
@@ -162,12 +155,15 @@ function createCompositionBarChart(canvasId, composition) {
             },
             scales: {
                 x: {
-                    ticks: { color: CHART_COLORS.text },
+                    ticks: {
+                        color: CHART_COLORS.text,
+                        font: { family: "'JetBrains Mono', monospace", size: 10, weight: 500 }
+                    },
                     grid: { display: false }
                 },
                 y: {
                     beginAtZero: true,
-                    ticks: { color: CHART_COLORS.text },
+                    ticks: { color: CHART_COLORS.text, font: { size: 10 } },
                     grid: { color: CHART_COLORS.grid }
                 }
             }
