@@ -35,16 +35,36 @@ function initNavigation() {
                 }
             });
 
+            // Update aria-current
+            navItems.forEach(nav => nav.removeAttribute('aria-current'));
+            item.setAttribute('aria-current', 'page');
+
             // Close mobile menu if open
             document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
         });
     });
 
     // Mobile menu toggle
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
     if (mobileMenuBtn) {
         mobileMenuBtn.addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('open');
+            const sidebar = document.getElementById('sidebar');
+            const isOpen = sidebar.classList.toggle('open');
+            sidebarOverlay.classList.toggle('active', isOpen);
+            mobileMenuBtn.setAttribute('aria-expanded', String(isOpen));
+            mobileMenuBtn.setAttribute('aria-label', isOpen ? '關閉選單' : '開啟選單');
+        });
+    }
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', () => {
+            document.getElementById('sidebar').classList.remove('open');
+            sidebarOverlay.classList.remove('active');
+            if (mobileMenuBtn) {
+                mobileMenuBtn.setAttribute('aria-expanded', 'false');
+                mobileMenuBtn.setAttribute('aria-label', '開啟選單');
+            }
         });
     }
 }
@@ -144,10 +164,8 @@ function initProteinSection() {
             tab.classList.add('active');
 
             const chartType = tab.dataset.chart;
-            document.getElementById('chartContainer-bar').style.display =
-                chartType === 'bar' ? 'block' : 'none';
-            document.getElementById('chartContainer-doughnut').style.display =
-                chartType === 'doughnut' ? 'block' : 'none';
+            document.getElementById('chartContainer-bar').classList.toggle('hidden', chartType !== 'bar');
+            document.getElementById('chartContainer-doughnut').classList.toggle('hidden', chartType !== 'doughnut');
         });
     });
 }
@@ -229,7 +247,7 @@ function displayProteinResults(result, name) {
 
 function displayProteinStats(result) {
     const statsDiv = document.getElementById('proteinStats');
-    statsDiv.style.display = 'grid';
+    statsDiv.classList.remove('hidden');
 
     statsDiv.innerHTML = `
         <div class="stat-card">
@@ -270,7 +288,7 @@ function createProteinCharts(composition) {
     destroyCharts();
 
     const compositionCard = document.getElementById('compositionCard');
-    compositionCard.style.display = 'block';
+    compositionCard.classList.remove('hidden');
 
     // Create bar chart
     AppState.charts.bar = SAXSCharts.createCompositionBarChart('compositionBarChart', composition);
@@ -1174,31 +1192,19 @@ function initDetectorSection() {
         currentMode = mode;
 
         if (mode === 'mw') {
-            // MW → Rg mode
-            modeByMwBtn.style.background = 'var(--color-primary)';
-            modeByMwBtn.style.color = 'white';
-            modeByMwBtn.style.border = 'none';
-            modeByRgBtn.style.background = 'var(--color-bg-tertiary)';
-            modeByRgBtn.style.color = 'var(--color-text)';
-            modeByRgBtn.style.border = '1px solid var(--color-border)';
-
-            mwInputGroup.style.display = 'block';
-            rgInputGroup.style.display = 'none';
-            mwResultCard.style.display = 'none';
-            rgResultCard.style.display = 'block';
+            modeByMwBtn.classList.add('active');
+            modeByRgBtn.classList.remove('active');
+            mwInputGroup.classList.remove('hidden');
+            rgInputGroup.classList.add('hidden');
+            mwResultCard.classList.add('hidden');
+            rgResultCard.classList.remove('hidden');
         } else {
-            // Rg → MW mode
-            modeByRgBtn.style.background = 'var(--color-primary)';
-            modeByRgBtn.style.color = 'white';
-            modeByRgBtn.style.border = 'none';
-            modeByMwBtn.style.background = 'var(--color-bg-tertiary)';
-            modeByMwBtn.style.color = 'var(--color-text)';
-            modeByMwBtn.style.border = '1px solid var(--color-border)';
-
-            mwInputGroup.style.display = 'none';
-            rgInputGroup.style.display = 'block';
-            mwResultCard.style.display = 'block';
-            rgResultCard.style.display = 'none';
+            modeByRgBtn.classList.add('active');
+            modeByMwBtn.classList.remove('active');
+            mwInputGroup.classList.add('hidden');
+            rgInputGroup.classList.remove('hidden');
+            mwResultCard.classList.remove('hidden');
+            rgResultCard.classList.add('hidden');
         }
 
         calculateAndDisplayResults();
@@ -1306,7 +1312,7 @@ function updateIUCrTable() {
 
     // Hide warning if data is available
     if (protein || saxs) {
-        document.getElementById('iucrWarning').style.display = 'none';
+        document.getElementById('iucrWarning').classList.add('hidden');
     }
 }
 
