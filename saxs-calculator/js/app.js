@@ -205,7 +205,7 @@ function displayProteinResults(result, name) {
                 <div class="result-value">${result.electronCount}</div>
             </div>
             <div class="result-item">
-                <div class="result-label">部分比容 v̄</div>
+                <div class="result-label">部分比容 <i>v̄</i></div>
                 <div class="result-value">${result.partialSpecificVolume.toFixed(4)} <span style="font-size: 0.75rem;">cm³/g</span></div>
             </div>
             <div class="result-item">
@@ -218,11 +218,11 @@ function displayProteinResults(result, name) {
         
         <div class="result-grid">
             <div class="result-item">
-                <div class="result-label">ε (M⁻¹ cm⁻¹)</div>
+                <div class="result-label"><i>ε</i> (M⁻¹ cm⁻¹)</div>
                 <div class="result-value">${result.extinction.epsilon.toLocaleString()}</div>
             </div>
             <div class="result-item">
-                <div class="result-label">ε (cm² g⁻¹)</div>
+                <div class="result-label"><i>ε</i> (cm² g⁻¹)</div>
                 <div class="result-value">${result.epsilonCm2g.toFixed(2)}</div>
             </div>
             <div class="result-item">
@@ -275,7 +275,7 @@ function displayProteinStats(result) {
         <div class="stat-card">
             <div class="stat-icon danger">🔬</div>
             <div class="stat-content">
-                <div class="stat-label">消光係數 ε</div>
+                <div class="stat-label">消光係數 <i>ε</i></div>
                 <div class="stat-value">${(result.extinction.epsilon / 1000).toFixed(1)}<span class="stat-unit">×10³</span></div>
                 <div class="stat-sub">M⁻¹ cm⁻¹ @ 280nm</div>
             </div>
@@ -572,28 +572,28 @@ function displaySAXSResults(data) {
 
         <div class="result-grid">
             <div class="result-item">
-                <div class="result-label">I(0) from Guinier</div>
+                <div class="result-label"><i>I</i>(0) from Guinier</div>
                 <div class="result-value">${isNaN(data.i0Guinier) ? '-' : data.i0Guinier.toFixed(5)} <span style="font-size: 0.75rem;">cm⁻¹</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">Rg from Guinier</div>
+                <div class="result-label"><i>R</i><sub>g</sub> from Guinier</div>
                 <div class="result-value">${isNaN(data.rgGuinier) ? '-' : data.rgGuinier.toFixed(2)} <span style="font-size: 0.75rem;">Å</span></div>
             </div>
         </div>
 
-        <div class="section-divider"><span>P(r) 分析</span></div>
+        <div class="section-divider"><span><i>P</i>(<i>r</i>) 分析</span></div>
 
         <div class="result-grid">
             <div class="result-item">
-                <div class="result-label">I(0) from P(r)</div>
+                <div class="result-label"><i>I</i>(0) from <i>P</i>(<i>r</i>)</div>
                 <div class="result-value">${isNaN(data.i0Pr) ? '-' : data.i0Pr.toFixed(5)} <span style="font-size: 0.75rem;">cm⁻¹</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">Rg from P(r)</div>
+                <div class="result-label"><i>R</i><sub>g</sub> from <i>P</i>(<i>r</i>)</div>
                 <div class="result-value">${isNaN(data.rgPr) ? '-' : data.rgPr.toFixed(2)} <span style="font-size: 0.75rem;">Å</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">Dmax</div>
+                <div class="result-label"><i>D</i><sub>max</sub></div>
                 <div class="result-value">${isNaN(data.dmax) ? '-' : data.dmax} <span style="font-size: 0.75rem;">Å</span></div>
             </div>
         </div>
@@ -602,7 +602,7 @@ function displaySAXSResults(data) {
 
         <div class="result-grid">
             <div class="result-item">
-                <div class="result-label">Porod Volume</div>
+                <div class="result-label">Porod volume</div>
                 <div class="result-value">${isNaN(data.porodVolume) ? '-' : data.porodVolume.toLocaleString()} <span style="font-size: 0.75rem;">Å³</span></div>
             </div>
             <div class="result-item">
@@ -618,11 +618,11 @@ function displaySAXSResults(data) {
                 <div class="result-value">${proteinMw ? proteinMw.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">MW from I(0) Guinier</div>
+                <div class="result-label">MW from <i>I</i>(0) Guinier</div>
                 <div class="result-value">${mwFromI0Guinier ? mwFromI0Guinier.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">MW from I(0) P(r)</div>
+                <div class="result-label">MW from <i>I</i>(0) <i>P</i>(<i>r</i>)</div>
                 <div class="result-value">${mwFromI0Pr ? mwFromI0Pr.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
             </div>
         </div>

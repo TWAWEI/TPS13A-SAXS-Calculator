@@ -26,7 +26,7 @@ const commonOptions = {
         legend: {
             labels: {
                 color: CHART_COLORS.text,
-                font: { family: "'Plus Jakarta Sans', sans-serif", size: 11, weight: 500 }
+                font: { family: "'Times New Roman', serif", size: 11, weight: 500 }
             }
         },
         tooltip: {
@@ -37,7 +37,7 @@ const commonOptions = {
             borderWidth: 1,
             cornerRadius: 6,
             padding: 10,
-            titleFont: { family: "'Plus Jakarta Sans', sans-serif", size: 12, weight: 600 },
+            titleFont: { family: "'Times New Roman', serif", size: 12, weight: 600 },
             bodyFont: { family: "'JetBrains Mono', monospace", size: 11 }
         }
     },
@@ -104,7 +104,7 @@ function createCompositionChart(canvasId, composition) {
                         padding: 10,
                         usePointStyle: true,
                         pointStyle: 'circle',
-                        font: { family: "'Plus Jakarta Sans', sans-serif", size: 11 }
+                        font: { family: "'Times New Roman', serif", size: 11 }
                     }
                 },
                 tooltip: {
