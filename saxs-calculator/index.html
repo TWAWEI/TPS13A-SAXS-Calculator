@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
 
     <!-- Chart.js -->
@@ -187,7 +187,7 @@
                         <span class="page-title-icon" aria-hidden="true">📊</span>
                         SAXS 結構參數
                     </h1>
-                    <p class="page-subtitle">計算 Rg、I(0)、Dmax、Porod Volume 等散射參數</p>
+                    <p class="page-subtitle">計算 <i>R</i><sub>g</sub>、<i>I</i>(0)、<i>D</i><sub>max</sub>、Porod volume 等散射參數</p>
                 </div>
 
                 <div class="grid grid-2">
@@ -232,38 +232,38 @@
 
                                 <!-- 三個理論值並排顯示 -->
                                 <div class="info-panel-grid">
-                                    <!-- 理論 I(0) -->
+                                    <!-- 理論 <i>I</i>(0) -->
                                     <div class="info-panel-item">
-                                        <div class="info-panel-label">理論 I(0)</div>
+                                        <div class="info-panel-label">理論 <i>I</i>(0)</div>
                                         <div class="info-panel-value" id="theoreticalI0Display">--</div>
                                         <div class="info-panel-unit">cm⁻¹</div>
                                     </div>
 
-                                    <!-- 理論 Rg (文獻) -->
+                                    <!-- 理論 <i>R</i><sub>g</sub> (文獻) -->
                                     <div class="info-panel-item">
-                                        <div class="info-panel-label">理論 Rg</div>
+                                        <div class="info-panel-label">理論 <i>R</i><sub>g</sub></div>
                                         <div class="info-panel-value" id="theoreticalRgDisplay">--</div>
                                         <div class="info-panel-unit">Å</div>
                                     </div>
 
-                                    <!-- Predicted Rg (Excel 實驗校正) -->
+                                    <!-- Predicted <i>R</i><sub>g</sub> (Excel 實驗校正) -->
                                     <div class="info-panel-item info-panel-item--highlight">
-                                        <div class="info-panel-label info-panel-label--highlight">Predicted Rg</div>
+                                        <div class="info-panel-label info-panel-label--highlight">Predicted <i>R</i><sub>g</sub></div>
                                         <div class="info-panel-value" id="predictedRgDisplay">--</div>
                                         <div class="info-panel-unit">Å (Excel)</div>
                                     </div>
 
-                                    <!-- 理論 Dmax -->
+                                    <!-- 理論 <i>D</i><sub>max</sub> -->
                                     <div class="info-panel-item">
-                                        <div class="info-panel-label">理論 Dmax</div>
+                                        <div class="info-panel-label">理論 <i>D</i><sub>max</sub></div>
                                         <div class="info-panel-value" id="theoreticalDmaxDisplay">--</div>
                                         <div class="info-panel-unit">Å</div>
                                     </div>
                                 </div>
 
                                 <div class="info-panel-formula">
-                                    公式: I(0)=c×MW×7.8e⁻⁶ | Rg=0.77×MW^0.37 | <span class="info-panel-label--highlight">Predicted
-                                        Rg=0.2508×MW^0.4301</span> | Dmax≈2.8×Rg
+                                    公式: <i>I</i>(0)=<i>c</i>×MW×7.8×10⁻⁶ | <i>R</i><sub>g</sub>=0.77×MW<sup>0.37</sup> | <span class="info-panel-label--highlight">Predicted
+                                        <i>R</i><sub>g</sub>=0.2508×MW<sup>0.4301</sup></span> | <i>D</i><sub>max</sub>≈2.8×<i>R</i><sub>g</sub>
                                 </div>
                             </div>
 
@@ -278,7 +278,7 @@
                                 <div class="info-panel-grid">
                                     <!-- qmin -->
                                     <div class="info-panel-item">
-                                        <div class="info-panel-label">qmin</div>
+                                        <div class="info-panel-label"><i>q</i><sub>min</sub></div>
                                         <div class="info-panel-value" id="suggestedQminDisplay">--</div>
                                         <div class="info-panel-unit">Å⁻¹</div>
                                     </div>
@@ -292,21 +292,21 @@
 
                                     <!-- q-range -->
                                     <div class="info-panel-item">
-                                        <div class="info-panel-label">建議 q-range</div>
+                                        <div class="info-panel-label">建議 <i>q</i>-range</div>
                                         <div class="info-panel-value info-panel-value--sm" id="suggestedQrangeDisplay">--</div>
                                         <div class="info-panel-unit">Å⁻¹</div>
                                     </div>
                                 </div>
 
                                 <div class="info-panel-formula">
-                                    公式: qmin=1.3/(3×Rg) | SD=(Rg/28)×8000 (參考:BSA Rg=28Å, SD=8m)
+                                    公式: <i>q</i><sub>min</sub>=1.3/(3×<i>R</i><sub>g</sub>) | SD=(<i>R</i><sub>g</sub>/28)×8000 (參考: BSA <i>R</i><sub>g</sub>=28 Å, SD=8 m)
                                 </div>
                             </div>
 
                             <div class="section-divider"><span>量測結果輸入</span></div>
 
                             <div class="form-group">
-                                <label class="form-label" for="i0Guinier">I(0) from Guinier</label>
+                                <label class="form-label" for="i0Guinier"><i>I</i>(0) from Guinier</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="i0Guinier" step="0.0001"
                                         placeholder="例: 0.0526">
@@ -315,7 +315,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="rgGuinier">Rg from Guinier</label>
+                                <label class="form-label" for="rgGuinier"><i>R</i><sub>g</sub> from Guinier</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="rgGuinier" step="0.01"
                                         placeholder="例: 27.88">
@@ -324,7 +324,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="i0Pr">I(0) from P(r)</label>
+                                <label class="form-label" for="i0Pr"><i>I</i>(0) from <i>P</i>(<i>r</i>)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="i0Pr" step="0.0001"
                                         placeholder="例: 0.03887">
@@ -333,7 +333,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="rgPr">Rg from P(r)</label>
+                                <label class="form-label" for="rgPr"><i>R</i><sub>g</sub> from <i>P</i>(<i>r</i>)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="rgPr" step="0.01"
                                         placeholder="例: 13.17">
@@ -342,7 +342,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="dmax">Dmax</label>
+                                <label class="form-label" for="dmax"><i>D</i><sub>max</sub></label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="dmax" step="1" placeholder="例: 43">
                                     <span class="input-unit">Å</span>
@@ -350,7 +350,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="porodVolume">Porod Volume</label>
+                                <label class="form-label" for="porodVolume">Porod volume</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="porodVolume" step="100"
                                         placeholder="例: 13051">
@@ -607,7 +607,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="inputEpsilon">消光係數 ε</label>
+                                <label class="form-label" for="inputEpsilon">消光係數 <i>ε</i></label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="inputEpsilon" step="0.1"
                                         placeholder="自動從蛋白質序列計算">
@@ -834,7 +834,7 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="vbar">部分比容 v̄</label>
+                                <label class="form-label" for="vbar">部分比容 <i>v̄</i></label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="vbar" value="0.73" step="0.01">
                                     <span class="input-unit">cm³/g</span>
@@ -945,8 +945,8 @@
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>q-range</td>
-                                        <td>0.007-0.39</td>
+                                        <td><i>q</i>-range</td>
+                                        <td>0.007–0.39</td>
                                         <td></td>
                                         <td>Å⁻¹</td>
                                     </tr>
@@ -976,28 +976,28 @@
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>I(0) [from P(r)]</td>
+                                        <td><i>I</i>(0) [from <i>P</i>(<i>r</i>)]</td>
                                         <td id="iucr-i0-pr">-</td>
                                         <td id="iucr-i0-pr-err">-</td>
                                         <td>cm⁻¹</td>
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>Rg [from P(r)]</td>
+                                        <td><i>R</i><sub>g</sub> [from <i>P</i>(<i>r</i>)]</td>
                                         <td id="iucr-rg-pr">-</td>
                                         <td id="iucr-rg-pr-err">-</td>
                                         <td>Å</td>
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>I(0) [from Guinier]</td>
+                                        <td><i>I</i>(0) [from Guinier]</td>
                                         <td id="iucr-i0-guinier">-</td>
                                         <td id="iucr-i0-guinier-err">-</td>
                                         <td>cm⁻¹</td>
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>Rg [from Guinier]</td>
+                                        <td><i>R</i><sub>g</sub> [from Guinier]</td>
                                         <td id="iucr-rg-guinier">-</td>
                                         <td id="iucr-rg-guinier-err">-</td>
                                         <td>Å</td>
@@ -1077,8 +1077,8 @@
                                         <tr>
                                             <th>蛋白質</th>
                                             <th class="text-right">MW (Da)</th>
-                                            <th class="text-right">Rg (Å)</th>
-                                            <th class="text-right">qmin (Å⁻¹)</th>
+                                            <th class="text-right"><i>R</i><sub>g</sub> (Å)</th>
+                                            <th class="text-right"><i>q</i><sub>min</sub> (Å⁻¹)</th>
                                             <th class="text-right">9M SD (mm)</th>
                                         </tr>
                                     </thead>
@@ -1110,9 +1110,9 @@
 
                             <div class="formula-note mt-md">
                                 <strong>公式說明：</strong><br>
-                                • Rg = 0.69 × MW<sup>1/3</sup> (基於 BSA 校正)<br>
-                                • qmin = 0.224 / Rg<br>
-                                • 9M SD = 67.86 × Rg
+                                • <i>R</i><sub>g</sub> = 0.69 × MW<sup>1/3</sup> (基於 BSA 校正)<br>
+                                • <i>q</i><sub>min</sub> = 0.224 / <i>R</i><sub>g</sub><br>
+                                • 9M SD = 67.86 × <i>R</i><sub>g</sub>
                             </div>
                         </div>
                     </div>
@@ -1126,10 +1126,10 @@
                             <!-- Input Mode Toggle -->
                             <div class="mode-toggle">
                                 <button class="btn active" id="modeByMW">
-                                    MW → Rg, SD
+                                    MW → <i>R</i><sub>g</sub>, SD
                                 </button>
                                 <button class="btn" id="modeByRg">
-                                    Rg → MW, SD
+                                    <i>R</i><sub>g</sub> → MW, SD
                                 </button>
                             </div>
 
@@ -1145,7 +1145,7 @@
 
                             <!-- Rg Input (hidden by default) -->
                             <div class="form-group hidden" id="rgInputGroup">
-                                <label class="form-label" for="targetProteinRg">目標蛋白質 Rg (迴旋半徑)</label>
+                                <label class="form-label" for="targetProteinRg">目標蛋白質 <i>R</i><sub>g</sub> (迴旋半徑)</label>
                                 <div class="form-input-group">
                                     <input type="number" id="targetProteinRg" class="form-input"
                                         placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
@@ -1169,14 +1169,14 @@
 
                                     <!-- Rg Result (shown in MW mode) -->
                                     <div id="rgResultCard" class="result-card result-card--primary">
-                                        <div class="result-card-label">理論 Rg</div>
+                                        <div class="result-card-label">理論 <i>R</i><sub>g</sub></div>
                                         <div class="result-card-value" id="detectorRgResult">28.00</div>
                                         <div class="result-card-unit">Å</div>
                                     </div>
 
                                     <!-- qmin Result -->
                                     <div class="result-card result-card--pink">
-                                        <div class="result-card-label">qmin</div>
+                                        <div class="result-card-label"><i>q</i><sub>min</sub></div>
                                         <div class="result-card-value" id="detectorQminResult">0.0080</div>
                                         <div class="result-card-unit">Å⁻¹</div>
                                     </div>

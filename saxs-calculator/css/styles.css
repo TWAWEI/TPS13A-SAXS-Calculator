@@ -64,8 +64,9 @@
     --sidebar-width: 240px;
 
     /* Typography */
-    --font-display: 'Instrument Serif', Georgia, serif;
-    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Times New Roman', 'BiauKai', '標楷體', serif;
+    --font-body: '標楷體', 'BiauKai', 'DFKai-SB', 'KaiTi', serif;
+    --font-en: 'Times New Roman', Times, serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
@@ -90,6 +91,17 @@ body {
     line-height: 1.6;
     min-height: 100vh;
     overflow-x: hidden;
+}
+
+/* Scientific variable notation — italic for physical quantities */
+.sci-var {
+    font-family: var(--font-en);
+    font-style: italic;
+}
+
+/* English text in Times New Roman */
+.en {
+    font-family: var(--font-en);
 }
 
 /* ===== Skip Link ===== */
@@ -234,7 +246,7 @@ a:hover {
     background: none;
     border: none;
     width: 100%;
-    font-family: var(--font-body);
+    font-family: var(--font-body), var(--font-en);
     font-size: 0.8125rem;
     font-weight: 500;
     text-align: left;
@@ -748,7 +760,7 @@ a:hover {
     padding: 0.625rem var(--spacing-lg);
     border: none;
     border-radius: var(--radius-md);
-    font-family: var(--font-body);
+    font-family: var(--font-body), var(--font-en);
     font-size: 0.8125rem;
     font-weight: 600;
     cursor: pointer;
