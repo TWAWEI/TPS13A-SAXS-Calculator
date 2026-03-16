@@ -261,6 +261,10 @@ function initDndcMultiSection() {
     const addBtn = document.getElementById('addInjectionRow');
     const calcBtn = document.getElementById('calculateMultiDndc');
 
+    // ASTRA file parsing
+    initAstraSection();
+
+
     if (addBtn) {
         addBtn.addEventListener('click', () => {
             const tbody = document.getElementById('multiInjectionBody');
@@ -455,6 +459,185 @@ function displaySliceResults(result) {
         'sliceDndcChart', result.concentrations, result.riValues, result.fitResult,
         { xLabel: 'Concentration (g/mL)', yLabel: 'Δn (RIU)' }
     );
+}
+
+// ========================
+// ASTRA .afe7 解析
+// ========================
+function initAstraSection() {
+    const parseBtn = document.getElementById('parseAstraFiles');
+    const fileInput = document.getElementById('astraFileInput');
+
+    if (!parseBtn || !fileInput) return;
+
+    parseBtn.addEventListener('click', async () => {
+        const files = fileInput.files;
+        if (!files || files.length === 0) {
+            document.getElementById('astraParseStatus').textContent = '請先選擇 .afe7 檔案';
+            return;
+        }
+
+        const statusEl = document.getElementById('astraParseStatus');
+        const resultsEl = document.getElementById('astraParseResults');
+        statusEl.textContent = '正在載入 sql.js 和解析檔案...';
+        resultsEl.innerHTML = '';
+
+        const intStart = parseFloat(document.getElementById('astraIntStart').value) || 5;
+        const intEnd = parseFloat(document.getElementById('astraIntEnd').value) || 12;
+
+        const parsedFiles = [];
+
+        try {
+            for (let i = 0; i < files.length; i++) {
+                statusEl.textContent = `解析中... (${i + 1}/${files.length}) ${files[i].name}`;
+                const result = await DndcAstraParser.parseAfe7File(files[i]);
+                parsedFiles.push({ fileName: files[i].name, ...result });
+            }
+
+            statusEl.textContent = `成功解析 ${parsedFiles.length} 個檔案`;
+            displayAstraResults(parsedFiles, intStart, intEnd);
+
+        } catch (err) {
+            statusEl.textContent = `解析失敗: ${err.message}`;
+        }
+    });
+}
+
+function displayAstraResults(parsedFiles, intStart, intEnd) {
+    const resultsEl = document.getElementById('astraParseResults');
+
+    // 計算每個檔案的 RI 面積
+    const injections = [];
+    for (const pf of parsedFiles) {
+        if (!pf.riChannel) continue;
+
+        const time = pf.riChannel.time;
+        const values = pf.riChannel.values;
+
+        // 簡易基線校正：取積分範圍外的平均值
+        let blSum = 0, blCount = 0;
+        for (let i = 0; i < time.length; i++) {
+            if (time[i] < intStart || time[i] > intEnd) {
+                blSum += values[i];
+                blCount++;
+            }
+        }
+        const blMean = blCount > 0 ? blSum / blCount : 0;
+
+        // 梯形積分
+        let area = 0;
+        for (let i = 0; i < time.length - 1; i++) {
+            if (time[i] >= intStart && time[i + 1] <= intEnd) {
+                const h = time[i + 1] - time[i];
+                const v1 = values[i] - blMean;
+                const v2 = values[i + 1] - blMean;
+                area += 0.5 * (v1 + v2) * h;
+            }
+        }
+
+        // RI 校正（K_cal）
+        const kCal = pf.riDetector && pf.riDetector.calibrationConstant
+            ? pf.riDetector.calibrationConstant : 1.0;
+
+        // 流速
+        const flowRate = pf.experiment ? pf.experiment.flowRateMlMin : 0.5;
+
+        // RI 面積 (RIU·mL)
+        const riAreaVolume = Math.abs(area) * kCal * flowRate;
+
+        // 注入質量（從 ASTRA 取）— 如果沒有則讓使用者輸入
+        const concGml = pf.sample ? pf.sample.concentrationGml : 0;
+
+        injections.push({
+            fileName: pf.fileName,
+            sampleName: pf.sample ? pf.sample.name : 'Unknown',
+            concentration: concGml,
+            riArea: area,
+            riAreaVolume,
+            kCal,
+            flowRate,
+            injectionVolume: 0 // 需要使用者輸入
+        });
+    }
+
+    if (injections.length === 0) {
+        resultsEl.innerHTML = '<div class="alert alert-error">未找到有效的 RI 通道數據</div>';
+        return;
+    }
+
+    // 顯示解析結果表格，讓使用者確認/修改濃度和體積
+    let tableHtml = `
+        <div class="table-wrapper mt-md">
+            <table class="table" id="astraInjectionTable">
+                <thead>
+                    <tr>
+                        <th>檔案</th>
+                        <th>樣品</th>
+                        <th>濃度 (g/mL)</th>
+                        <th>注射體積 (mL)</th>
+                        <th>RI 面積</th>
+                        <th><i>K</i><sub>cal</sub></th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    injections.forEach((inj, i) => {
+        tableHtml += `
+            <tr>
+                <td style="font-size: 0.75rem;">${inj.fileName}</td>
+                <td>${inj.sampleName}</td>
+                <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc"></td>
+                <td><input type="number" class="form-input" value="0.05" step="0.001" data-astra-idx="${i}" data-field="vol"></td>
+                <td style="font-family: var(--font-mono);">${inj.riAreaVolume.toExponential(4)}</td>
+                <td style="font-family: var(--font-mono);">${inj.kCal.toExponential(4)}</td>
+            </tr>
+        `;
+    });
+
+    tableHtml += `
+                </tbody>
+            </table>
+        </div>
+        <button class="btn btn-primary btn-lg btn-full mt-md" id="fitAstraData">
+            ASTRA 線性擬合
+        </button>
+    `;
+
+    resultsEl.innerHTML = tableHtml;
+
+    // 綁定擬合按鈕
+    document.getElementById('fitAstraData').addEventListener('click', () => {
+        const table = document.getElementById('astraInjectionTable');
+        const rows = table.querySelectorAll('tbody tr');
+        const masses = [];
+        const areas = [];
+
+        rows.forEach((row, i) => {
+            const concInput = row.querySelector('[data-field="conc"]');
+            const volInput = row.querySelector('[data-field="vol"]');
+            const conc = parseFloat(concInput.value);
+            const vol = parseFloat(volInput.value);
+
+            if (!isNaN(conc) && !isNaN(vol) && conc > 0 && vol > 0) {
+                masses.push(conc * vol); // mass in grams
+                areas.push(injections[i].riAreaVolume);
+            }
+        });
+
+        if (masses.length < 2) {
+            showDndcAlert('multiDndcResults', 'error', '至少需要 2 組有效資料（請確認濃度和體積都已填入）');
+            return;
+        }
+
+        try {
+            const result = DndcCalculations.linearFit(masses, areas);
+            // slope = dn/dc (因為 x = mass, y = RI_area_volume = dn/dc × mass)
+            displayMultiFitResults(result, masses, areas);
+        } catch (err) {
+            showDndcAlert('multiDndcResults', 'error', `擬合錯誤: ${err.message}`);
+        }
+    });
 }
 
 // ========================
