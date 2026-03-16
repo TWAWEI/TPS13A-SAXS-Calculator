@@ -548,6 +548,11 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
         // 注入質量（從 ASTRA 取）— 如果沒有則讓使用者輸入
         const concGml = pf.sample ? pf.sample.concentrationGml : 0;
 
+        // 從檔名提取注射體積（例如 _10uL_, _100ul_, _50μL_）
+        const volMatch = pf.fileName.match(/[\s_](\d+(?:\.\d+)?)\s*[uμ][Ll]/i);
+        const extractedVolUl = volMatch ? parseFloat(volMatch[1]) : 0;
+        const extractedVolMl = extractedVolUl / 1000;
+
         injections.push({
             fileName: pf.fileName,
             sampleName: pf.sample ? pf.sample.name : 'Unknown',
@@ -556,7 +561,9 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
             riAreaVolume,
             kCal,
             flowRate,
-            injectionVolume: 0 // 需要使用者輸入
+            injectionVolumeMl: extractedVolMl,
+            time: pf.riChannel.time,
+            values: pf.riChannel.values
         });
     }
 
@@ -588,7 +595,7 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
                 <td style="font-size: 0.75rem;">${inj.fileName}</td>
                 <td>${inj.sampleName}</td>
                 <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc"></td>
-                <td><input type="number" class="form-input" value="0.05" step="0.001" data-astra-idx="${i}" data-field="vol"></td>
+                <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL"></td>
                 <td style="font-family: var(--font-mono);">${inj.riAreaVolume.toExponential(4)}</td>
                 <td style="font-family: var(--font-mono);">${inj.kCal.toExponential(4)}</td>
             </tr>
@@ -605,6 +612,9 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
     `;
 
     resultsEl.innerHTML = tableHtml;
+
+    // 繪製色譜圖疊加
+    displayAstraChromatograms(injections, intStart, intEnd);
 
     // 綁定擬合按鈕
     document.getElementById('fitAstraData').addEventListener('click', () => {
@@ -636,6 +646,127 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
             displayMultiFitResults(result, masses, areas);
         } catch (err) {
             showDndcAlert('multiDndcResults', 'error', `擬合錯誤: ${err.message}`);
+        }
+    });
+}
+
+// ========================
+// ASTRA 色譜圖疊加
+// ========================
+function displayAstraChromatograms(injections, intStart, intEnd) {
+    // 建立或取得 chart container
+    let chartCard = document.getElementById('astraChromatogramCard');
+    if (!chartCard) {
+        chartCard = document.createElement('div');
+        chartCard.id = 'astraChromatogramCard';
+        chartCard.className = 'card mt-lg';
+        chartCard.innerHTML = `
+            <div class="card-header">
+                <h3 class="card-title">📈 RI 色譜圖疊加</h3>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 400px;">
+                    <canvas id="astraChromatogramCanvas"></canvas>
+                </div>
+            </div>
+        `;
+        // 插入在 ASTRA card 後面
+        const astraResults = document.getElementById('astraParseResults');
+        astraResults.parentElement.parentElement.after(chartCard);
+    }
+    chartCard.classList.remove('hidden');
+
+    if (DndcState.charts.astraChromatogram) {
+        DndcState.charts.astraChromatogram.destroy();
+    }
+
+    const canvas = document.getElementById('astraChromatogramCanvas');
+    if (!canvas) return;
+
+    // 為每個注射產生一個 dataset，用不同顏色
+    const colors = [
+        'rgba(45, 49, 146, 0.8)',
+        'rgba(26, 122, 76, 0.8)',
+        'rgba(180, 83, 9, 0.8)',
+        'rgba(196, 43, 28, 0.8)',
+        'rgba(107, 33, 168, 0.8)',
+        'rgba(190, 24, 93, 0.8)',
+        'rgba(14, 116, 144, 0.8)',
+        'rgba(101, 163, 13, 0.8)'
+    ];
+
+    const datasets = injections.map((inj, i) => {
+        // 提取簡短標籤（從檔名取體積部分）
+        const volMatch = inj.fileName.match(/[\s_](\d+(?:\.\d+)?)\s*[uμ][Ll]/i);
+        const label = volMatch ? `${volMatch[1]} μL` : inj.fileName.split('.')[0].slice(0, 20);
+
+        return {
+            label,
+            data: inj.time.map((t, j) => ({ x: t, y: inj.values[j] })),
+            borderColor: colors[i % colors.length],
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            showLine: true
+        };
+    });
+
+    DndcState.charts.astraChromatogram = new Chart(canvas, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: 'rgba(26, 26, 46, 0.7)',
+                        font: { family: "'Times New Roman', serif", size: 12 }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.92)',
+                    titleColor: '#fff',
+                    bodyColor: 'rgba(255, 255, 255, 0.85)',
+                    cornerRadius: 4,
+                    padding: 8
+                },
+                annotation: {
+                    annotations: {
+                        peakRegion: {
+                            type: 'box',
+                            xMin: intStart,
+                            xMax: intEnd,
+                            backgroundColor: 'rgba(45, 49, 146, 0.06)',
+                            borderWidth: 0
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Time (min)',
+                        color: 'rgba(26, 26, 46, 0.7)',
+                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                    },
+                    ticks: { color: 'rgba(26, 26, 46, 0.7)', font: { size: 10 } },
+                    grid: { color: 'rgba(26, 26, 46, 0.08)' }
+                },
+                y: {
+                    type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'dRI (RIU)',
+                        color: 'rgba(26, 26, 46, 0.7)',
+                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                    },
+                    ticks: { color: 'rgba(26, 26, 46, 0.7)', font: { size: 10 } },
+                    grid: { color: 'rgba(26, 26, 46, 0.08)' }
+                }
+            }
         }
     });
 }
