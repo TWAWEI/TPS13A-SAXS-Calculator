@@ -76,6 +76,30 @@
                 </div>
 
                 <div class="nav-section">
+                    <div class="nav-section-title">dn/dc 工具</div>
+
+                    <button class="nav-item" data-section="dndc-theory">
+                        <span class="nav-item-icon" aria-hidden="true">📐</span>
+                        <span class="nav-item-text">dn/dc 理論計算</span>
+                    </button>
+
+                    <button class="nav-item" data-section="dndc-hplc">
+                        <span class="nav-item-icon" aria-hidden="true">📈</span>
+                        <span class="nav-item-text">HPLC dn/dc</span>
+                    </button>
+
+                    <button class="nav-item" data-section="dndc-multi">
+                        <span class="nav-item-icon" aria-hidden="true">📊</span>
+                        <span class="nav-item-text">多注射擬合</span>
+                    </button>
+
+                    <button class="nav-item" data-section="dndc-slice">
+                        <span class="nav-item-icon" aria-hidden="true">🔬</span>
+                        <span class="nav-item-text">Slice-by-slice</span>
+                    </button>
+                </div>
+
+                <div class="nav-section">
                     <div class="nav-section-title" id="nav-output-label">輸出</div>
 
                     <button class="nav-item" data-section="iucr">
@@ -1204,6 +1228,447 @@
                 </div>
             </section>
 
+            <!-- Section: dn/dc Theoretical Calculator -->
+            <section class="section" id="section-dndc-theory" aria-labelledby="dndc-theory-title">
+                <div class="page-header">
+                    <h1 class="page-title" id="dndc-theory-title">
+                        <span class="page-title-icon" aria-hidden="true">📐</span>
+                        d<i>n</i>/d<i>c</i> 理論計算
+                    </h1>
+                    <p class="page-subtitle">溫度校正、波長校正、Lorentz-Lorenz 理論模型</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <!-- 綜合校正 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">🌡️ 溫度 / 波長校正</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label" for="dndcRefValue">參考 d<i>n</i>/d<i>c</i> 值</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="dndcRefValue" value="0.185" step="0.001">
+                                    <span class="input-unit">mL/g</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="dndcRefTemp">參考溫度</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="dndcRefTemp" value="25" step="0.1">
+                                    <span class="input-unit">°C</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="dndcRefWave">參考波長</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="dndcRefWave" value="589" step="1">
+                                    <span class="input-unit">nm</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="dndcTargetTemp">目標溫度</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="dndcTargetTemp" value="25" step="0.1">
+                                    <span class="input-unit">°C</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="dndcTargetWave">目標波長</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="dndcTargetWave" value="658" step="1">
+                                    <span class="input-unit">nm</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateDndcCorrection">
+                                計算校正值
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 校正結果 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 校正結果</h3>
+                        </div>
+                        <div class="card-body" id="dndcCorrectionResults">
+                            <div class="alert alert-info">
+                                請輸入參數後點擊「計算校正值」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lorentz-Lorenz -->
+                <div class="grid grid-2 mt-lg">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">🔮 Lorentz-Lorenz 模型</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label" for="llNPolymer">聚合物折射率 <i>n</i><sub>polymer</sub></label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="llNPolymer" value="1.45" step="0.001">
+                                    <span class="input-unit"></span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="llNSolvent">溶劑折射率 <i>n</i><sub>solvent</sub></label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="llNSolvent" value="1.333" step="0.001">
+                                    <span class="input-unit"></span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="llDensityPolymer">聚合物密度 <i>ρ</i><sub>polymer</sub></label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="llDensityPolymer" value="1.35" step="0.01">
+                                    <span class="input-unit">g/mL</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="llDensitySolvent">溶劑密度 <i>ρ</i><sub>solvent</sub></label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="llDensitySolvent" value="1.0" step="0.001">
+                                    <span class="input-unit">g/mL</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateLorentzLorenz">
+                                計算 d<i>n</i>/d<i>c</i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 Lorentz-Lorenz 結果</h3>
+                        </div>
+                        <div class="card-body" id="llResults">
+                            <div class="alert alert-info">
+                                請輸入參數後點擊「計算」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 經驗值參考表 -->
+                <div class="card mt-lg">
+                    <div class="card-header">
+                        <h3 class="card-title">📋 d<i>n</i>/d<i>c</i> 文獻經驗值 (25°C, 589 nm)</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-wrapper">
+                            <table class="table" id="dndcLiteratureTable">
+                                <thead>
+                                    <tr>
+                                        <th>樣品類型</th>
+                                        <th class="text-right">d<i>n</i>/d<i>c</i> (mL/g)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>BSA (牛血清白蛋白)</td><td class="text-right">0.185</td></tr>
+                                    <tr><td>溶菌酶</td><td class="text-right">0.188</td></tr>
+                                    <tr><td>DNA (雙鏈)</td><td class="text-right">0.168</td></tr>
+                                    <tr><td>RNA</td><td class="text-right">0.170</td></tr>
+                                    <tr><td>聚乙二醇 (PEG)</td><td class="text-right">0.135</td></tr>
+                                    <tr><td>葡聚糖</td><td class="text-right">0.150</td></tr>
+                                    <tr><td>聚丙烯酸</td><td class="text-right">0.180</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: HPLC dn/dc -->
+            <section class="section" id="section-dndc-hplc" aria-labelledby="dndc-hplc-title">
+                <div class="page-header">
+                    <h1 class="page-title" id="dndc-hplc-title">
+                        <span class="page-title-icon" aria-hidden="true">📈</span>
+                        HPLC d<i>n</i>/d<i>c</i> 計算
+                    </h1>
+                    <p class="page-subtitle">從 UV + RI 色譜數據計算 d<i>n</i>/d<i>c</i>（單注射法）</p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📂 數據載入與參數</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label class="form-label" for="dndcFileInput">載入 CSV/TSV 檔案</label>
+                                <input type="file" class="form-input" id="dndcFileInput" accept=".csv,.tsv,.txt">
+                                <div class="stat-sub mt-sm" id="dndcFileStatus">尚未載入檔案</div>
+                            </div>
+
+                            <div class="section-divider"><span>欄位對應</span></div>
+
+                            <div class="grid grid-3">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcTimeCol">Time 欄位</label>
+                                    <select class="form-select" id="dndcTimeCol"><option>--</option></select>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcUvCol">UV 欄位</label>
+                                    <select class="form-select" id="dndcUvCol"><option>--</option></select>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcRiCol">RI 欄位</label>
+                                    <select class="form-select" id="dndcRiCol"><option>--</option></select>
+                                </div>
+                            </div>
+
+                            <div class="section-divider"><span>峰與基線範圍</span></div>
+
+                            <div class="grid grid-2">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcPeakStart">Peak start</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcPeakStart" value="5" step="0.1">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcPeakEnd">Peak end</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcPeakEnd" value="12" step="0.1">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-2">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcBl1Start">Baseline 1 start</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcBl1Start" value="3.7" step="0.1">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcBl1End">Baseline 1 end</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcBl1End" value="4.7" step="0.1">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-2">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcBl2Start">Baseline 2 start</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcBl2Start" value="12.3" step="0.1">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcBl2End">Baseline 2 end</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcBl2End" value="13.3" step="0.1">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="section-divider"><span>計算參數</span></div>
+
+                            <div class="grid grid-2">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcEpsilon">消光係數 <i>ε</i></label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcEpsilon" value="0.667" step="0.001">
+                                        <span class="input-unit">mL/(mg·cm)</span>
+                                    </div>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcPathLen">光徑長度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcPathLen" value="1" step="0.01">
+                                        <span class="input-unit">cm</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-2">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcRiFactor">RI 校正因子 (<i>K</i><sub>RI</sub>)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcRiFactor" value="1.0" step="0.001">
+                                        <span class="input-unit"></span>
+                                    </div>
+                                </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcBaselineMode">基線模式</label>
+                                    <select class="form-select" id="dndcBaselineMode">
+                                        <option value="const">常數 (Constant)</option>
+                                        <option value="linear">線性 (Linear)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group form-group--compact">
+                                <label class="form-label">
+                                    <input type="checkbox" id="dndcAutoAlign" checked>
+                                    自動 UV-RI 時間對齊
+                                </label>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg btn-full mt-sm" id="calculateHplcDndc">
+                                計算 d<i>n</i>/d<i>c</i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 計算結果</h3>
+                        </div>
+                        <div class="card-body" id="hplcDndcResults">
+                            <div class="alert alert-info">
+                                請載入數據檔案後點擊「計算」
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 色譜圖 -->
+                <div class="card mt-lg hidden" id="dndcChromatogramCard">
+                    <div class="card-header">
+                        <h3 class="card-title">📈 色譜圖</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 350px;">
+                            <canvas id="dndcChromatogramChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Multi-injection dn/dc -->
+            <section class="section" id="section-dndc-multi" aria-labelledby="dndc-multi-title">
+                <div class="page-header">
+                    <h1 class="page-title" id="dndc-multi-title">
+                        <span class="page-title-icon" aria-hidden="true">📊</span>
+                        多注射線性擬合
+                    </h1>
+                    <p class="page-subtitle">從多組濃度-ΔRI 資料擬合 d<i>n</i>/d<i>c</i></p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 資料輸入</h3>
+                            <button class="btn btn-sm btn-secondary" id="addInjectionRow">+ 新增</button>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info alert--compact">
+                                輸入每次注射的濃度 (g/mL) 和對應的 ΔRI (RIU) 值。
+                            </div>
+                            <div class="table-wrapper">
+                                <table class="table" id="multiInjectionTable">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>濃度 (g/mL)</th>
+                                            <th>ΔRI (RIU)</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="multiInjectionBody">
+                                        <tr>
+                                            <td>1</td>
+                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.001"></td>
+                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000185"></td>
+                                            <td></td>
+                                        </tr>
+                                        <tr>
+                                            <td>2</td>
+                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.002"></td>
+                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000370"></td>
+                                            <td></td>
+                                        </tr>
+                                        <tr>
+                                            <td>3</td>
+                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.003"></td>
+                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000555"></td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <button class="btn btn-primary btn-lg btn-full mt-md" id="calculateMultiDndc">
+                                線性擬合
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 擬合結果</h3>
+                        </div>
+                        <div class="card-body" id="multiDndcResults">
+                            <div class="alert alert-info">
+                                請輸入資料後點擊「線性擬合」
+                            </div>
+                        </div>
+                        <!-- 擬合圖 -->
+                        <div class="chart-container mt-md hidden" id="multiDndcChartContainer" style="height: 300px;">
+                            <canvas id="multiDndcChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Slice-by-slice dn/dc -->
+            <section class="section" id="section-dndc-slice" aria-labelledby="dndc-slice-title">
+                <div class="page-header">
+                    <h1 class="page-title" id="dndc-slice-title">
+                        <span class="page-title-icon" aria-hidden="true">🔬</span>
+                        Slice-by-slice 分析
+                    </h1>
+                    <p class="page-subtitle">逐切片分析：每個時間點的 UV → 濃度、RI → Δ<i>n</i>，線性擬合求 d<i>n</i>/d<i>c</i></p>
+                </div>
+
+                <div class="grid grid-2">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📂 數據與參數</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info alert--compact">
+                                使用與 HPLC d<i>n</i>/d<i>c</i> 頁面相同的數據。請先在該頁面載入檔案。
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="sliceMinUvFraction">最小 UV 閾值（相對峰值比例）</label>
+                                <div class="form-input-group">
+                                    <input type="number" class="form-input" id="sliceMinUvFraction" value="0.05" step="0.01" min="0.01" max="0.5">
+                                    <span class="input-unit"></span>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-primary btn-lg btn-full" id="calculateSliceDndc">
+                                Slice-by-slice 分析
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📊 分析結果</h3>
+                        </div>
+                        <div class="card-body" id="sliceDndcResults">
+                            <div class="alert alert-info">
+                                請先載入數據後點擊「Slice-by-slice 分析」
+                            </div>
+                        </div>
+                        <!-- 擬合圖 -->
+                        <div class="chart-container mt-md hidden" id="sliceDndcChartContainer" style="height: 300px;">
+                            <canvas id="sliceDndcChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -1211,6 +1676,10 @@
     <script src="js/protein.js"></script>
     <script src="js/calculations.js"></script>
     <script src="js/charts.js"></script>
+    <script src="js/dndc-calculations.js"></script>
+    <script src="js/dndc-file-parser.js"></script>
+    <script src="js/dndc-charts.js"></script>
+    <script src="js/dndc-ui.js"></script>
     <script src="js/app.js"></script>
 </body>
 
