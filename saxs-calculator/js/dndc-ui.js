@@ -470,6 +470,7 @@ function initAstraSection() {
 
     if (!parseBtn || !fileInput) return;
 
+    // Step 1: 載入檔案並顯示色譜圖
     parseBtn.addEventListener('click', async () => {
         const files = fileInput.files;
         if (!files || files.length === 0) {
@@ -478,12 +479,8 @@ function initAstraSection() {
         }
 
         const statusEl = document.getElementById('astraParseStatus');
-        const resultsEl = document.getElementById('astraParseResults');
         statusEl.textContent = '正在載入 sql.js 和解析檔案...';
-        resultsEl.innerHTML = '';
-
-        const intStart = parseFloat(document.getElementById('astraIntStart').value) || 5;
-        const intEnd = parseFloat(document.getElementById('astraIntEnd').value) || 12;
+        document.getElementById('astraParseResults').innerHTML = '';
 
         const parsedFiles = [];
 
@@ -494,13 +491,55 @@ function initAstraSection() {
                 parsedFiles.push({ fileName: files[i].name, ...result });
             }
 
-            statusEl.textContent = `成功解析 ${parsedFiles.length} 個檔案`;
-            displayAstraResults(parsedFiles, intStart, intEnd);
+            // 儲存解析結果
+            DndcState.astraParsedFiles = parsedFiles;
+
+            statusEl.textContent = `成功解析 ${parsedFiles.length} 個檔案，請在下方調整積分範圍`;
+
+            // 顯示色譜圖和積分範圍控制
+            const chartCard = document.getElementById('astraChromatogramCard');
+            chartCard.classList.remove('hidden');
+
+            const intStart = parseFloat(document.getElementById('astraIntStart').value) || 5;
+            const intEnd = parseFloat(document.getElementById('astraIntEnd').value) || 12;
+            displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd);
 
         } catch (err) {
             statusEl.textContent = `解析失敗: ${err.message}`;
         }
     });
+
+    // Step 2: 套用積分範圍並計算
+    const applyBtn = document.getElementById('applyAstraIntegration');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', () => {
+            if (!DndcState.astraParsedFiles || DndcState.astraParsedFiles.length === 0) {
+                return;
+            }
+            const intStart = parseFloat(document.getElementById('astraIntStart').value) || 5;
+            const intEnd = parseFloat(document.getElementById('astraIntEnd').value) || 12;
+
+            // 更新色譜圖上的積分範圍標示
+            displayAstraChromatogramsWithRange(DndcState.astraParsedFiles, intStart, intEnd);
+
+            // 計算並顯示結果表格
+            displayAstraResults(DndcState.astraParsedFiles, intStart, intEnd);
+        });
+    }
+
+    // 即時更新圖上的積分範圍標示
+    const intStartInput = document.getElementById('astraIntStart');
+    const intEndInput = document.getElementById('astraIntEnd');
+    if (intStartInput && intEndInput) {
+        const updateRange = () => {
+            if (!DndcState.astraParsedFiles) return;
+            const intStart = parseFloat(intStartInput.value) || 5;
+            const intEnd = parseFloat(intEndInput.value) || 12;
+            displayAstraChromatogramsWithRange(DndcState.astraParsedFiles, intStart, intEnd);
+        };
+        intStartInput.addEventListener('change', updateRange);
+        intEndInput.addEventListener('change', updateRange);
+    }
 }
 
 function displayAstraResults(parsedFiles, intStart, intEnd) {
@@ -613,9 +652,6 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
 
     resultsEl.innerHTML = tableHtml;
 
-    // 繪製色譜圖疊加
-    displayAstraChromatograms(injections, intStart, intEnd);
-
     // 綁定擬合按鈕
     document.getElementById('fitAstraData').addEventListener('click', () => {
         const table = document.getElementById('astraInjectionTable');
@@ -651,31 +687,9 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
 }
 
 // ========================
-// ASTRA 色譜圖疊加
+// ASTRA 色譜圖疊加（含積分範圍標示）
 // ========================
-function displayAstraChromatograms(injections, intStart, intEnd) {
-    // 建立或取得 chart container
-    let chartCard = document.getElementById('astraChromatogramCard');
-    if (!chartCard) {
-        chartCard = document.createElement('div');
-        chartCard.id = 'astraChromatogramCard';
-        chartCard.className = 'card mt-lg';
-        chartCard.innerHTML = `
-            <div class="card-header">
-                <h3 class="card-title">📈 RI 色譜圖疊加</h3>
-            </div>
-            <div class="card-body">
-                <div class="chart-container" style="height: 400px;">
-                    <canvas id="astraChromatogramCanvas"></canvas>
-                </div>
-            </div>
-        `;
-        // 插入在 ASTRA card 後面
-        const astraResults = document.getElementById('astraParseResults');
-        astraResults.parentElement.parentElement.after(chartCard);
-    }
-    chartCard.classList.remove('hidden');
-
+function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
     if (DndcState.charts.astraChromatogram) {
         DndcState.charts.astraChromatogram.destroy();
     }
@@ -683,7 +697,6 @@ function displayAstraChromatograms(injections, intStart, intEnd) {
     const canvas = document.getElementById('astraChromatogramCanvas');
     if (!canvas) return;
 
-    // 為每個注射產生一個 dataset，用不同顏色
     const colors = [
         'rgba(45, 49, 146, 0.8)',
         'rgba(26, 122, 76, 0.8)',
@@ -695,20 +708,53 @@ function displayAstraChromatograms(injections, intStart, intEnd) {
         'rgba(101, 163, 13, 0.8)'
     ];
 
-    const datasets = injections.map((inj, i) => {
-        // 提取簡短標籤（從檔名取體積部分）
-        const volMatch = inj.fileName.match(/[\s_](\d+(?:\.\d+)?)\s*[uμ][Ll]/i);
-        const label = volMatch ? `${volMatch[1]} μL` : inj.fileName.split('.')[0].slice(0, 20);
+    const datasets = [];
+    for (let i = 0; i < parsedFiles.length; i++) {
+        const pf = parsedFiles[i];
+        if (!pf.riChannel) continue;
 
-        return {
+        const volMatch = pf.fileName.match(/[\s_](\d+(?:\.\d+)?)\s*[uμ][Ll]/i);
+        const label = volMatch ? `${volMatch[1]} μL` : pf.fileName.split('.')[0].slice(0, 20);
+
+        datasets.push({
             label,
-            data: inj.time.map((t, j) => ({ x: t, y: inj.values[j] })),
+            data: pf.riChannel.time.map((t, j) => ({ x: t, y: pf.riChannel.values[j] })),
             borderColor: colors[i % colors.length],
             backgroundColor: 'transparent',
             borderWidth: 1.5,
             pointRadius: 0,
             showLine: true
-        };
+        });
+    }
+
+    // 積分範圍標示（用半透明填充 dataset 模擬）
+    // 找 y 軸範圍
+    let yMin = Infinity, yMax = -Infinity;
+    for (const pf of parsedFiles) {
+        if (!pf.riChannel) continue;
+        for (const v of pf.riChannel.values) {
+            if (v < yMin) yMin = v;
+            if (v > yMax) yMax = v;
+        }
+    }
+    const yPad = (yMax - yMin) * 0.05;
+
+    // 加一個填充區域表示積分範圍
+    datasets.push({
+        label: `積分範圍 (${intStart.toFixed(1)} – ${intEnd.toFixed(1)} min)`,
+        data: [
+            { x: intStart, y: yMin - yPad },
+            { x: intStart, y: yMax + yPad },
+            { x: intEnd, y: yMax + yPad },
+            { x: intEnd, y: yMin - yPad }
+        ],
+        backgroundColor: 'rgba(45, 49, 146, 0.08)',
+        borderColor: 'rgba(45, 49, 146, 0.3)',
+        borderWidth: 1,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        showLine: true,
+        fill: true
     });
 
     DndcState.charts.astraChromatogram = new Chart(canvas, {
@@ -730,17 +776,6 @@ function displayAstraChromatograms(injections, intStart, intEnd) {
                     bodyColor: 'rgba(255, 255, 255, 0.85)',
                     cornerRadius: 4,
                     padding: 8
-                },
-                annotation: {
-                    annotations: {
-                        peakRegion: {
-                            type: 'box',
-                            xMin: intStart,
-                            xMax: intEnd,
-                            backgroundColor: 'rgba(45, 49, 146, 0.06)',
-                            borderWidth: 0
-                        }
-                    }
                 }
             },
             scales: {
