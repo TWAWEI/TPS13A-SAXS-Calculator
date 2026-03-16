@@ -680,8 +680,8 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
                 <td>${inj.sampleName}</td>
                 <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc"></td>
                 <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL"></td>
-                <td style="font-family: var(--font-mono);">${inj.riAreaVolume.toExponential(4)}</td>
-                <td style="font-family: var(--font-mono);">${inj.kCal ? inj.kCal.toExponential(4) : '-'}</td>
+                <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.riAreaVolume.toExponential(2)}</td>
+                <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.kCal ? inj.kCal.toExponential(2) : '-'}</td>
             </tr>
         `;
     });
