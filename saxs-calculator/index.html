@@ -1400,7 +1400,7 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label" for="dndcFileInput">載入 CSV/TSV/AFE7 檔案</label>
+                                <label class="form-label" for="dndcFileInput">載入數據檔案</label>
                                 <input type="file" class="form-input" id="dndcFileInput" accept=".csv,.tsv,.txt,.afe7">
                                 <div class="stat-sub mt-sm" id="dndcFileStatus">尚未載入檔案</div>
                             </div>
@@ -1566,15 +1566,15 @@
                 <!-- ASTRA 檔案載入 -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">📂 ASTRA .afe7 檔案載入</h3>
+                        <h3 class="card-title">📂 實驗數據載入</h3>
                     </div>
                     <div class="card-body">
                         <div class="alert alert-info alert--compact">
-                            選擇多個 ASTRA .afe7 檔案（不同濃度的注射實驗），自動提取 RI 面積並擬合 <span class="sci-var">dn/dc</span>。首次載入需下載 sql.js (~1.5 MB)。
+                            選擇多個實驗數據檔案（不同濃度的注射實驗），自動提取 RI 面積並擬合 <span class="sci-var">dn/dc</span>。
                         </div>
                         <div class="form-group">
-                            <label class="form-label" for="astraFileInput">選擇 .afe7 檔案（可多選）</label>
-                            <input type="file" class="form-input" id="astraFileInput" accept=".afe7" multiple>
+                            <label class="form-label" for="astraFileInput">選擇檔案（可多選）</label>
+                            <input type="file" class="form-input" id="astraFileInput" multiple>
                         </div>
                         <button class="btn btn-primary btn-lg btn-full" id="parseAstraFiles">
                             載入並顯示色譜圖
