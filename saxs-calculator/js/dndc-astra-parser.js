@@ -194,20 +194,19 @@ function _readExperimentInfo(db) {
 function _readRiChannel(db) {
     if (!_tableExists(db, 'WVectorData')) return null;
 
-    // DN code 12021 = dRI signal
+    // DN code 12025 = RI_Aux (校正後的 RI 訊號), fallback 12021 = dRI raw
     const rows = _queryAll(db,
         "SELECT objectID, m_nDataName, m_sInstrumentClassName, m_vIndex, m_vValue " +
-        "FROM WVectorData WHERE m_nDataName = 12021 AND length(m_vValue) > 100 AND length(m_vIndex) > 100"
+        "FROM WVectorData WHERE m_nDataName = 12025 AND length(m_vValue) > 100 AND length(m_vIndex) > 100"
     );
 
     if (rows.length === 0) {
-        // Fallback: try any RI-related channel
+        // Fallback: try dRI raw signal (12021)
         const fallbackRows = _queryAll(db,
             "SELECT objectID, m_nDataName, m_sInstrumentClassName, m_vIndex, m_vValue " +
-            "FROM WVectorData WHERE length(m_vValue) > 100 AND length(m_vIndex) > 100 LIMIT 5"
+            "FROM WVectorData WHERE m_nDataName = 12021 AND length(m_vValue) > 100 AND length(m_vIndex) > 100"
         );
         if (fallbackRows.length === 0) return null;
-        // Use the first available channel
         const r = fallbackRows[0];
         const time = _safeDecodeBlob(r.m_vIndex);
         const values = _safeDecodeBlob(r.m_vValue);
