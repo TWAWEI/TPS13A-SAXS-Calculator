@@ -9,8 +9,56 @@
 const AppState = {
     proteinData: null,
     saxsData: null,
-    charts: {}
+    charts: {},
+    dndcUnlocked: false
 };
+
+// ========================
+// dn/dc Password Lock
+// ========================
+const DNDC_HASH = '53e6b431c5618bbe2d7a231a2ebb5b846a87182568c66da31e1e5f7006ef3e5a';
+
+async function sha256(text) {
+    const data = new TextEncoder().encode(text);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function initDndcLock() {
+    const unlockBtn = document.getElementById('dndcNavUnlock');
+    if (!unlockBtn) return;
+
+    // 檢查 sessionStorage 是否已解鎖
+    if (sessionStorage.getItem('dndcUnlocked') === 'true') {
+        unlockDndc();
+        return;
+    }
+
+    unlockBtn.addEventListener('click', async () => {
+        if (AppState.dndcUnlocked) return;
+
+        const pwd = prompt('請輸入 dn/dc 工具密碼：');
+        if (!pwd) return;
+
+        const hash = await sha256(pwd);
+        if (hash === DNDC_HASH) {
+            unlockDndc();
+            sessionStorage.setItem('dndcUnlocked', 'true');
+        } else {
+            alert('密碼錯誤');
+        }
+    });
+}
+
+function unlockDndc() {
+    AppState.dndcUnlocked = true;
+    const navItems = document.getElementById('dndcNavItems');
+    const unlockBtn = document.getElementById('dndcNavUnlock');
+    if (navItems) navItems.classList.remove('hidden');
+    if (unlockBtn) unlockBtn.textContent = '🔓 dn/dc 工具';
+    unlockBtn.style.cursor = 'default';
+}
 
 // ========================
 // Navigation
@@ -1343,6 +1391,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCentrifugeSection();
     initDetectorSection();
     initIUCrSection();
+    initDndcLock();
 
     console.log('TPS13A SAXS Calculator initialized');
 });
