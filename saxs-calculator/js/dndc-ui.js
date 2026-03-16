@@ -324,7 +324,7 @@ function displayMultiFitResults(result, xData, yData) {
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
-                <div class="stat-value" style="font-size: 1.75rem;">${result.dnDc.toFixed(4)} <span class="stat-unit">mL/g</span></div>
+                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dnDc)} <span class="stat-unit">mL/g</span></div>
             </div>
         </div>
         <div class="result-grid">
@@ -535,15 +535,15 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
             }
         }
 
-        // RI 校正（K_cal）
+        // K_cal（僅顯示用，RI_Aux 已是 RIU 單位不需乘）
         const kCal = pf.riDetector && pf.riDetector.calibrationConstant
-            ? pf.riDetector.calibrationConstant : 1.0;
+            ? pf.riDetector.calibrationConstant : null;
 
         // 流速
         const flowRate = pf.experiment ? pf.experiment.flowRateMlMin : 0.5;
 
-        // RI 面積 (RIU·mL)
-        const riAreaVolume = Math.abs(area) * kCal * flowRate;
+        // RI 面積 (RIU·mL) = ∫ΔRI dt × flow_rate
+        const riAreaVolume = Math.abs(area) * flowRate;
 
         // 注入質量（從 ASTRA 取）— 如果沒有則讓使用者輸入
         const concGml = pf.sample ? pf.sample.concentrationGml : 0;
@@ -597,7 +597,7 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
                 <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc"></td>
                 <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL"></td>
                 <td style="font-family: var(--font-mono);">${inj.riAreaVolume.toExponential(4)}</td>
-                <td style="font-family: var(--font-mono);">${inj.kCal.toExponential(4)}</td>
+                <td style="font-family: var(--font-mono);">${inj.kCal ? inj.kCal.toExponential(4) : '-'}</td>
             </tr>
         `;
     });
@@ -774,6 +774,11 @@ function displayAstraChromatograms(injections, intStart, intEnd) {
 // ========================
 // 工具函數
 // ========================
+function formatDndc(value) {
+    if (Math.abs(value) >= 0.001) return value.toFixed(4);
+    return value.toExponential(4);
+}
+
 function showDndcAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
     if (container) {
