@@ -135,7 +135,7 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
  * @param {string} canvasId - Canvas 元素 ID
  * @param {number[]} xData - X 軸資料（濃度）
  * @param {number[]} yData - Y 軸資料（ΔRI）
- * @param {object} fitResult - { dn_dc, intercept, r_squared }
+ * @param {object} fitResult - { dnDc, intercept, rSquared }
  * @param {object} [labels] - { xLabel, yLabel, title }
  * @returns {Chart} Chart.js 實例
  */
@@ -151,8 +151,8 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
     const xMax = Math.max(...xData);
     const margin = (xMax - xMin) * 0.05;
     const fitLine = [
-        { x: xMin - margin, y: fitResult.dn_dc * (xMin - margin) + fitResult.intercept },
-        { x: xMax + margin, y: fitResult.dn_dc * (xMax + margin) + fitResult.intercept }
+        { x: xMin - margin, y: fitResult.dnDc * (xMin - margin) + fitResult.intercept },
+        { x: xMax + margin, y: fitResult.dnDc * (xMax + margin) + fitResult.intercept }
     ];
 
     return new Chart(ctx, {
@@ -168,7 +168,7 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
                     pointHoverRadius: 6
                 },
                 {
-                    label: `Fit (dn/dc = ${fitResult.dn_dc.toFixed(4)}, R² = ${fitResult.r_squared.toFixed(6)})`,
+                    label: `Fit (dn/dc = ${fitResult.dnDc.toFixed(4)}, R² = ${fitResult.rSquared.toFixed(6)})`,
                     data: fitLine,
                     borderColor: DNDC_CHART_COLORS.fit,
                     backgroundColor: 'transparent',
