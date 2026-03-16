@@ -1233,7 +1233,7 @@
                 <div class="page-header">
                     <h1 class="page-title" id="dndc-theory-title">
                         <span class="page-title-icon" aria-hidden="true">📐</span>
-                        d<i>n</i>/d<i>c</i> 理論計算
+                        <span class="sci-var">dn/dc</span> 理論計算
                     </h1>
                     <p class="page-subtitle">溫度校正、波長校正、Lorentz-Lorenz 理論模型</p>
                 </div>
@@ -1246,7 +1246,7 @@
                         </div>
                         <div class="card-body">
                             <div class="form-group">
-                                <label class="form-label" for="dndcRefValue">參考 d<i>n</i>/d<i>c</i> 值</label>
+                                <label class="form-label" for="dndcRefValue">參考 <span class="sci-var">dn/dc</span> 值</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="dndcRefValue" value="0.185" step="0.001">
                                     <span class="input-unit">mL/g</span>
@@ -1335,7 +1335,7 @@
                                 </div>
                             </div>
                             <button class="btn btn-primary btn-lg btn-full" id="calculateLorentzLorenz">
-                                計算 d<i>n</i>/d<i>c</i>
+                                計算 <span class="sci-var">dn/dc</span>
                             </button>
                         </div>
                     </div>
@@ -1355,7 +1355,7 @@
                 <!-- 經驗值參考表 -->
                 <div class="card mt-lg">
                     <div class="card-header">
-                        <h3 class="card-title">📋 d<i>n</i>/d<i>c</i> 文獻經驗值 (25°C, 589 nm)</h3>
+                        <h3 class="card-title">📋 <span class="sci-var">dn/dc</span> 文獻經驗值 (25°C, 589 nm)</h3>
                     </div>
                     <div class="card-body">
                         <div class="table-wrapper">
@@ -1363,7 +1363,7 @@
                                 <thead>
                                     <tr>
                                         <th>樣品類型</th>
-                                        <th class="text-right">d<i>n</i>/d<i>c</i> (mL/g)</th>
+                                        <th class="text-right"><span class="sci-var">dn/dc</span> (mL/g)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1386,9 +1386,9 @@
                 <div class="page-header">
                     <h1 class="page-title" id="dndc-hplc-title">
                         <span class="page-title-icon" aria-hidden="true">📈</span>
-                        HPLC d<i>n</i>/d<i>c</i> 計算
+                        HPLC <span class="sci-var">dn/dc</span> 計算
                     </h1>
-                    <p class="page-subtitle">從 UV + RI 色譜數據計算 d<i>n</i>/d<i>c</i>（單注射法）</p>
+                    <p class="page-subtitle">從 UV + RI 色譜數據計算 <span class="sci-var">dn/dc</span>（單注射法）</p>
                 </div>
 
                 <div class="grid grid-2">
@@ -1521,7 +1521,7 @@
                             </div>
 
                             <button class="btn btn-primary btn-lg btn-full mt-sm" id="calculateHplcDndc">
-                                計算 d<i>n</i>/d<i>c</i>
+                                計算 <span class="sci-var">dn/dc</span>
                             </button>
                         </div>
                     </div>
@@ -1558,7 +1558,7 @@
                         <span class="page-title-icon" aria-hidden="true">📊</span>
                         多注射線性擬合
                     </h1>
-                    <p class="page-subtitle">從多組濃度-ΔRI 資料擬合 d<i>n</i>/d<i>c</i></p>
+                    <p class="page-subtitle">從多組濃度-ΔRI 資料擬合 <span class="sci-var">dn/dc</span></p>
                 </div>
 
                 <!-- ASTRA 檔案載入 -->
@@ -1568,7 +1568,7 @@
                     </div>
                     <div class="card-body">
                         <div class="alert alert-info alert--compact">
-                            選擇多個 ASTRA .afe7 檔案（不同濃度的注射實驗），自動提取 RI 面積並擬合 d<i>n</i>/d<i>c</i>。首次載入需下載 sql.js (~1.5 MB)。
+                            選擇多個 ASTRA .afe7 檔案（不同濃度的注射實驗），自動提取 RI 面積並擬合 <span class="sci-var">dn/dc</span>。首次載入需下載 sql.js (~1.5 MB)。
                         </div>
                         <div class="form-group">
                             <label class="form-label" for="astraFileInput">選擇 .afe7 檔案（可多選）</label>
@@ -1685,7 +1685,7 @@
                         <span class="page-title-icon" aria-hidden="true">🔬</span>
                         Slice-by-slice 分析
                     </h1>
-                    <p class="page-subtitle">逐切片分析：每個時間點的 UV → 濃度、RI → Δ<i>n</i>，線性擬合求 d<i>n</i>/d<i>c</i></p>
+                    <p class="page-subtitle">逐切片分析：每個時間點的 UV → 濃度、RI → Δ<i>n</i>，線性擬合求 <span class="sci-var">dn/dc</span></p>
                 </div>
 
                 <div class="grid grid-2">
