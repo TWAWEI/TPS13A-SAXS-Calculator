@@ -155,6 +155,14 @@ function initDndcHplcSection() {
                     DndcState.loadedData.uv = new Array(time.length).fill(0);
 
                     const sampleName = astraResult.sample ? astraResult.sample.name : '';
+
+                    // 自動填入濃度（ASTRA 內的 g/mL → mg/mL）
+                    const concGml = astraResult.sample ? astraResult.sample.concentrationGml : 0;
+                    if (concGml > 0) {
+                        const concMgml = concGml * 1000;
+                        document.getElementById('dndcManualC').value = concMgml.toFixed(3);
+                    }
+
                     document.getElementById('dndcFileStatus').textContent =
                         `已載入 ASTRA: ${file.name} (${sampleName}, ${time.length} 點)`;
 
@@ -226,7 +234,7 @@ function initDndcHplcSection() {
                 riDelay: 0,
                 baselineMode: document.getElementById('dndcBaselineMode').value,
                 peakMode: 'area',
-                manualC: null,
+                manualC: parseFloat(document.getElementById('dndcManualC').value) || null,
                 autoAlign: document.getElementById('dndcAutoAlign').checked,
                 decimalPlaces: 4
             };
