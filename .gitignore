@@ -12,3 +12,11 @@ temp_xlsx/
 .idea/
 .vscode/
 *.swp
+
+# AI tools
+.agent/
+.agents/
+.claude/
+.kiro/
+skills-lock.json
+CLAUDE.md
