@@ -662,6 +662,7 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
             <table class="table" id="astraInjectionTable">
                 <thead>
                     <tr>
+                        <th><input type="checkbox" id="astraSelectAll" checked></th>
                         <th>檔案</th>
                         <th>樣品</th>
                         <th>濃度 (g/mL)</th>
@@ -676,6 +677,7 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
     injections.forEach((inj, i) => {
         tableHtml += `
             <tr>
+                <td><input type="checkbox" class="astra-row-check" data-astra-idx="${i}" checked></td>
                 <td style="font-size: 0.75rem;">${inj.fileName}</td>
                 <td>${inj.sampleName}</td>
                 <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc"></td>
@@ -697,6 +699,13 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
 
     resultsEl.innerHTML = tableHtml;
 
+    // 全選/取消全選
+    document.getElementById('astraSelectAll').addEventListener('change', (e) => {
+        document.querySelectorAll('.astra-row-check').forEach(cb => {
+            cb.checked = e.target.checked;
+        });
+    });
+
     // 綁定擬合按鈕
     document.getElementById('fitAstraData').addEventListener('click', () => {
         const table = document.getElementById('astraInjectionTable');
@@ -705,13 +714,16 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
         const areas = [];
 
         rows.forEach((row, i) => {
+            const checkbox = row.querySelector('.astra-row-check');
+            if (!checkbox || !checkbox.checked) return;
+
             const concInput = row.querySelector('[data-field="conc"]');
             const volInput = row.querySelector('[data-field="vol"]');
             const conc = parseFloat(concInput.value);
             const vol = parseFloat(volInput.value);
 
             if (!isNaN(conc) && !isNaN(vol) && conc > 0 && vol > 0) {
-                masses.push(conc * vol); // mass in grams
+                masses.push(conc * vol);
                 areas.push(injections[i].riAreaVolume);
             }
         });
