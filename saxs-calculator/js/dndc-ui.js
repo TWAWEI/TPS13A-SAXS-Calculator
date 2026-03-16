@@ -117,37 +117,74 @@ function initDndcHplcSection() {
             const file = e.target.files[0];
             if (!file) return;
 
+            const isAfe7 = file.name.toLowerCase().endsWith('.afe7');
+
             try {
-                const text = await DndcFileParser.readFile(file);
-                const parsed = DndcFileParser.parseCSV(text);
+                if (isAfe7) {
+                    // ASTRA .afe7 檔案
+                    document.getElementById('dndcFileStatus').textContent = '正在載入 ASTRA 檔案...';
+                    const astraResult = await DndcAstraParser.parseAfe7File(file);
 
-                if (parsed.data.length === 0) {
-                    document.getElementById('dndcFileStatus').textContent = '檔案解析失敗：無有效數據';
-                    return;
+                    if (!astraResult.riChannel) {
+                        document.getElementById('dndcFileStatus').textContent = '未找到 RI 通道數據';
+                        return;
+                    }
+
+                    const time = astraResult.riChannel.time;
+                    const ri = astraResult.riChannel.values;
+
+                    // 建立虛擬 parsed 結構，UV 欄位留空（ASTRA 單檔通常無 UV）
+                    const headers = ['Time (min)', 'dRI'];
+                    const data = time.map((t, i) => [t, ri[i]]);
+                    const parsed = { headers, data };
+
+                    // 更新欄位下拉選單
+                    const selects = ['dndcTimeCol', 'dndcUvCol', 'dndcRiCol'];
+                    const detectedIndices = [0, -1, 1]; // time=0, no UV, ri=1
+
+                    selects.forEach((selId, i) => {
+                        const sel = document.getElementById(selId);
+                        sel.innerHTML = headers.map((h, idx) =>
+                            `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
+                        ).join('');
+                    });
+
+                    DndcState.loadedData = { parsed, headers };
+                    DndcState.loadedData.time = time;
+                    DndcState.loadedData.ri = ri;
+                    DndcState.loadedData.uv = new Array(time.length).fill(0);
+
+                    const sampleName = astraResult.sample ? astraResult.sample.name : '';
+                    document.getElementById('dndcFileStatus').textContent =
+                        `已載入 ASTRA: ${file.name} (${sampleName}, ${time.length} 點)`;
+
+                } else {
+                    // CSV/TSV 檔案
+                    const text = await DndcFileParser.readFile(file);
+                    const parsed = DndcFileParser.parseCSV(text);
+
+                    if (parsed.data.length === 0) {
+                        document.getElementById('dndcFileStatus').textContent = '檔案解析失敗：無有效數據';
+                        return;
+                    }
+
+                    const detected = DndcFileParser.autoDetectColumns(parsed.headers);
+
+                    const selects = ['dndcTimeCol', 'dndcUvCol', 'dndcRiCol'];
+                    const detectedIndices = [detected.timeCol, detected.uvCol, detected.riCol];
+
+                    selects.forEach((selId, i) => {
+                        const sel = document.getElementById(selId);
+                        sel.innerHTML = parsed.headers.map((h, idx) =>
+                            `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
+                        ).join('');
+                    });
+
+                    DndcState.loadedData = { parsed, headers: parsed.headers };
+
+                    document.getElementById('dndcFileStatus').textContent =
+                        `已載入: ${file.name} (${parsed.data.length} 列, ${parsed.headers.length} 欄)`;
                 }
-
-                // 自動偵測欄位
-                const detected = DndcFileParser.autoDetectColumns(parsed.headers);
-
-                // 更新欄位下拉選單
-                const selects = ['dndcTimeCol', 'dndcUvCol', 'dndcRiCol'];
-                const detectedIndices = [detected.timeCol, detected.uvCol, detected.riCol];
-
-                selects.forEach((selId, i) => {
-                    const sel = document.getElementById(selId);
-                    sel.innerHTML = parsed.headers.map((h, idx) =>
-                        `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
-                    ).join('');
-                });
-
-                // 儲存數據
-                DndcState.loadedData = {
-                    parsed,
-                    headers: parsed.headers
-                };
-
-                document.getElementById('dndcFileStatus').textContent =
-                    `已載入: ${file.name} (${parsed.data.length} 列, ${parsed.headers.length} 欄)`;
 
             } catch (err) {
                 document.getElementById('dndcFileStatus').textContent = `載入失敗: ${err.message}`;
