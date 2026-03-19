@@ -239,6 +239,13 @@ function initDndcHplcSection() {
                 decimalPlaces: 4
             };
 
+            // 檢查：無 UV 數據時必須有手動濃度
+            const uvAllZero = uv.every(v => v === 0);
+            if (uvAllZero && !params.manualC) {
+                showDndcAlert('hplcDndcResults', 'error', '此檔案無 UV 通道，請在「手動濃度」欄位輸入樣品濃度 (mg/mL)');
+                return;
+            }
+
             try {
                 const result = DndcCalculations.computeHplcDndc(time, uv, ri, params);
                 displayHplcDndcResults(result, params);
@@ -260,7 +267,7 @@ function displayHplcDndcResults(result, params) {
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i></div>
-                <div class="stat-value" style="font-size: 1.75rem;">${result.dnDc.toFixed(4)} <span class="stat-unit">mL/g</span></div>
+                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dnDc)} <span class="stat-unit">mL/g</span></div>
             </div>
         </div>
         <div class="result-grid">
@@ -274,11 +281,11 @@ function displayHplcDndcResults(result, params) {
             </div>
             <div class="result-item">
                 <div class="result-label">Δ RI</div>
-                <div class="result-value">${result.deltaRi.toFixed(6)}</div>
+                <div class="result-value">${result.deltaRi != null ? result.deltaRi.toFixed(6) : '-'}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">RI peak area</div>
-                <div class="result-value">${result.riPeakArea.toFixed(6)}</div>
+                <div class="result-value">${result.riPeakArea != null ? result.riPeakArea.toFixed(6) : '-'}</div>
             </div>
             ${alignInfo}
         </div>
