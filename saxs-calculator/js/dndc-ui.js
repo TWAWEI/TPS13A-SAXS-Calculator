@@ -130,29 +130,66 @@ function initDndcHplcSection() {
                         return;
                     }
 
-                    const time = astraResult.riChannel.time;
-                    const ri = astraResult.riChannel.values;
+                    // 列出所有可用通道
+                    const channels = astraResult.allChannels || [];
+                    const channelData = astraResult.channelData || {};
 
-                    // 建立虛擬 parsed 結構，UV 欄位留空（ASTRA 單檔通常無 UV）
-                    const headers = ['Time (min)', 'dRI'];
-                    const data = time.map((t, i) => [t, ri[i]]);
+                    // 找到 time 軸（用 RI 通道的 time）
+                    const riCh = astraResult.riChannel;
+                    if (!riCh) {
+                        document.getElementById('dndcFileStatus').textContent = '未找到 RI 通道數據';
+                        return;
+                    }
+                    const time = riCh.time;
+
+                    // 建立表頭：Time + 所有通道
+                    const headers = ['Time (min)'];
+                    const channelKeys = [];
+                    for (const ch of channels) {
+                        if (channelData[ch.dnCode]) {
+                            headers.push(`${ch.label} (DN ${ch.dnCode})`);
+                            channelKeys.push(ch.dnCode);
+                        }
+                    }
+
+                    // 建立 parsed data
+                    const data = time.map((t, i) => {
+                        const row = [t];
+                        for (const dk of channelKeys) {
+                            const chData = channelData[dk];
+                            row.push(chData && i < chData.values.length ? chData.values[i] : 0);
+                        }
+                        return row;
+                    });
                     const parsed = { headers, data };
+
+                    // 自動偵測 UV 和 RI 欄位
+                    let uvIdx = -1;
+                    let riIdx = -1;
+                    headers.forEach((h, idx) => {
+                        const hl = h.toLowerCase();
+                        if (hl.includes('ri_aux') || hl.includes('12025')) riIdx = idx;
+                        else if (hl.includes('dri') && riIdx < 0) riIdx = idx;
+                        if (hl.includes('uv') || hl.includes('abs') || hl.includes('280')) uvIdx = idx;
+                    });
 
                     // 更新欄位下拉選單
                     const selects = ['dndcTimeCol', 'dndcUvCol', 'dndcRiCol'];
-                    const detectedIndices = [0, -1, 1]; // time=0, no UV, ri=1
+                    const detectedIndices = [0, uvIdx, riIdx];
 
                     selects.forEach((selId, i) => {
                         const sel = document.getElementById(selId);
-                        sel.innerHTML = headers.map((h, idx) =>
-                            `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
-                        ).join('');
+                        sel.innerHTML = '<option value="-1">-- 無 --</option>' +
+                            headers.map((h, idx) =>
+                                `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
+                            ).join('');
                     });
 
                     DndcState.loadedData = { parsed, headers };
+                    // 預設用偵測到的欄位
                     DndcState.loadedData.time = time;
-                    DndcState.loadedData.ri = ri;
-                    DndcState.loadedData.uv = new Array(time.length).fill(0);
+                    DndcState.loadedData.ri = riIdx >= 0 ? data.map(r => r[riIdx]) : riCh.values;
+                    DndcState.loadedData.uv = uvIdx >= 0 ? data.map(r => r[uvIdx]) : new Array(time.length).fill(0);
 
                     const sampleName = astraResult.sample ? astraResult.sample.name : '';
 
@@ -212,9 +249,14 @@ function initDndcHplcSection() {
             const uvIdx = parseInt(document.getElementById('dndcUvCol').value);
             const riIdx = parseInt(document.getElementById('dndcRiCol').value);
 
-            const time = DndcFileParser.getColumnData(parsed, timeIdx);
-            const uv = DndcFileParser.getColumnData(parsed, uvIdx);
-            const ri = DndcFileParser.getColumnData(parsed, riIdx);
+            if (timeIdx < 0 || riIdx < 0) {
+                showDndcAlert('hplcDndcResults', 'error', '請選擇 Time 和 RI 欄位');
+                return;
+            }
+
+            const time = parsed.data.map(r => r[timeIdx]);
+            const uv = uvIdx >= 0 ? parsed.data.map(r => r[uvIdx]) : new Array(parsed.data.length).fill(0);
+            const ri = parsed.data.map(r => r[riIdx]);
 
             // 儲存供 slice 頁面使用
             DndcState.loadedData.time = time;
