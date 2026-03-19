@@ -189,6 +189,61 @@ function _readExperimentInfo(db) {
 }
 
 /**
+ * 讀取所有可用通道的摘要資訊（不解碼 blob，僅列出）
+ */
+function _readAllChannels(db) {
+    if (!_tableExists(db, 'WVectorData')) return [];
+
+    const rows = _queryAll(db,
+        "SELECT objectID, m_nDataName, m_sInstrumentClassName, length(m_vValue) as valLen, length(m_vIndex) as idxLen " +
+        "FROM WVectorData WHERE length(m_vValue) > 100 AND length(m_vIndex) > 100"
+    );
+
+    const DN_LABELS = {
+        12021: 'dRI (raw)',
+        12025: 'RI_Aux',
+        12489: 'Solvent_RI',
+        12190: 'Temperature',
+        12305: 'LS_90',
+        12018: 'LS_Norm',
+        12303: 'LS_Calib',
+        12395: 'LS_Dark',
+        12191: 'QELS'
+    };
+
+    return rows.map(r => ({
+        objectID: r.objectID,
+        dnCode: r.m_nDataName,
+        label: DN_LABELS[r.m_nDataName] || `DN_${r.m_nDataName}`,
+        instrument: r.m_sInstrumentClassName || '',
+        dataSize: r.valLen
+    }));
+}
+
+/**
+ * 讀取指定 DN code 的通道數據
+ */
+function _readChannelByDnCode(db, dnCode) {
+    if (!_tableExists(db, 'WVectorData')) return null;
+
+    const rows = _queryAll(db,
+        "SELECT objectID, m_nDataName, m_sInstrumentClassName, m_vIndex, m_vValue " +
+        "FROM WVectorData WHERE m_nDataName = ? AND length(m_vValue) > 100 AND length(m_vIndex) > 100",
+        [dnCode]
+    );
+
+    if (rows.length === 0) return null;
+
+    const r = rows[0];
+    const time = _safeDecodeBlob(r.m_vIndex);
+    const values = _safeDecodeBlob(r.m_vValue);
+    if (!time || !values) return null;
+
+    const n = Math.min(time.length, values.length);
+    return { time: Array.from(time.slice(0, n)), values: Array.from(values.slice(0, n)) };
+}
+
+/**
  * 讀取 RI 通道數據
  */
 function _readRiChannel(db) {
@@ -292,13 +347,25 @@ async function parseAfe7(arrayBuffer) {
         const sample = _readSampleInfo(db);
         const riDetector = _readRiDetector(db);
         const experiment = _readExperimentInfo(db);
+        const allChannels = _readAllChannels(db);
         const riChannel = _readRiChannel(db);
         const peaks = _readPeaks(db);
+
+        // 解碼所有通道的實際數據
+        const channelData = {};
+        for (const ch of allChannels) {
+            const data = _readChannelByDnCode(db, ch.dnCode);
+            if (data) {
+                channelData[ch.dnCode] = { label: ch.label, instrument: ch.instrument, ...data };
+            }
+        }
 
         return {
             sample,
             riDetector,
             experiment,
+            allChannels,
+            channelData,
             riChannel,
             peaks
         };
