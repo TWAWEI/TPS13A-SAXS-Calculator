@@ -201,7 +201,10 @@ function initDndcHplcSection() {
                     }
 
                     document.getElementById('dndcFileStatus').textContent =
-                        `已載入 ASTRA: ${file.name} (${sampleName}, ${time.length} 點)`;
+                        `已載入: ${file.name} (${sampleName}, ${time.length} 點, ${channelKeys.length} 通道)`;
+
+                    // 自動繪製所有通道
+                    displayAllChannelsChart(parsed);
 
                 } else {
                     // CSV/TSV 檔案
@@ -229,6 +232,9 @@ function initDndcHplcSection() {
 
                     document.getElementById('dndcFileStatus').textContent =
                         `已載入: ${file.name} (${parsed.data.length} 列, ${parsed.headers.length} 欄)`;
+
+                    // 自動繪製所有通道
+                    displayAllChannelsChart(parsed);
                 }
 
             } catch (err) {
@@ -332,6 +338,147 @@ function displayHplcDndcResults(result, params) {
             ${alignInfo}
         </div>
     `;
+}
+
+// ========================
+// 全通道預覽圖
+// ========================
+function displayAllChannelsChart(parsed) {
+    const card = document.getElementById('dndcChromatogramCard');
+    card.classList.remove('hidden');
+
+    const togglesDiv = document.getElementById('dndcChannelToggles');
+    const headers = parsed.headers;
+    const data = parsed.data;
+
+    // Time 固定為 col 0
+    const time = data.map(r => r[0]);
+
+    const colors = [
+        'rgba(45, 49, 146, 0.85)',
+        'rgba(26, 122, 76, 0.85)',
+        'rgba(180, 83, 9, 0.85)',
+        'rgba(196, 43, 28, 0.85)',
+        'rgba(107, 33, 168, 0.85)',
+        'rgba(190, 24, 93, 0.85)',
+        'rgba(14, 116, 144, 0.85)',
+        'rgba(101, 163, 13, 0.85)',
+        'rgba(217, 70, 239, 0.85)',
+        'rgba(234, 88, 12, 0.85)'
+    ];
+
+    // 建立 checkbox toggles（跳過 Time 欄）
+    const channelIndices = [];
+    for (let i = 1; i < headers.length; i++) {
+        channelIndices.push(i);
+    }
+
+    // 預設顯示前 3 個通道
+    const defaultVisible = new Set(channelIndices.slice(0, 3));
+
+    togglesDiv.innerHTML = channelIndices.map((colIdx, i) => {
+        const color = colors[i % colors.length];
+        const checked = defaultVisible.has(colIdx) ? 'checked' : '';
+        return `<label style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid ${color}; background: ${checked ? color.replace('0.85', '0.1') : 'transparent'};">
+            <input type="checkbox" class="dndc-channel-toggle" data-col="${colIdx}" ${checked} style="margin: 0;">
+            <span style="color: ${color}; font-weight: 500;">${headers[colIdx]}</span>
+        </label>`;
+    }).join('');
+
+    // 儲存供重繪用
+    DndcState.channelChartData = { time, headers, data, colors, channelIndices };
+
+    // 繪製
+    redrawChannelsChart();
+
+    // 綁定 checkbox 事件
+    togglesDiv.querySelectorAll('.dndc-channel-toggle').forEach(cb => {
+        cb.addEventListener('change', () => {
+            // 更新 label 背景
+            const label = cb.closest('label');
+            const colIdx = parseInt(cb.dataset.col);
+            const i = channelIndices.indexOf(colIdx);
+            const color = colors[i % colors.length];
+            label.style.background = cb.checked ? color.replace('0.85', '0.1') : 'transparent';
+            redrawChannelsChart();
+        });
+    });
+}
+
+function redrawChannelsChart() {
+    const { time, headers, data, colors, channelIndices } = DndcState.channelChartData;
+
+    if (DndcState.charts.chromatogram) {
+        DndcState.charts.chromatogram.destroy();
+    }
+
+    const canvas = document.getElementById('dndcChromatogramChart');
+    if (!canvas) return;
+
+    // 收集勾選的通道
+    const datasets = [];
+    const toggles = document.querySelectorAll('.dndc-channel-toggle');
+
+    toggles.forEach((cb) => {
+        if (!cb.checked) return;
+        const colIdx = parseInt(cb.dataset.col);
+        const i = channelIndices.indexOf(colIdx);
+        const color = colors[i % colors.length];
+        const values = data.map(r => r[colIdx]);
+
+        datasets.push({
+            label: headers[colIdx],
+            data: time.map((t, j) => ({ x: t, y: values[j] })),
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            showLine: true,
+            yAxisID: `y${datasets.length}`
+        });
+    });
+
+    // 每個通道獨立 y 軸（因為量級可能差很多）
+    const scales = {
+        x: {
+            type: 'linear',
+            title: { display: true, text: 'Time (min)', color: 'rgba(26,26,46,0.7)', font: { family: "'Times New Roman', serif", size: 12, style: 'italic' } },
+            ticks: { color: 'rgba(26,26,46,0.7)', font: { size: 10 } },
+            grid: { color: 'rgba(26,26,46,0.08)' }
+        }
+    };
+
+    datasets.forEach((ds, i) => {
+        scales[`y${i}`] = {
+            type: 'linear',
+            position: i === 0 ? 'left' : 'right',
+            title: { display: i < 2, text: ds.label, color: ds.borderColor, font: { family: "'Times New Roman', serif", size: 11 } },
+            ticks: { color: ds.borderColor, font: { size: 9 } },
+            grid: { display: i === 0, color: 'rgba(26,26,46,0.06)' }
+        };
+    });
+
+    DndcState.charts.chromatogram = new Chart(canvas, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'nearest', intersect: false },
+            plugins: {
+                legend: {
+                    labels: { color: 'rgba(26,26,46,0.7)', font: { family: "'Times New Roman', serif", size: 11 } }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(26,26,46,0.92)',
+                    titleColor: '#fff',
+                    bodyColor: 'rgba(255,255,255,0.85)',
+                    cornerRadius: 4, padding: 8
+                }
+            },
+            scales
+        }
+    });
 }
 
 function displayChromatogram(time, uv, ri, params) {
