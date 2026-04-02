@@ -26,12 +26,12 @@
 
     /* Text — deep navy tints, never pure black */
     --color-text-primary: #1a1a2e;
-    --color-text-secondary: #52526b;
-    --color-text-muted: #8e8ea0;
+    --color-text-secondary: #3d3d56;
+    --color-text-muted: #62627a;
     --color-text-on-accent: #fff;
-    --color-text-on-accent-muted: rgba(255, 255, 255, 0.85);
-    --color-text-on-accent-dim: rgba(255, 255, 255, 0.75);
-    --color-text-on-accent-faint: rgba(255, 255, 255, 0.65);
+    --color-text-on-accent-muted: rgba(255, 255, 255, 0.92);
+    --color-text-on-accent-dim: rgba(255, 255, 255, 0.85);
+    --color-text-on-accent-faint: rgba(255, 255, 255, 0.78);
 
     /* Borders — warm gray */
     --color-border: #e0ded9;
@@ -78,7 +78,7 @@
 }
 
 html {
-    font-size: 16px;
+    font-size: 17px;
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -214,7 +214,7 @@ a:hover {
 .sidebar-footer {
     padding: var(--spacing-md) var(--spacing-lg);
     border-top: 1px solid var(--color-border);
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
     text-transform: uppercase;
@@ -225,7 +225,7 @@ a:hover {
 }
 
 .nav-section-title {
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     color: var(--color-text-muted);
     letter-spacing: 0.04em;
@@ -400,7 +400,7 @@ a:hover {
 }
 
 .stat-label {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
@@ -425,7 +425,7 @@ a:hover {
 }
 
 .stat-sub {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     color: var(--color-text-muted);
     margin-top: 0.125rem;
 }
@@ -534,7 +534,7 @@ a:hover {
 
 .info-panel-label {
     color: var(--color-text-on-accent-dim);
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     letter-spacing: 0.03em;
 }
@@ -597,7 +597,7 @@ a:hover {
 
 .result-card-label {
     color: var(--color-text-on-accent-muted);
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     letter-spacing: 0.02em;
     margin-bottom: var(--spacing-xs);
@@ -612,7 +612,7 @@ a:hover {
 
 .result-card-unit {
     color: var(--color-text-on-accent-dim);
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     margin-top: 0.125rem;
 }
 
@@ -920,7 +920,7 @@ a:hover {
     font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     letter-spacing: 0.06em;
 }
 
@@ -975,7 +975,7 @@ a:hover {
 }
 
 .result-label {
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: var(--color-text-muted);
     letter-spacing: 0.02em;
@@ -1166,7 +1166,7 @@ a:hover {
 }
 
 .section-divider span {
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     color: var(--color-text-muted);
     text-transform: uppercase;
