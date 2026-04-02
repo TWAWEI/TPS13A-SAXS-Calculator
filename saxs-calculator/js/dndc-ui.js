@@ -348,6 +348,22 @@ function initDndcHplcSection() {
                 decimalPlaces: 4
             };
 
+            // 輸入驗證
+            if (params.manualC !== null && params.manualC <= 0) {
+                showDndcAlert('hplcDndcResults', 'error', '手動濃度必須大於 0');
+                return;
+            }
+            if (params.epsilon <= 0 || params.pathLen <= 0) {
+                showDndcAlert('hplcDndcResults', 'error', '消光係數和光徑長度必須大於 0');
+                return;
+            }
+            if (params.peakStart >= params.peakEnd) {
+                showDndcAlert('hplcDndcResults', 'error', 'Peak start 必須小於 Peak end');
+                return;
+            }
+            if (params.bl1End > params.peakStart || params.bl2Start < params.peakEnd) {
+                showDndcAlert('hplcDndcResults', 'warning', '注意: Baseline window 與 peak 區域重疊，可能影響結果準確性');
+            }
             // 檢查：無 UV 數據時必須有手動濃度
             const uvAllZero = uv.every(v => v === 0);
             if (uvAllZero && !params.manualC) {
@@ -372,10 +388,25 @@ function initDndcHplcSection() {
 
 function displayHplcDndcResults(result, params) {
     const resultsDiv = document.getElementById('hplcDndcResults');
-    const alignLag = result.alignmentInfo ? result.alignmentInfo.lag : null;
-    const alignInfo = alignLag != null
-        ? `<div class="result-item"><div class="result-label">UV-RI 時間偏移</div><div class="result-value">${alignLag.toFixed(4)} <span style="font-size: 0.75rem;">min</span></div></div>`
-        : '';
+    const ai = result.alignmentInfo;
+    let alignInfo = '';
+    if (ai) {
+        const corr = ai.correlation != null ? ai.correlation : null;
+        const corrBadge = corr != null
+            ? (corr >= 0.95 ? `<span class="alert-success" style="padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;">Good (${corr.toFixed(3)})</span>`
+            : corr >= 0.85 ? `<span class="alert-warning" style="padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;">Fair (${corr.toFixed(3)})</span>`
+            : `<span class="alert-error" style="padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;">Poor (${corr.toFixed(3)})</span>`)
+            : '';
+        alignInfo = `
+            <div class="result-item">
+                <div class="result-label">UV-RI 時間偏移</div>
+                <div class="result-value">${ai.lag.toFixed(4)} <span style="font-size: 0.75rem;">pts</span></div>
+            </div>
+            <div class="result-item">
+                <div class="result-label">對齊品質</div>
+                <div class="result-value">${corrBadge}</div>
+            </div>`;
+    }
 
     const peakUnit = params.peakMode === 'area' ? 'AU·min' : 'AU';
     const riUnit = params.peakMode === 'area' ? 'RIU·min' : 'RIU';
@@ -564,7 +595,11 @@ function displayChromatogram(time, uv, ri, params) {
 
     DndcState.charts.chromatogram = DndcCharts.createChromatogramChart(
         'dndcChromatogramChart', time, uv, ri,
-        { peakStart: params.peakStart, peakEnd: params.peakEnd }
+        {
+            peakStart: params.peakStart, peakEnd: params.peakEnd,
+            bl1Start: params.bl1Start, bl1End: params.bl1End,
+            bl2Start: params.bl2Start, bl2End: params.bl2End
+        }
     );
 }
 
