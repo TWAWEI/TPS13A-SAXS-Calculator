@@ -1473,9 +1473,63 @@ function escapeHtml(text) {
 }
 
 // ========================
+// localStorage Persistence
+// ========================
+const STORAGE_KEY = 'tps13a-form-state';
+
+function saveFormState() {
+    const state = {};
+    document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        if (el.type === 'file') return;
+        if (el.type === 'checkbox') {
+            state[el.id] = el.checked;
+        } else if (el.value !== '' && el.value !== el.defaultValue) {
+            state[el.id] = el.value;
+        }
+    });
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* quota exceeded — ignore */ }
+}
+
+function restoreFormState() {
+    let state;
+    try {
+        state = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    } catch (e) { return; }
+    if (!state) return;
+
+    Object.entries(state).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.type === 'checkbox') {
+            el.checked = value;
+        } else {
+            el.value = value;
+        }
+    });
+}
+
+function initFormPersistence() {
+    restoreFormState();
+
+    // Debounced auto-save on any input change
+    let saveTimer = null;
+    document.addEventListener('input', () => {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveFormState, 500);
+    });
+    document.addEventListener('change', () => {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveFormState, 500);
+    });
+}
+
+// ========================
 // Initialize Application
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
+    initFormPersistence();
     initNavigation();
     initProteinSection();
     initSAXSSection();
@@ -1486,6 +1540,4 @@ document.addEventListener('DOMContentLoaded', () => {
     initDetectorSection();
     initIUCrSection();
     initDndcLock();
-
-    console.log('TPS13A SAXS Calculator initialized');
 });
