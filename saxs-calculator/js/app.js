@@ -148,6 +148,28 @@ function initNavigation() {
             }
         });
     }
+
+    // Sidebar collapse toggle
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebar = document.getElementById('sidebar');
+    const toggleIcon = document.getElementById('sidebarToggleIcon');
+    const appLayout = document.querySelector('.app-layout');
+
+    if (sidebarToggle && sidebar && appLayout) {
+        // Restore state from sessionStorage
+        if (sessionStorage.getItem('sidebarCollapsed') === 'true') {
+            sidebar.classList.add('collapsed');
+            appLayout.classList.add('sidebar-collapsed');
+            toggleIcon.textContent = '▶';
+        }
+
+        sidebarToggle.addEventListener('click', () => {
+            const isCollapsed = sidebar.classList.toggle('collapsed');
+            appLayout.classList.toggle('sidebar-collapsed', isCollapsed);
+            toggleIcon.textContent = isCollapsed ? '▶' : '◀';
+            sessionStorage.setItem('sidebarCollapsed', String(isCollapsed));
+        });
+    }
 }
 
 // ========================
