@@ -113,7 +113,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 3.6
+                Version 3.7
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" title="收合/展開側邊欄">
                 <span id="sidebarToggleIcon">◀</span>
@@ -1406,6 +1406,19 @@
                     <p class="page-subtitle">從 UV + RI 色譜數據計算 <span class="sci-var">dn/dc</span>（單注射法）</p>
                 </div>
 
+                <!-- 色譜圖（置頂） -->
+                <div class="card hidden" id="dndcChromatogramCard">
+                    <div class="card-header">
+                        <h3 class="card-title">📈 通道數據預覽</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="dndcChannelToggles" class="mt-sm" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;"></div>
+                        <div class="chart-container" style="height: 400px;">
+                            <canvas id="dndcChromatogramChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
@@ -1580,18 +1593,6 @@
                     </div>
                 </div>
 
-                <!-- 色譜圖 -->
-                <div class="card mt-lg hidden" id="dndcChromatogramCard">
-                    <div class="card-header">
-                        <h3 class="card-title">📈 通道數據預覽</h3>
-                    </div>
-                    <div class="card-body">
-                        <div id="dndcChannelToggles" class="mt-sm" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;"></div>
-                        <div class="chart-container" style="height: 400px;">
-                            <canvas id="dndcChromatogramChart"></canvas>
-                        </div>
-                    </div>
-                </div>
             </section>
 
             <!-- Section: Multi-injection dn/dc -->
