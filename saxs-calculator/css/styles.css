@@ -970,7 +970,6 @@ a:hover {
     background: var(--color-bg-tertiary);
     font-weight: 600;
     color: var(--color-text-muted);
-    text-transform: uppercase;
     font-size: 0.6875rem;
     letter-spacing: 0.06em;
 }
