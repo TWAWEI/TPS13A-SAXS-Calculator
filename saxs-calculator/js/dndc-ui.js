@@ -179,10 +179,14 @@ function initDndcHplcSection() {
 
                     selects.forEach((selId, i) => {
                         const sel = document.getElementById(selId);
-                        sel.innerHTML = '<option value="-1">-- 無 --</option>' +
-                            headers.map((h, idx) =>
-                                `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
-                            ).join('');
+                        sel.innerHTML = '<option value="-1">-- 無 --</option>';
+                        headers.forEach((h, idx) => {
+                            const opt = document.createElement('option');
+                            opt.value = idx;
+                            opt.textContent = h;
+                            if (idx === detectedIndices[i]) opt.selected = true;
+                            sel.appendChild(opt);
+                        });
                     });
 
                     DndcState.loadedData = { parsed, headers };
@@ -223,9 +227,14 @@ function initDndcHplcSection() {
 
                     selects.forEach((selId, i) => {
                         const sel = document.getElementById(selId);
-                        sel.innerHTML = parsed.headers.map((h, idx) =>
-                            `<option value="${idx}" ${idx === detectedIndices[i] ? 'selected' : ''}>${h}</option>`
-                        ).join('');
+                        sel.innerHTML = '';
+                        parsed.headers.forEach((h, idx) => {
+                            const opt = document.createElement('option');
+                            opt.value = idx;
+                            opt.textContent = h;
+                            if (idx === detectedIndices[i]) opt.selected = true;
+                            sel.appendChild(opt);
+                        });
                     });
 
                     DndcState.loadedData = { parsed, headers: parsed.headers };
@@ -315,7 +324,7 @@ function displayHplcDndcResults(result, params) {
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i></div>
-                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dnDc)} <span class="stat-unit">mL/g</span></div>
+                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dndc)} <span class="stat-unit">mL/g</span></div>
             </div>
         </div>
         <div class="result-grid">
@@ -651,40 +660,42 @@ function initDndcSliceSection() {
 
 function displaySliceResults(result) {
     const resultsDiv = document.getElementById('sliceDndcResults');
+    const fit = result.fitResult;
+    const rSquared = fit ? fit.rSquared : 0;
 
-    const r2Quality = result.rSquared >= 0.999 ? '優良' :
-        result.rSquared >= 0.99 ? '良好' :
-        result.rSquared >= 0.95 ? '可接受' : '偏低';
-    const r2Class = result.rSquared >= 0.99 ? 'alert-success' :
-        result.rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
+    const r2Quality = rSquared >= 0.999 ? '優良' :
+        rSquared >= 0.99 ? '良好' :
+        rSquared >= 0.95 ? '可接受' : '偏低';
+    const r2Class = rSquared >= 0.99 ? 'alert-success' :
+        rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
     resultsDiv.innerHTML = `
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
-                <div class="stat-value" style="font-size: 1.75rem;">${result.dnDc.toFixed(4)} <span class="stat-unit">mL/g</span></div>
+                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dndc)} <span class="stat-unit">mL/g</span></div>
             </div>
         </div>
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label"><i>R</i>²</div>
-                <div class="result-value">${result.rSquared.toFixed(6)}</div>
+                <div class="result-value">${rSquared.toFixed(6)}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">截距</div>
-                <div class="result-value">${result.intercept.toExponential(4)}</div>
+                <div class="result-value">${fit ? fit.intercept.toExponential(4) : '-'}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">標準誤差</div>
-                <div class="result-value">${result.stdError.toExponential(4)}</div>
+                <div class="result-value">${fit ? fit.stdError.toExponential(4) : '-'}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">有效切片數</div>
-                <div class="result-value">${result.nSlices}</div>
+                <div class="result-value">${result.sliceCount}</div>
             </div>
         </div>
         <div class="alert ${r2Class} mt-md">
-            擬合品質：${r2Quality} (<i>R</i>² ${result.rSquared >= 0.999 ? '≥' : result.rSquared >= 0.99 ? '≥' : '<'} ${result.rSquared >= 0.999 ? '0.999' : result.rSquared >= 0.99 ? '0.99' : '0.95'})
+            擬合品質：${r2Quality} (<i>R</i>² ${rSquared >= 0.999 ? '≥' : rSquared >= 0.99 ? '≥' : '<'} ${rSquared >= 0.999 ? '0.999' : rSquared >= 0.99 ? '0.99' : '0.95'})
         </div>
     `;
 
@@ -697,7 +708,7 @@ function displaySliceResults(result) {
     }
 
     DndcState.charts.sliceFit = DndcCharts.createLinearFitChart(
-        'sliceDndcChart', result.concentrations, result.riValues, result.fitResult,
+        'sliceDndcChart', result.sliceConcentrations, result.sliceRiValues, result.fitResult,
         { xLabel: 'Concentration (g/mL)', yLabel: 'Δn (RIU)' }
     );
 }
@@ -1067,10 +1078,16 @@ function formatDndc(value) {
     return value.toExponential(4);
 }
 
+function escapeHtmlDndc(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 function showDndcAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
     if (container) {
-        container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+        container.innerHTML = `<div class="alert alert-${type}">${escapeHtmlDndc(message)}</div>`;
     }
 }
 

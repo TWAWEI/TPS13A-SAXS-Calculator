@@ -72,8 +72,12 @@ function calculateTheoreticalI0(mw, concentration, partialSpecificVolume = 0.73)
 
     // 簡化使用經驗公式:
     // 對於蛋白質: I(0)/c ≈ MW × k, where k ≈ 7.8e-6 cm⁻¹/(mg/mL × Da)
-    // 這個 k 值來自標準蛋白質校正
-    const k_protein = 7.8e-6;  // cm⁻¹/(mg/mL × Da) - 經驗常數
+    // 這個 k 值來自標準蛋白質校正 (假設 vbar ≈ 0.73 cm³/g)
+    // 若 vbar 偏離 0.73，用 Δρ² 比值修正:
+    // k_corrected = k_ref × (Δρ_actual / Δρ_ref)² × (v_actual / v_ref)²
+    const vbar_ref = 0.73;
+    const k_ref = 7.8e-6;  // cm⁻¹/(mg/mL × Da) - 經驗常數 at vbar=0.73
+    const k_protein = k_ref * Math.pow(vbar / vbar_ref, 2);
 
     const theoreticalI0 = concentration * mw * k_protein;
 
@@ -100,7 +104,7 @@ function calculateTheoreticalI0(mw, concentration, partialSpecificVolume = 0.73)
  * @returns {object} 理論 Rg 計算結果
  * 
  * 經驗公式:
- *   球狀蛋白質 (globular): Rg = 0.77 × MW^0.37 (最常用, 文獻公式)
+ *   球狀蛋白質 (globular): Rg = 0.66 × MW^0.395 (Receveur-Bréchot et al. 2012)
  *   展開蛋白質 (unfolded): Rg = 2.54 × MW^0.522
  *   本質無序蛋白 (IDP): Rg = 2.49 × MW^0.509
  * 
@@ -117,10 +121,10 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
 
     switch (proteinType.toLowerCase()) {
         case 'globular':
-            // Flory-Kratky for globular proteins
-            coefficient = 0.77;
-            exponent = 0.37;
-            formula = 'Rg = 0.77 × MW^0.37';
+            // Guinier (1939) / Receveur-Bréchot et al. (2012)
+            coefficient = 0.66;
+            exponent = 0.395;
+            formula = 'Rg = 0.66 × MW^0.395';
             break;
         case 'unfolded':
             // For chemically unfolded proteins
@@ -135,9 +139,9 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
             formula = 'Rg = 2.49 × MW^0.509';
             break;
         default:
-            coefficient = 0.77;
-            exponent = 0.37;
-            formula = 'Rg = 0.77 × MW^0.37';
+            coefficient = 0.66;
+            exponent = 0.395;
+            formula = 'Rg = 0.66 × MW^0.395';
     }
 
     Rg = coefficient * Math.pow(mw, exponent);
@@ -418,8 +422,9 @@ function calculateConcentrationFromUV(absorbance, epsilon, pathLength, mw) {
     // A = ε × c × l
     // c (M) = A / (ε × l)
     const concentrationM = absorbance / (epsilon * pathLength);
-    // 轉換為 mg/mL
-    return concentrationM * mw / 1000;
+    // 轉換為 mg/mL: c(mg/mL) = c(M) × MW(Da) / 1000(g→mg cancelled by L→mL)
+    // ε 單位 M⁻¹cm⁻¹, c(M) × MW(g/mol) = g/L = mg/mL
+    return concentrationM * mw;
 }
 
 /**

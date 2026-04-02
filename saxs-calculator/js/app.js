@@ -35,19 +35,50 @@ function initDndcLock() {
         return;
     }
 
-    unlockBtn.addEventListener('click', async () => {
+    unlockBtn.addEventListener('click', () => {
         if (AppState.dndcUnlocked) return;
 
-        const pwd = prompt('請輸入 dn/dc 工具密碼：');
-        if (!pwd) return;
+        const modal = document.getElementById('dndcPasswordModal');
+        const input = document.getElementById('dndcPasswordInput');
+        const errorDiv = document.getElementById('dndcPasswordError');
+        const submitBtn = document.getElementById('dndcPasswordSubmit');
+        const cancelBtn = document.getElementById('dndcPasswordCancel');
 
-        const hash = await sha256(pwd);
-        if (hash === DNDC_HASH) {
-            unlockDndc();
-            sessionStorage.setItem('dndcUnlocked', 'true');
-        } else {
-            alert('密碼錯誤');
-        }
+        modal.classList.remove('hidden');
+        input.value = '';
+        errorDiv.classList.add('hidden');
+        input.focus();
+
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            input.value = '';
+        };
+
+        const handleSubmit = async () => {
+            const pwd = input.value;
+            if (!pwd) return;
+
+            const hash = await sha256(pwd);
+            if (hash === DNDC_HASH) {
+                cleanup();
+                unlockDndc();
+                sessionStorage.setItem('dndcUnlocked', 'true');
+            } else {
+                errorDiv.classList.remove('hidden');
+                input.value = '';
+                input.focus();
+            }
+        };
+
+        submitBtn.onclick = handleSubmit;
+        cancelBtn.onclick = cleanup;
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') handleSubmit();
+            if (e.key === 'Escape') cleanup();
+        };
+        modal.onclick = (e) => {
+            if (e.target === modal) cleanup();
+        };
     });
 }
 
@@ -56,8 +87,10 @@ function unlockDndc() {
     const navItems = document.getElementById('dndcNavItems');
     const unlockBtn = document.getElementById('dndcNavUnlock');
     if (navItems) navItems.classList.remove('hidden');
-    if (unlockBtn) unlockBtn.textContent = '🔓 dn/dc 工具';
-    unlockBtn.style.cursor = 'default';
+    if (unlockBtn) {
+        unlockBtn.textContent = '🔓 dn/dc 工具';
+        unlockBtn.style.cursor = 'default';
+    }
 }
 
 // ========================
@@ -439,6 +472,7 @@ function initSAXSSection() {
         const xrayEnergy = parseFloat(document.getElementById('xrayEnergy').value);
         const i0Guinier = parseFloat(document.getElementById('i0Guinier').value);
         const rgGuinier = parseFloat(document.getElementById('rgGuinier').value);
+        const guinierQmax = parseFloat(document.getElementById('guinierQmax').value);
         const i0Pr = parseFloat(document.getElementById('i0Pr').value);
         const rgPr = parseFloat(document.getElementById('rgPr').value);
         const dmax = parseFloat(document.getElementById('dmax').value);
@@ -477,6 +511,7 @@ function initSAXSSection() {
             xrayEnergy,
             i0Guinier,
             rgGuinier,
+            guinierQmax,
             i0Pr,
             rgPr,
             dmax,
@@ -628,6 +663,20 @@ function displaySAXSResults(data) {
                 <div class="result-value">${isNaN(data.rgGuinier) ? '-' : data.rgGuinier.toFixed(2)} <span style="font-size: 0.75rem;">Å</span></div>
             </div>
         </div>
+        ${(() => {
+            if (!isNaN(data.guinierQmax) && !isNaN(data.rgGuinier) && data.guinierQmax > 0 && data.rgGuinier > 0) {
+                const qRg = data.guinierQmax * data.rgGuinier;
+                if (qRg > 1.3) {
+                    return `<div class="alert alert-warning" style="margin-top: 0.5rem;">
+                        ⚠️ <i>q</i><sub>max</sub> × <i>R</i><sub>g</sub> = ${qRg.toFixed(2)} > 1.3 — Guinier 擬合可能不可靠，建議降低 <i>q</i><sub>max</sub>
+                    </div>`;
+                }
+                return `<div class="alert alert-success" style="margin-top: 0.5rem;">
+                    ✓ <i>q</i><sub>max</sub> × <i>R</i><sub>g</sub> = ${qRg.toFixed(2)} ≤ 1.3 — Guinier 擬合範圍有效
+                </div>`;
+            }
+            return '';
+        })()}
 
         <div class="section-divider"><span><i>P</i>(<i>r</i>) 分析</span></div>
 
@@ -790,7 +839,6 @@ function displayHPLCSAXSResults(result, suggested) {
         }).join('');
     }
 
-    console.log('HPLC-SAXS Settings calculated:', result);
 }
 
 function updateSuggestedValues(suggested) {
@@ -1311,25 +1359,48 @@ function initDetectorSection() {
 // ========================
 function initIUCrSection() {
     const copyBtn = document.getElementById('copyIUCrTable');
+    if (!copyBtn) return;
 
-    copyBtn.addEventListener('click', () => {
+    copyBtn.addEventListener('click', async () => {
         const table = document.getElementById('iucrTable');
-        const range = document.createRange();
-        range.selectNode(table);
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-
+        if (!table) return;
         try {
-            document.execCommand('copy');
+            // Modern Clipboard API: copy table as both HTML and plain text
+            const html = table.outerHTML;
+            const text = table.innerText;
+            if (navigator.clipboard && navigator.clipboard.write) {
+                const blob = new Blob([html], { type: 'text/html' });
+                const textBlob = new Blob([text], { type: 'text/plain' });
+                await navigator.clipboard.write([
+                    new ClipboardItem({ 'text/html': blob, 'text/plain': textBlob })
+                ]);
+            } else {
+                await navigator.clipboard.writeText(text);
+            }
             copyBtn.textContent = '✓ 已複製';
             setTimeout(() => {
                 copyBtn.textContent = '📋 複製表格';
             }, 2000);
         } catch (err) {
-            console.error('Copy failed:', err);
+            // Fallback for older browsers
+            const range = document.createRange();
+            range.selectNode(table);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            try {
+                document.execCommand('copy');
+                copyBtn.textContent = '✓ 已複製';
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 複製表格';
+                }, 2000);
+            } catch (fallbackErr) {
+                copyBtn.textContent = '複製失敗';
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 複製表格';
+                }, 2000);
+            }
+            window.getSelection().removeAllRanges();
         }
-
-        window.getSelection().removeAllRanges();
     });
 }
 
@@ -1369,7 +1440,8 @@ function updateIUCrTable() {
 // ========================
 function showAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
-    container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    if (!container) return;
+    container.innerHTML = `<div class="alert alert-${type}">${escapeHtml(message)}</div>`;
 }
 
 function escapeHtml(text) {

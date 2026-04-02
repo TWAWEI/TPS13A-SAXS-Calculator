@@ -20,12 +20,18 @@ async function _ensureLibraries() {
 
     // Load pako if not present
     if (typeof pako === 'undefined') {
-        await _loadScript('https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js');
+        await _loadScript(
+            'https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js',
+            'sha384-rNlaE5fs9dGIjmxWDALQh/RBAaGRYT5ChrzHo6tRfgrZ36iRFAiquP5g41Jsv+0j'
+        );
     }
 
     // Load sql.js if not present
     if (typeof initSqlJs === 'undefined') {
-        await _loadScript('https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js');
+        await _loadScript(
+            'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js',
+            'sha384-8D3Rsfo535FqoC1pHCCQMrNf75UgzyoG/HQm9zOzITRrz3QKzecc2E7JXKGCXoWu'
+        );
     }
 
     _SQL = await initSqlJs({
@@ -35,10 +41,14 @@ async function _ensureLibraries() {
     _sqlJsLoaded = true;
 }
 
-function _loadScript(src) {
+function _loadScript(src, integrity) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = src;
+        if (integrity) {
+            script.integrity = integrity;
+            script.crossOrigin = 'anonymous';
+        }
         script.onload = resolve;
         script.onerror = () => reject(new Error(`Failed to load ${src}`));
         document.head.appendChild(script);
