@@ -6,7 +6,10 @@
 // 全域狀態：儲存已載入的色譜數據供多個頁面共用
 const DndcState = {
     loadedData: null,   // { time, uv, ri, headers }
-    charts: {}
+    charts: {},
+    lastHplcResult: null,
+    lastHplcParams: null,
+    lastSliceResult: null
 };
 
 // ========================
@@ -252,6 +255,55 @@ function initDndcHplcSection() {
         });
     }
 
+    // Auto-detect peak button
+    const autoDetectBtn = document.getElementById('autoDetectPeak');
+    if (autoDetectBtn) {
+        autoDetectBtn.addEventListener('click', () => {
+            if (!DndcState.loadedData || !DndcState.loadedData.ri) {
+                showDndcAlert('hplcDndcResults', 'error', '請先載入數據檔案');
+                return;
+            }
+
+            const time = DndcState.loadedData.time;
+            const ri = DndcState.loadedData.ri;
+
+            // Find peak: locate max RI signal
+            let maxVal = -Infinity;
+            let maxIdx = 0;
+            for (let i = 0; i < ri.length; i++) {
+                if (Math.abs(ri[i]) > maxVal) {
+                    maxVal = Math.abs(ri[i]);
+                    maxIdx = i;
+                }
+            }
+
+            // Find peak boundaries: walk left/right from max until signal drops below 5% of max
+            const threshold = maxVal * 0.05;
+            let leftIdx = maxIdx;
+            while (leftIdx > 0 && Math.abs(ri[leftIdx]) > threshold) leftIdx--;
+            let rightIdx = maxIdx;
+            while (rightIdx < ri.length - 1 && Math.abs(ri[rightIdx]) > threshold) rightIdx++;
+
+            const peakStart = time[leftIdx];
+            const peakEnd = time[rightIdx];
+
+            // Auto baseline windows
+            const [bl1Start, bl1End, bl2Start, bl2End] =
+                DndcCalculations.autoBaselineWindows(time, peakStart, peakEnd);
+
+            // Fill in the form fields
+            document.getElementById('dndcPeakStart').value = peakStart.toFixed(2);
+            document.getElementById('dndcPeakEnd').value = peakEnd.toFixed(2);
+            document.getElementById('dndcBl1Start').value = bl1Start.toFixed(2);
+            document.getElementById('dndcBl1End').value = bl1End.toFixed(2);
+            document.getElementById('dndcBl2Start').value = bl2Start.toFixed(2);
+            document.getElementById('dndcBl2End').value = bl2End.toFixed(2);
+
+            showDndcAlert('hplcDndcResults', 'success',
+                `自動偵測完成: Peak ${peakStart.toFixed(1)}–${peakEnd.toFixed(1)} min`);
+        });
+    }
+
     if (calcBtn) {
         calcBtn.addEventListener('click', () => {
             if (!DndcState.loadedData) {
@@ -288,9 +340,9 @@ function initDndcHplcSection() {
                 epsilon: parseFloat(document.getElementById('dndcEpsilon').value),
                 pathLen: parseFloat(document.getElementById('dndcPathLen').value),
                 riFactor: parseFloat(document.getElementById('dndcRiFactor').value),
-                riDelay: 0,
+                riDelay: parseFloat(document.getElementById('dndcRiDelay').value) || 0,
                 baselineMode: document.getElementById('dndcBaselineMode').value,
-                peakMode: 'area',
+                peakMode: document.getElementById('dndcPeakMode').value || 'area',
                 manualC: parseFloat(document.getElementById('dndcManualC').value) || null,
                 autoAlign: document.getElementById('dndcAutoAlign').checked,
                 decimalPlaces: 4
@@ -305,8 +357,12 @@ function initDndcHplcSection() {
 
             try {
                 const result = DndcCalculations.computeHplcDndc(time, uv, ri, params);
+                DndcState.lastHplcResult = result;
+                DndcState.lastHplcParams = params;
                 displayHplcDndcResults(result, params);
                 displayChromatogram(time, uv, ri, params);
+                const hplcExport = document.getElementById('hplcExportBtns');
+                if (hplcExport) hplcExport.classList.remove('hidden');
             } catch (err) {
                 showDndcAlert('hplcDndcResults', 'error', `計算錯誤: ${err.message}`);
             }
@@ -554,6 +610,8 @@ function initDndcMultiSection() {
             try {
                 const result = DndcCalculations.linearFit(concentrations, riValues);
                 displayMultiFitResults(result, concentrations, riValues);
+                const multiExport = document.getElementById('multiExportBtns');
+                if (multiExport) multiExport.classList.remove('hidden');
             } catch (err) {
                 showDndcAlert('multiDndcResults', 'error', `擬合錯誤: ${err.message}`);
             }
@@ -640,9 +698,9 @@ function initDndcSliceSection() {
                 epsilon: parseFloat(document.getElementById('dndcEpsilon').value),
                 pathLen: parseFloat(document.getElementById('dndcPathLen').value),
                 riFactor: parseFloat(document.getElementById('dndcRiFactor').value),
-                riDelay: 0,
+                riDelay: parseFloat(document.getElementById('dndcRiDelay').value) || 0,
                 baselineMode: document.getElementById('dndcBaselineMode').value,
-                peakMode: 'area',
+                peakMode: document.getElementById('dndcPeakMode').value || 'area',
                 manualC: null,
                 autoAlign: document.getElementById('dndcAutoAlign').checked,
                 decimalPlaces: 4
@@ -650,7 +708,10 @@ function initDndcSliceSection() {
 
             try {
                 const result = DndcCalculations.computeSliceDndc(time, uv, ri, params, minUvFraction);
+                DndcState.lastSliceResult = result;
                 displaySliceResults(result);
+                const sliceExport = document.getElementById('sliceExportBtns');
+                if (sliceExport) sliceExport.classList.remove('hidden');
             } catch (err) {
                 showDndcAlert('sliceDndcResults', 'error', `分析錯誤: ${err.message}`);
             }
@@ -944,6 +1005,8 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
             const result = DndcCalculations.linearFit(masses, areas);
             // slope = dn/dc (因為 x = mass, y = RI_area_volume = dn/dc × mass)
             displayMultiFitResults(result, masses, areas);
+            const multiExport = document.getElementById('multiExportBtns');
+            if (multiExport) multiExport.classList.remove('hidden');
         } catch (err) {
             showDndcAlert('multiDndcResults', 'error', `擬合錯誤: ${err.message}`);
         }
@@ -1091,5 +1154,113 @@ function showDndcAlert(containerId, type, message) {
     }
 }
 
+// ========================
+// 匯出功能
+// ========================
+function downloadCsv(filename, csvContent) {
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function downloadChartPng(chart, filename) {
+    if (!chart) return;
+    const link = document.createElement('a');
+    link.href = chart.toBase64Image('image/png', 1);
+    link.download = filename;
+    link.click();
+}
+
+function initExportButtons() {
+    // HPLC CSV export
+    const exportHplcCsv = document.getElementById('exportHplcCsv');
+    if (exportHplcCsv) {
+        exportHplcCsv.addEventListener('click', () => {
+            const r = DndcState.lastHplcResult;
+            const p = DndcState.lastHplcParams;
+            if (!r) return;
+
+            const lines = [
+                'Parameter,Value',
+                `dn/dc,${r.dndc}`,
+                `RI Peak Value,${r.riPeakValue}`,
+                `RI (corrected),${r.riValue}`,
+                `Concentration (mg/mL),${r.concentration}`,
+                `Peak Mode,${r.peakMode}`,
+                `Baseline Mode,${r.baselineMode}`,
+                `Alignment Lag,${r.alignmentInfo ? r.alignmentInfo.lag : 'N/A'}`,
+                `Epsilon,${p.epsilon}`,
+                `Path Length,${p.pathLen}`,
+                `RI Factor,${p.riFactor}`,
+                `RI Delay,${p.riDelay}`,
+                `Peak Range,${p.peakStart}-${p.peakEnd}`,
+                `Baseline 1,${p.bl1Start}-${p.bl1End}`,
+                `Baseline 2,${p.bl2Start}-${p.bl2End}`
+            ];
+            downloadCsv('hplc_dndc_result.csv', lines.join('\n'));
+        });
+    }
+
+    // HPLC chart export
+    const exportHplcChart = document.getElementById('exportHplcChart');
+    if (exportHplcChart) {
+        exportHplcChart.addEventListener('click', () => {
+            downloadChartPng(DndcState.charts.chromatogram, 'hplc_chromatogram.png');
+        });
+    }
+
+    // Multi-injection CSV export
+    const exportMultiCsv = document.getElementById('exportMultiCsv');
+    if (exportMultiCsv) {
+        exportMultiCsv.addEventListener('click', () => {
+            const table = document.getElementById('multiDndcTable');
+            if (!table) return;
+
+            const rows = table.querySelectorAll('tbody tr');
+            const lines = ['Concentration (mg/mL),RI Area,dn/dc (individual)'];
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td input, td');
+                const conc = row.querySelector('input[type="number"]:nth-of-type(1)')?.value || '';
+                const ri = row.querySelector('input[type="number"]:nth-of-type(2)')?.value || '';
+                if (conc && ri) lines.push(`${conc},${ri}`);
+            });
+            downloadCsv('multi_injection_dndc.csv', lines.join('\n'));
+        });
+    }
+
+    // Slice CSV export
+    const exportSliceCsv = document.getElementById('exportSliceCsv');
+    if (exportSliceCsv) {
+        exportSliceCsv.addEventListener('click', () => {
+            const r = DndcState.lastSliceResult;
+            if (!r) return;
+
+            const lines = ['Time (min),Concentration (g/mL),RI (RIU),dn/dc (slice)'];
+            for (let i = 0; i < r.sliceConcentrations.length; i++) {
+                lines.push([
+                    r.sliceTimes[i].toFixed(4),
+                    r.sliceConcentrations[i].toExponential(6),
+                    r.sliceRiValues[i].toExponential(6),
+                    r.sliceDndcValues[i].toFixed(6)
+                ].join(','));
+            }
+            lines.push('');
+            lines.push(`Overall dn/dc,${r.dndc}`);
+            if (r.fitResult) {
+                lines.push(`R-squared,${r.fitResult.rSquared}`);
+                lines.push(`Intercept,${r.fitResult.intercept}`);
+                lines.push(`Std Error,${r.fitResult.stdError}`);
+            }
+            downloadCsv('slice_dndc_result.csv', lines.join('\n'));
+        });
+    }
+}
+
 // 在 DOMContentLoaded 時初始化
-document.addEventListener('DOMContentLoaded', initDndcSections);
+document.addEventListener('DOMContentLoaded', () => {
+    initDndcSections();
+    initExportButtons();
+});
