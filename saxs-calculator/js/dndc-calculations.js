@@ -237,6 +237,10 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
         if (bl1Mask[i] || bl2Mask[i]) { combinedIndices.push(i); }
     }
 
+    if (combinedIndices.length === 0) {
+        throw new Error("Baseline windows are empty — no data points in the selected range.");
+    }
+
     if (mode === "const") {
         // Constant baseline: subtract the mean of both windows
         let sum = 0;
@@ -246,6 +250,10 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
     }
 
     // Linear baseline: fit a line through the two window centres
+    if (bl1Indices.length === 0 || bl2Indices.length === 0) {
+        throw new Error("Linear baseline requires both windows to contain data points.");
+    }
+
     const meanOf = (indices, arr) => {
         let s = 0;
         for (const i of indices) { s += arr[i]; }
@@ -257,7 +265,14 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
     const meanT2 = meanOf(bl2Indices, time);
     const meanS2 = meanOf(bl2Indices, signal);
 
-    const slope = (meanS2 - meanS1) / (meanT2 - meanT1);
+    const denom = meanT2 - meanT1;
+    if (denom === 0) {
+        // Baseline windows overlap or identical — fall back to constant baseline
+        const mean = (meanS1 + meanS2) / 2;
+        return signal.map(v => v - mean);
+    }
+
+    const slope = (meanS2 - meanS1) / denom;
     const intercept = meanS1 - slope * meanT1;
 
     return time.map((t, i) => signal[i] - (slope * t + intercept));
@@ -494,6 +509,9 @@ function linearFit(concentrations, refractiveIndices) {
         ssXX += dx * dx;
     }
 
+    if (ssXX === 0) {
+        throw new Error("All concentration values are identical — cannot compute linear fit.");
+    }
     const slope = ssXY / ssXX;
     const intercept = meanY - slope * meanX;
 
