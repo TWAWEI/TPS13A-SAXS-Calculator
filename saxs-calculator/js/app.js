@@ -958,7 +958,7 @@ function displaySampleResults(data) {
             </div>
             <div class="result-item">
                 <div class="result-label">消光係數</div>
-                <div class="result-value">${data.epsilon.toLocaleString()} M⁻¹cm⁻¹</div>
+                <div class="result-value">${data.epsilon.toLocaleString()} M⁻¹ cm⁻¹</div>
             </div>
             <div class="result-item">
                 <div class="result-label">分子量</div>

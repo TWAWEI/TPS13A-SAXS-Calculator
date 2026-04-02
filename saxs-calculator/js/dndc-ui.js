@@ -372,9 +372,13 @@ function initDndcHplcSection() {
 
 function displayHplcDndcResults(result, params) {
     const resultsDiv = document.getElementById('hplcDndcResults');
-    const alignInfo = result.alignmentLag != null
-        ? `<div class="result-item"><div class="result-label">UV-RI 時間偏移</div><div class="result-value">${result.alignmentLag.toFixed(4)} <span style="font-size: 0.75rem;">min</span></div></div>`
+    const alignLag = result.alignmentInfo ? result.alignmentInfo.lag : null;
+    const alignInfo = alignLag != null
+        ? `<div class="result-item"><div class="result-label">UV-RI 時間偏移</div><div class="result-value">${alignLag.toFixed(4)} <span style="font-size: 0.75rem;">min</span></div></div>`
         : '';
+
+    const peakUnit = params.peakMode === 'area' ? 'AU·min' : 'AU';
+    const riUnit = params.peakMode === 'area' ? 'RIU·min' : 'RIU';
 
     resultsDiv.innerHTML = `
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
@@ -389,16 +393,16 @@ function displayHplcDndcResults(result, params) {
                 <div class="result-value">${result.concentration != null ? result.concentration.toFixed(4) : '-'} <span style="font-size: 0.75rem;">mg/mL</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">Δ UV</div>
-                <div class="result-value">${result.deltaUv != null ? result.deltaUv.toFixed(6) : '-'}</div>
+                <div class="result-label">RI peak value</div>
+                <div class="result-value">${result.riPeakValue != null ? result.riPeakValue.toExponential(4) : '-'} <span style="font-size: 0.75rem;">${riUnit}</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">Δ RI</div>
-                <div class="result-value">${result.deltaRi != null ? result.deltaRi.toFixed(6) : '-'}</div>
+                <div class="result-label">RI (corrected)</div>
+                <div class="result-value">${result.riValue != null ? result.riValue.toExponential(4) : '-'} <span style="font-size: 0.75rem;">RIU</span></div>
             </div>
             <div class="result-item">
-                <div class="result-label">RI peak area</div>
-                <div class="result-value">${result.riPeakArea != null ? result.riPeakArea.toFixed(6) : '-'}</div>
+                <div class="result-label">Peak 模式</div>
+                <div class="result-value">${result.peakMode}</div>
             </div>
             ${alignInfo}
         </div>

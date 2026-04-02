@@ -113,7 +113,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 3.8
+                Version 3.9
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" title="收合/展開側邊欄">
                 <span id="sidebarToggleIcon">◀</span>
@@ -646,11 +646,11 @@
                             </div>
 
                             <div class="form-group">
-                                <label class="form-label" for="inputEpsilon">消光係數 <i>ε</i></label>
+                                <label class="form-label" for="inputEpsilon">消光係數 <i>ε</i> (莫耳)</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="inputEpsilon" step="0.1"
-                                        placeholder="自動從蛋白質序列計算">
-                                    <span class="input-unit">M⁻¹cm⁻¹</span>
+                                        placeholder="自動從蛋白質序列計算" title="莫耳消光係數。注意：HPLC dn/dc 頁面使用質量消光係數 mL/(mg·cm)，兩者不可混用">
+                                    <span class="input-unit">M⁻¹ cm⁻¹</span>
                                 </div>
                             </div>
 
@@ -1043,7 +1043,7 @@
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>D<sub>max</sub></td>
+                                        <td><i>D</i><sub>max</sub></td>
                                         <td id="iucr-dmax">-</td>
                                         <td id="iucr-dmax-err">-</td>
                                         <td>Å</td>
