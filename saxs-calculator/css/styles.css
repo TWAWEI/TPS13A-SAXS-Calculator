@@ -64,9 +64,9 @@
     --sidebar-width: 240px;
 
     /* Typography */
-    --font-display: 'Times New Roman', 'BiauKai', '標楷體', serif;
-    --font-body: '標楷體', 'BiauKai', 'DFKai-SB', 'KaiTi', serif;
-    --font-en: 'Times New Roman', Times, serif;
+    --font-display: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
+    --font-body: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
+    --font-en: 'Inter', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
@@ -1334,13 +1334,13 @@ a:hover {
 
 /* ===== IUCr Table Style ===== */
 .iucr-table {
-    font-family: 'Times New Roman', Georgia, serif;
+    font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
     font-size: 0.875rem;
 }
 
 .iucr-table th {
     font-style: italic;
-    font-family: 'Times New Roman', Georgia, serif;
+    font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
 }
 
 /* ===== Reduced Motion ===== */
