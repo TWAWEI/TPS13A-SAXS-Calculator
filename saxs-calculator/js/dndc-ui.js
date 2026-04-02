@@ -511,7 +511,7 @@ function redrawChannelsChart() {
     const scales = {
         x: {
             type: 'linear',
-            title: { display: true, text: 'Time (min)', color: 'rgba(26,26,46,0.7)', font: { family: "'Times New Roman', serif", size: 12, style: 'italic' } },
+            title: { display: true, text: 'Time (min)', color: 'rgba(26,26,46,0.7)', font: { family: "'Inter', sans-serif", size: 12, style: 'italic' } },
             ticks: { color: 'rgba(26,26,46,0.7)', font: { size: 10 } },
             grid: { color: 'rgba(26,26,46,0.08)' }
         }
@@ -521,7 +521,7 @@ function redrawChannelsChart() {
         scales[`y${i}`] = {
             type: 'linear',
             position: i === 0 ? 'left' : 'right',
-            title: { display: i < 2, text: ds.label, color: ds.borderColor, font: { family: "'Times New Roman', serif", size: 11 } },
+            title: { display: i < 2, text: ds.label, color: ds.borderColor, font: { family: "'Inter', sans-serif", size: 11 } },
             ticks: { color: ds.borderColor, font: { size: 9 } },
             grid: { display: i === 0, color: 'rgba(26,26,46,0.06)' }
         };
@@ -536,13 +536,17 @@ function redrawChannelsChart() {
             interaction: { mode: 'nearest', intersect: false },
             plugins: {
                 legend: {
-                    labels: { color: 'rgba(26,26,46,0.7)', font: { family: "'Times New Roman', serif", size: 11 } }
+                    labels: { color: 'rgba(26,26,46,0.7)', font: { family: "'Inter', sans-serif", size: 11 } }
                 },
                 tooltip: {
                     backgroundColor: 'rgba(26,26,46,0.92)',
                     titleColor: '#fff',
                     bodyColor: 'rgba(255,255,255,0.85)',
                     cornerRadius: 4, padding: 8
+                },
+                zoom: {
+                    pan: { enabled: true, mode: 'xy' },
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
                 }
             },
             scales
@@ -1098,7 +1102,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                 legend: {
                     labels: {
                         color: 'rgba(26, 26, 46, 0.7)',
-                        font: { family: "'Times New Roman', serif", size: 12 }
+                        font: { family: "'Inter', sans-serif", size: 12 }
                     }
                 },
                 tooltip: {
@@ -1107,6 +1111,10 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                     bodyColor: 'rgba(255, 255, 255, 0.85)',
                     cornerRadius: 4,
                     padding: 8
+                },
+                zoom: {
+                    pan: { enabled: true, mode: 'xy' },
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' }
                 }
             },
             scales: {
@@ -1116,7 +1124,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                         display: true,
                         text: 'Time (min)',
                         color: 'rgba(26, 26, 46, 0.7)',
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: 'rgba(26, 26, 46, 0.7)', font: { size: 10 } },
                     grid: { color: 'rgba(26, 26, 46, 0.08)' }
@@ -1127,7 +1135,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                         display: true,
                         text: 'dRI (RIU)',
                         color: 'rgba(26, 26, 46, 0.7)',
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: 'rgba(26, 26, 46, 0.7)', font: { size: 10 } },
                     grid: { color: 'rgba(26, 26, 46, 0.08)' }
@@ -1176,6 +1184,17 @@ function downloadChartPng(chart, filename) {
     link.href = chart.toBase64Image('image/png', 1);
     link.download = filename;
     link.click();
+}
+
+function initChartControls() {
+    const resetBtn = document.getElementById('resetChartZoom');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            if (DndcState.charts.chromatogram) {
+                DndcState.charts.chromatogram.resetZoom();
+            }
+        });
+    }
 }
 
 function initExportButtons() {
@@ -1267,4 +1286,5 @@ function initExportButtons() {
 document.addEventListener('DOMContentLoaded', () => {
     initDndcSections();
     initExportButtons();
+    initChartControls();
 });

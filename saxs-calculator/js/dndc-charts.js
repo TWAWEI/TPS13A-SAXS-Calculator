@@ -21,7 +21,7 @@ const dndcChartDefaults = {
         legend: {
             labels: {
                 color: DNDC_CHART_COLORS.text,
-                font: { family: "'Times New Roman', serif", size: 12 }
+                font: { family: "'Inter', sans-serif", size: 12 }
             }
         },
         tooltip: {
@@ -32,8 +32,19 @@ const dndcChartDefaults = {
             borderWidth: 1,
             cornerRadius: 4,
             padding: 8,
-            titleFont: { family: "'Times New Roman', serif", size: 12 },
+            titleFont: { family: "'Inter', sans-serif", size: 12 },
             bodyFont: { family: "'JetBrains Mono', monospace", size: 11 }
+        },
+        zoom: {
+            pan: {
+                enabled: true,
+                mode: 'xy'
+            },
+            zoom: {
+                wheel: { enabled: true },
+                pinch: { enabled: true },
+                mode: 'xy'
+            }
         }
     }
 };
@@ -96,7 +107,7 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
                         display: true,
                         text: 'Time (min)',
                         color: DNDC_CHART_COLORS.text,
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: DNDC_CHART_COLORS.text, font: { size: 10 } },
                     grid: { color: DNDC_CHART_COLORS.grid }
@@ -108,7 +119,7 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
                         display: true,
                         text: 'UV (AU)',
                         color: DNDC_CHART_COLORS.uv,
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: DNDC_CHART_COLORS.uv, font: { size: 10 } },
                     grid: { color: DNDC_CHART_COLORS.grid }
@@ -120,7 +131,7 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
                         display: true,
                         text: 'dRI (RIU)',
                         color: DNDC_CHART_COLORS.ri,
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: DNDC_CHART_COLORS.ri, font: { size: 10 } },
                     grid: { display: false }
@@ -188,7 +199,7 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
                         display: true,
                         text: xLabel,
                         color: DNDC_CHART_COLORS.text,
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: DNDC_CHART_COLORS.text, font: { size: 10 } },
                     grid: { color: DNDC_CHART_COLORS.grid }
@@ -199,7 +210,7 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
                         display: true,
                         text: yLabel,
                         color: DNDC_CHART_COLORS.text,
-                        font: { family: "'Times New Roman', serif", size: 12, style: 'italic' }
+                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: DNDC_CHART_COLORS.text, font: { size: 10 } },
                     grid: { color: DNDC_CHART_COLORS.grid }
