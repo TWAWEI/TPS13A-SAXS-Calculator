@@ -113,7 +113,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 3.4
+                Version 3.5
             </div>
         </aside>
 
@@ -1434,6 +1434,12 @@
 
                             <div class="section-divider"><span>峰與基線範圍</span></div>
 
+                            <div style="margin-bottom: 0.5rem;">
+                                <button class="btn btn-secondary btn-sm" id="autoDetectPeak" title="根據 RI 信號自動偵測 peak 範圍並設定 baseline windows">
+                                    🔍 自動偵測 Peak
+                                </button>
+                            </div>
+
                             <div class="grid grid-2">
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcPeakStart">Peak start</label>
@@ -1489,14 +1495,14 @@
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcEpsilon">消光係數 <i>ε</i></label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="dndcEpsilon" value="0.667" step="0.001">
+                                        <input type="number" class="form-input" id="dndcEpsilon" value="0.667" step="0.001" title="質量消光係數 (mass extinction coefficient)。BSA@280nm ≈ 0.667 mL/(mg·cm)。可從 ProtParam 或蛋白質分析頁面取得">
                                         <span class="input-unit">mL/(mg·cm)</span>
                                     </div>
                                 </div>
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcPathLen">光徑長度</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="dndcPathLen" value="1" step="0.01">
+                                        <input type="number" class="form-input" id="dndcPathLen" value="1" step="0.01" title="UV 偵測器流通池光徑。標準 HPLC: 1 cm, 微量池: 0.2-0.5 cm">
                                         <span class="input-unit">cm</span>
                                     </div>
                                 </div>
@@ -1505,10 +1511,19 @@
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcRiFactor">RI 校正因子 (<i>K</i><sub>RI</sub>)</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="dndcRiFactor" value="1.0" step="0.001">
+                                        <input type="number" class="form-input" id="dndcRiFactor" value="1.0" step="0.001" title="RI 偵測器校正常數。若 RI 已校正為 RIU 則設為 1.0">
                                         <span class="input-unit"></span>
                                     </div>
                                 </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcRiDelay">RI 延遲時間</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcRiDelay" value="0" step="0.01" title="RI 偵測器相對於 UV 的時間延遲。正值表示 RI 信號晚於 UV">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="grid grid-2">
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcBaselineMode">基線模式</label>
                                     <select class="form-select" id="dndcBaselineMode">
@@ -1516,11 +1531,19 @@
                                         <option value="linear">線性 (Linear)</option>
                                     </select>
                                 </div>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="dndcPeakMode">Peak 量測模式</label>
+                                    <select class="form-select" id="dndcPeakMode" title="Height: 峰高值。Area: 梯形積分面積。SPI: 峰中點內插值">
+                                        <option value="area">面積 (Area)</option>
+                                        <option value="height">峰高 (Height)</option>
+                                        <option value="spi">SPI</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="form-group form-group--compact">
                                 <label class="form-label form-label--sm" for="dndcManualC">手動濃度（留空則從 UV 計算）</label>
                                 <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcManualC" step="0.001" placeholder="自動計算">
+                                    <input type="number" class="form-input" id="dndcManualC" step="0.001" placeholder="自動計算" title="若檔案無 UV 通道或 UV 不可靠，在此輸入已知濃度。留空則自動從 UV 信號和消光係數計算">
                                     <span class="input-unit">mg/mL</span>
                                 </div>
                             </div>
@@ -1539,8 +1562,12 @@
                     </div>
 
                     <div class="card">
-                        <div class="card-header">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h3 class="card-title">📊 計算結果</h3>
+                            <div class="export-buttons hidden" id="hplcExportBtns">
+                                <button class="btn btn-secondary btn-sm" id="exportHplcCsv" title="匯出結果為 CSV">📥 CSV</button>
+                                <button class="btn btn-secondary btn-sm" id="exportHplcChart" title="匯出色譜圖為 PNG">🖼 圖表</button>
+                            </div>
                         </div>
                         <div class="card-body" id="hplcDndcResults">
                             <div class="alert alert-info">
@@ -1675,8 +1702,11 @@
                     </div>
 
                     <div class="card">
-                        <div class="card-header">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h3 class="card-title">📊 擬合結果</h3>
+                            <div class="export-buttons hidden" id="multiExportBtns">
+                                <button class="btn btn-secondary btn-sm" id="exportMultiCsv" title="匯出擬合資料為 CSV">📥 CSV</button>
+                            </div>
                         </div>
                         <div class="card-body" id="multiDndcResults">
                             <div class="alert alert-info">
@@ -1726,8 +1756,11 @@
                     </div>
 
                     <div class="card">
-                        <div class="card-header">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h3 class="card-title">📊 分析結果</h3>
+                            <div class="export-buttons hidden" id="sliceExportBtns">
+                                <button class="btn btn-secondary btn-sm" id="exportSliceCsv" title="匯出切片資料為 CSV">📥 CSV</button>
+                            </div>
                         </div>
                         <div class="card-body" id="sliceDndcResults">
                             <div class="alert alert-info">
