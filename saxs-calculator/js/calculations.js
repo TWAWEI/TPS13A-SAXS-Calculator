@@ -802,10 +802,12 @@ function calculateSuggestedParams(peakCenter3ul, peakFWHM3ul) {
  * @param {string} inputType - 'mw' 或 'rg'，指定輸入類型
  * @returns {object} 偵測器距離計算結果
  * 
- * 公式說明 (基於 Excel 數據擬合):
- *   - Rg = 0.6914 × MW^(1/3) (基於 BSA: MW=66500, Rg=28)
+ * 公式說明 (基於 TPS13A 實測數據擬合，用於偵測器距離估算):
+ *   - Rg = 0.6914 × MW^(1/3) (BSA 校正，球狀蛋白 cube-root scaling)
  *   - qmin = 0.224 / Rg (基於 BSA: Rg=28, qmin=0.008)
  *   - 9M SD = 67.857 × Rg (基於 BSA: Rg=28, SD=1900)
+ *   注意：此處 Rg 公式與 SAXS 理論頁面的 Rg = 0.66 × MW^0.395 不同，
+ *   因為本函數是專門為偵測器距離估算而用 TPS13A 實測數據校正的。
  * 
  * 參考數據 (from Excel):
  *   BSA monomer: MW=66500, Rg=28 Å, qmin=0.008 Å⁻¹, 9M SD=1900 mm
