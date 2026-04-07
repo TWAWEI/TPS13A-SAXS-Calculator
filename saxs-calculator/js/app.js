@@ -354,7 +354,7 @@ function displayProteinStats(result) {
 
     statsDiv.innerHTML = `
         <div class="stat-card">
-            <div class="stat-icon primary">⚖️</div>
+            <div class="stat-icon primary"></div>
             <div class="stat-content">
                 <div class="stat-label">分子量</div>
                 <div class="stat-value">${result.molecularWeightKDa.toFixed(2)}<span class="stat-unit">kDa</span></div>
@@ -362,21 +362,21 @@ function displayProteinStats(result) {
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon success">📏</div>
+            <div class="stat-icon success"></div>
             <div class="stat-content">
                 <div class="stat-label">序列長度</div>
                 <div class="stat-value">${result.length}<span class="stat-unit">殘基</span></div>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon warning">📦</div>
+            <div class="stat-icon warning"></div>
             <div class="stat-content">
                 <div class="stat-label">乾燥體積</div>
                 <div class="stat-value">${(result.dryVolume / 1000).toFixed(1)}<span class="stat-unit">×10³ Å³</span></div>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon danger">🔬</div>
+            <div class="stat-icon danger"></div>
             <div class="stat-content">
                 <div class="stat-label">消光係數 <i>ε</i></div>
                 <div class="stat-value">${(result.extinction.epsilon / 1000).toFixed(1)}<span class="stat-unit">×10³</span></div>
@@ -1401,7 +1401,7 @@ function initIUCrSection() {
             }
             copyBtn.textContent = '✓ 已複製';
             setTimeout(() => {
-                copyBtn.textContent = '📋 複製表格';
+                copyBtn.textContent = '複製表格';
             }, 2000);
         } catch (err) {
             // Fallback for older browsers
@@ -1413,12 +1413,12 @@ function initIUCrSection() {
                 document.execCommand('copy');
                 copyBtn.textContent = '✓ 已複製';
                 setTimeout(() => {
-                    copyBtn.textContent = '📋 複製表格';
+                    copyBtn.textContent = '複製表格';
                 }, 2000);
             } catch (fallbackErr) {
                 copyBtn.textContent = '複製失敗';
                 setTimeout(() => {
-                    copyBtn.textContent = '📋 複製表格';
+                    copyBtn.textContent = '複製表格';
                 }, 2000);
             }
             window.getSelection().removeAllRanges();
