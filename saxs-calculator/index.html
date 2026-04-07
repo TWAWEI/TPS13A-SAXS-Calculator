@@ -33,7 +33,6 @@
         <aside class="sidebar" id="sidebar" aria-label="主導航">
             <div class="sidebar-header">
                 <div class="logo">
-                    <div class="logo-icon">🔬</div>
                     <span class="logo-text">TPS13A SAXS</span>
                 </div>
             </div>
@@ -43,37 +42,30 @@
                     <div class="nav-section-title" id="nav-tools-label">分析工具</div>
 
                     <button class="nav-item active" data-section="protein" aria-current="page">
-                        <span class="nav-item-icon" aria-hidden="true">🧬</span>
                         <span class="nav-item-text">蛋白質分析</span>
                     </button>
 
                     <button class="nav-item" data-section="saxs">
-                        <span class="nav-item-icon" aria-hidden="true">📊</span>
                         <span class="nav-item-text">SAXS 結構參數</span>
                     </button>
 
                     <button class="nav-item" data-section="hplc">
-                        <span class="nav-item-icon" aria-hidden="true">🧪</span>
                         <span class="nav-item-text">HPLC-SAXS 設定</span>
                     </button>
 
                     <button class="nav-item" data-section="sample">
-                        <span class="nav-item-icon" aria-hidden="true">⚗️</span>
                         <span class="nav-item-text">樣品計算</span>
                     </button>
 
                     <button class="nav-item" data-section="mw">
-                        <span class="nav-item-icon" aria-hidden="true">📐</span>
                         <span class="nav-item-text">分子量解析度</span>
                     </button>
 
                     <button class="nav-item" data-section="centrifuge">
-                        <span class="nav-item-icon" aria-hidden="true">⚙️</span>
                         <span class="nav-item-text">離心參數</span>
                     </button>
 
                     <button class="nav-item" data-section="detector">
-                        <span class="nav-item-icon" aria-hidden="true">📡</span>
                         <span class="nav-item-text">偵測器距離</span>
                     </button>
                 </div>
@@ -83,22 +75,18 @@
 
                     <div id="dndcNavItems" class="hidden">
                         <button class="nav-item" data-section="dndc-theory">
-                            <span class="nav-item-icon" aria-hidden="true">📐</span>
                             <span class="nav-item-text">dn/dc 理論計算</span>
                         </button>
 
                         <button class="nav-item" data-section="dndc-hplc">
-                            <span class="nav-item-icon" aria-hidden="true">📈</span>
                             <span class="nav-item-text">HPLC dn/dc</span>
                         </button>
 
                         <button class="nav-item" data-section="dndc-multi">
-                            <span class="nav-item-icon" aria-hidden="true">📊</span>
                             <span class="nav-item-text">多注射擬合</span>
                         </button>
 
                         <button class="nav-item" data-section="dndc-slice">
-                            <span class="nav-item-icon" aria-hidden="true">🔬</span>
                             <span class="nav-item-text">Slice-by-slice</span>
                         </button>
                     </div>
@@ -108,7 +96,6 @@
                     <div class="nav-section-title" id="nav-output-label">輸出</div>
 
                     <button class="nav-item" data-section="iucr">
-                        <span class="nav-item-icon" aria-hidden="true">📋</span>
                         <span class="nav-item-text">IUCr 表格</span>
                     </button>
                 </div>
@@ -116,7 +103,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.2
+                Version 4.3
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" title="收合/展開側邊欄">
                 <span id="sidebarToggleIcon">◀</span>
@@ -136,7 +123,6 @@
             <section class="section active" id="section-protein" aria-labelledby="protein-title">
                 <div class="page-header">
                     <h1 class="page-title" id="protein-title">
-                        <span class="page-title-icon" aria-hidden="true">🧬</span>
                         蛋白質序列分析
                     </h1>
                     <p class="page-subtitle">輸入蛋白質序列，自動計算分子量、消光係數、體積等參數</p>
@@ -146,7 +132,7 @@
                     <!-- Input Card -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📝 序列輸入</h3>
+                            <h3 class="card-title">序列輸入</h3>
                             <button class="btn btn-sm btn-secondary" id="loadSampleSequence">載入範例</button>
                         </div>
                         <div class="card-body">
@@ -178,7 +164,7 @@
                     <!-- Results Card -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 分析結果</h3>
+                            <h3 class="card-title">分析結果</h3>
                         </div>
                         <div class="card-body" id="proteinResults">
                             <div class="alert alert-info">
@@ -195,7 +181,7 @@
                 <!-- Composition Chart -->
                 <div class="card mt-lg hidden" id="compositionCard">
                     <div class="card-header">
-                        <h3 class="card-title">📈 氨基酸組成</h3>
+                        <h3 class="card-title">氨基酸組成</h3>
                         <div class="tabs tabs--inline">
                             <button class="tab active" data-chart="bar">長條圖</button>
                             <button class="tab" data-chart="doughnut">圓餅圖</button>
@@ -216,7 +202,6 @@
             <section class="section" id="section-saxs" aria-labelledby="saxs-title">
                 <div class="page-header">
                     <h1 class="page-title" id="saxs-title">
-                        <span class="page-title-icon" aria-hidden="true">📊</span>
                         SAXS 結構參數
                     </h1>
                     <p class="page-subtitle">計算 <i>R</i><sub>g</sub>、<i>I</i>(0)、<i>D</i><sub>max</sub>、Porod volume 等散射參數</p>
@@ -225,7 +210,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 參數輸入</h3>
+                            <h3 class="card-title">參數輸入</h3>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info">
@@ -407,7 +392,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 計算結果</h3>
+                            <h3 class="card-title">計算結果</h3>
                         </div>
                         <div class="card-body" id="saxsResults">
                             <div class="alert alert-info">
@@ -423,7 +408,6 @@
             <section class="section" id="section-hplc" aria-labelledby="hplc-title">
                 <div class="page-header">
                     <h1 class="page-title" id="hplc-title">
-                        <span class="page-title-icon" aria-hidden="true">🧪</span>
                         HPLC-SAXS 實驗設定
                     </h1>
                     <p class="page-subtitle">從 pre-run HPLC 結果計算 SAXS 實驗的 step 設定</p>
@@ -433,7 +417,7 @@
                     <!-- Pre-run Parameters Input -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 Pre-run 參數輸入</h3>
+                            <h3 class="card-title">Pre-run 參數輸入</h3>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info alert--compact">
@@ -500,7 +484,7 @@
                     <!-- Detector Settings Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title card-title--warning">📡 Detector Setting</h3>
+                            <h3 class="card-title card-title--warning">Detector Setting</h3>
                         </div>
                         <div class="card-body">
                             <div class="table-wrapper">
@@ -538,7 +522,7 @@
                     <!-- Flow Rate Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">⏱️ Flow Rate Table</h3>
+                            <h3 class="card-title">Flow Rate Table</h3>
                         </div>
                         <div class="card-body">
                             <div class="table-wrapper">
@@ -564,7 +548,7 @@
                     <!-- Fraction Collector -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title card-title--purple">🧫 Fraction Collector</h3>
+                            <h3 class="card-title card-title--purple">Fraction Collector</h3>
                         </div>
                         <div class="card-body">
                             <div class="gradient-stat gradient-stat--purple">
@@ -589,7 +573,7 @@
                 <!-- Third Row: Suggested Values -->
                 <div class="card mt-lg">
                     <div class="card-header">
-                        <h3 class="card-title card-title--warning">📋 Pre-run 10μL 建議值 (用於下次 pre-run)</h3>
+                        <h3 class="card-title card-title--warning">Pre-run 10μL 建議值 (用於下次 pre-run)</h3>
                     </div>
                     <div class="card-body" id="hplcSuggestedValues">
                         <div class="suggested-values">
@@ -618,7 +602,6 @@
             <section class="section" id="section-sample" aria-labelledby="sample-title">
                 <div class="page-header">
                     <h1 class="page-title" id="sample-title">
-                        <span class="page-title-icon" aria-hidden="true">⚗️</span>
                         樣品計算
                     </h1>
                     <p class="page-subtitle">UV/RI 計算、濃度估算、稀釋因子</p>
@@ -627,7 +610,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 UV 測量參數</h3>
+                            <h3 class="card-title">UV 測量參數</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -674,7 +657,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 計算結果</h3>
+                            <h3 class="card-title">計算結果</h3>
                         </div>
                         <div class="card-body" id="sampleResults">
                             <div class="alert alert-info">
@@ -688,7 +671,7 @@
                 <div class="grid grid-2 mt-lg">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">🔬 SEC 稀釋因子估算</h3>
+                            <h3 class="card-title">SEC 稀釋因子估算</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -711,7 +694,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 稀釋因子結果</h3>
+                            <h3 class="card-title">稀釋因子結果</h3>
                         </div>
                         <div class="card-body" id="dilutionFactorResults">
                             <div class="alert alert-info">
@@ -726,7 +709,6 @@
             <section class="section" id="section-mw" aria-labelledby="mw-title">
                 <div class="page-header">
                     <h1 class="page-title" id="mw-title">
-                        <span class="page-title-icon" aria-hidden="true">📐</span>
                         分子量解析度
                     </h1>
                     <p class="page-subtitle">從分子量計算預期滯留時間（SEC 管柱）</p>
@@ -735,7 +717,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 輸入參數</h3>
+                            <h3 class="card-title">輸入參數</h3>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info">
@@ -812,7 +794,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 計算結果</h3>
+                            <h3 class="card-title">計算結果</h3>
                         </div>
                         <div class="card-body" id="mwResults">
                             <div class="alert alert-info">
@@ -827,7 +809,6 @@
             <section class="section" id="section-centrifuge" aria-labelledby="centrifuge-title">
                 <div class="page-header">
                     <h1 class="page-title" id="centrifuge-title">
-                        <span class="page-title-icon" aria-hidden="true">⚙️</span>
                         離心參數計算
                     </h1>
                     <p class="page-subtitle">RCF、沉降係數、離心距離計算</p>
@@ -836,7 +817,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 離心機參數</h3>
+                            <h3 class="card-title">離心機參數</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -909,7 +890,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 計算結果</h3>
+                            <h3 class="card-title">計算結果</h3>
                         </div>
                         <div class="card-body" id="centrifugeResults">
                             <div class="alert alert-info">
@@ -924,7 +905,6 @@
             <section class="section" id="section-iucr" aria-labelledby="iucr-title">
                 <div class="page-header">
                     <h1 class="page-title" id="iucr-title">
-                        <span class="page-title-icon" aria-hidden="true">📋</span>
                         IUCr 表格輸出
                     </h1>
                     <p class="page-subtitle">產生符合 IUCr 標準格式的 SAXS 參數表格</p>
@@ -932,8 +912,8 @@
 
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">📄 IUCr Protein Solution SAXS Parameters Table</h3>
-                        <button class="btn btn-secondary" id="copyIUCrTable">📋 複製表格</button>
+                        <h3 class="card-title">IUCr Protein Solution SAXS Parameters Table</h3>
+                        <button class="btn btn-secondary" id="copyIUCrTable">複製表格</button>
                     </div>
                     <div class="card-body">
                         <div class="alert alert-warning" id="iucrWarning">
@@ -1100,7 +1080,6 @@
             <section id="section-detector" class="section" aria-labelledby="detector-title">
                 <div class="page-header">
                     <h1 class="page-title" id="detector-title">
-                        <span class="page-title-icon" aria-hidden="true">📡</span>
                         偵測器距離計算
                     </h1>
                     <p class="page-subtitle">根據蛋白質分子量計算建議的 SAXS 樣品到偵測器距離 (9M position)</p>
@@ -1110,7 +1089,7 @@
                     <!-- Reference Proteins Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📋 標準蛋白質參考值</h3>
+                            <h3 class="card-title">標準蛋白質參考值</h3>
                         </div>
                         <div class="card-body">
                             <div class="table-wrapper">
@@ -1163,7 +1142,7 @@
                     <!-- Target Protein Calculator -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">🎯 目標蛋白質計算</h3>
+                            <h3 class="card-title">目標蛋白質計算</h3>
                         </div>
                         <div class="card-body">
                             <!-- Input Mode Toggle -->
@@ -1251,7 +1230,6 @@
             <section class="section" id="section-dndc-theory" aria-labelledby="dndc-theory-title">
                 <div class="page-header">
                     <h1 class="page-title" id="dndc-theory-title">
-                        <span class="page-title-icon" aria-hidden="true">📐</span>
                         <span class="sci-var">dn/dc</span> 理論計算
                     </h1>
                     <p class="page-subtitle">溫度校正、波長校正、Lorentz-Lorenz 理論模型</p>
@@ -1261,7 +1239,7 @@
                     <!-- 綜合校正 -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">🌡️ 溫度 / 波長校正</h3>
+                            <h3 class="card-title">溫度 / 波長校正</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -1308,7 +1286,7 @@
                     <!-- 校正結果 -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 校正結果</h3>
+                            <h3 class="card-title">校正結果</h3>
                         </div>
                         <div class="card-body" id="dndcCorrectionResults">
                             <div class="alert alert-info">
@@ -1322,7 +1300,7 @@
                 <div class="grid grid-2 mt-lg">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">🔮 Lorentz-Lorenz 模型</h3>
+                            <h3 class="card-title">Lorentz-Lorenz 模型</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -1361,7 +1339,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📊 Lorentz-Lorenz 結果</h3>
+                            <h3 class="card-title">Lorentz-Lorenz 結果</h3>
                         </div>
                         <div class="card-body" id="llResults">
                             <div class="alert alert-info">
@@ -1374,7 +1352,7 @@
                 <!-- 經驗值參考表 -->
                 <div class="card mt-lg">
                     <div class="card-header">
-                        <h3 class="card-title">📋 <span class="sci-var">dn/dc</span> 文獻經驗值 (25°C, 589 nm)</h3>
+                        <h3 class="card-title"><span class="sci-var">dn/dc</span> 文獻經驗值 (25°C, 589 nm)</h3>
                     </div>
                     <div class="card-body">
                         <div class="table-wrapper">
@@ -1404,7 +1382,6 @@
             <section class="section" id="section-dndc-hplc" aria-labelledby="dndc-hplc-title">
                 <div class="page-header">
                     <h1 class="page-title" id="dndc-hplc-title">
-                        <span class="page-title-icon" aria-hidden="true">📈</span>
                         HPLC <span class="sci-var">dn/dc</span> 計算
                     </h1>
                     <p class="page-subtitle">從 UV + RI 色譜數據計算 <span class="sci-var">dn/dc</span>（單注射法）</p>
@@ -1413,7 +1390,7 @@
                 <!-- 色譜圖（置頂） -->
                 <div class="card hidden" id="dndcChromatogramCard">
                     <div class="card-header">
-                        <h3 class="card-title">📈 通道數據預覽</h3>
+                        <h3 class="card-title">通道數據預覽</h3>
                     </div>
                     <div class="card-body">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
@@ -1429,7 +1406,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📂 數據載入與參數</h3>
+                            <h3 class="card-title">數據載入與參數</h3>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -1586,7 +1563,7 @@
 
                     <div class="card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title">📊 計算結果</h3>
+                            <h3 class="card-title">計算結果</h3>
                             <div class="export-buttons hidden" id="hplcExportBtns">
                                 <button class="btn btn-secondary btn-sm" id="exportHplcCsv" title="匯出結果為 CSV">📥 CSV</button>
                                 <button class="btn btn-secondary btn-sm" id="exportHplcChart" title="匯出色譜圖為 PNG">🖼 圖表</button>
@@ -1606,7 +1583,6 @@
             <section class="section" id="section-dndc-multi" aria-labelledby="dndc-multi-title">
                 <div class="page-header">
                     <h1 class="page-title" id="dndc-multi-title">
-                        <span class="page-title-icon" aria-hidden="true">📊</span>
                         多注射線性擬合
                     </h1>
                     <p class="page-subtitle">從多組濃度-ΔRI 資料擬合 <span class="sci-var">dn/dc</span></p>
@@ -1615,7 +1591,7 @@
                 <!-- ASTRA 檔案載入 -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">📂 實驗數據載入</h3>
+                        <h3 class="card-title">實驗數據載入</h3>
                     </div>
                     <div class="card-body">
                         <div class="alert alert-info alert--compact">
@@ -1667,7 +1643,7 @@
                 <div class="grid grid-2 mt-md">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 手動資料輸入</h3>
+                            <h3 class="card-title">手動資料輸入</h3>
                             <button class="btn btn-sm btn-secondary" id="addInjectionRow">+ 新增</button>
                         </div>
                         <div class="card-body">
@@ -1714,7 +1690,7 @@
 
                     <div class="card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title">📊 擬合結果</h3>
+                            <h3 class="card-title">擬合結果</h3>
                             <div class="export-buttons hidden" id="multiExportBtns">
                                 <button class="btn btn-secondary btn-sm" id="exportMultiCsv" title="匯出擬合資料為 CSV">📥 CSV</button>
                             </div>
@@ -1736,7 +1712,6 @@
             <section class="section" id="section-dndc-slice" aria-labelledby="dndc-slice-title">
                 <div class="page-header">
                     <h1 class="page-title" id="dndc-slice-title">
-                        <span class="page-title-icon" aria-hidden="true">🔬</span>
                         Slice-by-slice 分析
                     </h1>
                     <p class="page-subtitle">逐切片分析：每個時間點的 UV → 濃度、RI → Δ<i>n</i>，線性擬合求 <span class="sci-var">dn/dc</span></p>
@@ -1745,7 +1720,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📂 數據與參數</h3>
+                            <h3 class="card-title">數據與參數</h3>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info alert--compact">
@@ -1768,7 +1743,7 @@
 
                     <div class="card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title">📊 分析結果</h3>
+                            <h3 class="card-title">分析結果</h3>
                             <div class="export-buttons hidden" id="sliceExportBtns">
                                 <button class="btn btn-secondary btn-sm" id="exportSliceCsv" title="匯出切片資料為 CSV">📥 CSV</button>
                             </div>
