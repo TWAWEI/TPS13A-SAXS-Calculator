@@ -455,16 +455,16 @@ function displayAllChannelsChart(parsed) {
     const time = data.map(r => r[0]);
 
     const colors = [
-        'rgba(45, 49, 146, 0.85)',
-        'rgba(26, 122, 76, 0.85)',
-        'rgba(180, 83, 9, 0.85)',
-        'rgba(196, 43, 28, 0.85)',
-        'rgba(107, 33, 168, 0.85)',
-        'rgba(190, 24, 93, 0.85)',
-        'rgba(14, 116, 144, 0.85)',
-        'rgba(101, 163, 13, 0.85)',
-        'rgba(217, 70, 239, 0.85)',
-        'rgba(234, 88, 12, 0.85)'
+        'rgba(0, 100, 178, 0.85)',
+        'rgba(93, 166, 157, 0.85)',
+        'rgba(62, 144, 164, 0.85)',
+        'rgba(155, 210, 143, 0.85)',
+        'rgba(31, 122, 171, 0.85)',
+        'rgba(184, 233, 134, 0.85)',
+        'rgba(124, 188, 150, 0.85)',
+        'rgba(0, 80, 145, 0.85)',
+        'rgba(62, 144, 164, 0.85)',
+        'rgba(93, 166, 157, 0.85)'
     ];
 
     // 建立 checkbox toggles（跳過 Time 欄）
@@ -542,9 +542,9 @@ function redrawChannelsChart() {
     const scales = {
         x: {
             type: 'linear',
-            title: { display: true, text: 'Time (min)', color: 'rgba(26,26,46,0.7)', font: { family: "'Inter', sans-serif", size: 12, style: 'italic' } },
-            ticks: { color: 'rgba(26,26,46,0.7)', font: { size: 10 } },
-            grid: { color: 'rgba(26,26,46,0.08)' }
+            title: { display: true, text: 'Time (min)', color: 'rgba(13,33,55,0.65)', font: { family: "'Inter', sans-serif", size: 12, style: 'italic' } },
+            ticks: { color: 'rgba(13,33,55,0.65)', font: { size: 10 } },
+            grid: { color: 'rgba(0,100,178,0.07)' }
         }
     };
 
@@ -554,7 +554,7 @@ function redrawChannelsChart() {
             position: i === 0 ? 'left' : 'right',
             title: { display: i < 2, text: ds.label, color: ds.borderColor, font: { family: "'Inter', sans-serif", size: 11 } },
             ticks: { color: ds.borderColor, font: { size: 9 } },
-            grid: { display: i === 0, color: 'rgba(26,26,46,0.06)' }
+            grid: { display: i === 0, color: 'rgba(0,100,178,0.06)' }
         };
     });
 
@@ -567,10 +567,10 @@ function redrawChannelsChart() {
             interaction: { mode: 'nearest', intersect: false },
             plugins: {
                 legend: {
-                    labels: { color: 'rgba(26,26,46,0.7)', font: { family: "'Inter', sans-serif", size: 11 } }
+                    labels: { color: 'rgba(13,33,55,0.65)', font: { family: "'Inter', sans-serif", size: 11 } }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(26,26,46,0.92)',
+                    backgroundColor: 'rgba(0,50,100,0.92)',
                     titleColor: '#fff',
                     bodyColor: 'rgba(255,255,255,0.85)',
                     cornerRadius: 4, padding: 8
@@ -1068,14 +1068,14 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
     if (!canvas) return;
 
     const colors = [
-        'rgba(45, 49, 146, 0.8)',
-        'rgba(26, 122, 76, 0.8)',
-        'rgba(180, 83, 9, 0.8)',
-        'rgba(196, 43, 28, 0.8)',
-        'rgba(107, 33, 168, 0.8)',
-        'rgba(190, 24, 93, 0.8)',
-        'rgba(14, 116, 144, 0.8)',
-        'rgba(101, 163, 13, 0.8)'
+        'rgba(0, 100, 178, 0.8)',
+        'rgba(93, 166, 157, 0.8)',
+        'rgba(62, 144, 164, 0.8)',
+        'rgba(155, 210, 143, 0.8)',
+        'rgba(31, 122, 171, 0.8)',
+        'rgba(184, 233, 134, 0.8)',
+        'rgba(124, 188, 150, 0.8)',
+        'rgba(0, 80, 145, 0.8)'
     ];
 
     const datasets = [];
@@ -1118,8 +1118,8 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
             { x: intEnd, y: yMax + yPad },
             { x: intEnd, y: yMin - yPad }
         ],
-        backgroundColor: 'rgba(45, 49, 146, 0.08)',
-        borderColor: 'rgba(45, 49, 146, 0.3)',
+        backgroundColor: 'rgba(0, 100, 178, 0.07)',
+        borderColor: 'rgba(0, 100, 178, 0.3)',
         borderWidth: 1,
         borderDash: [4, 4],
         pointRadius: 0,
@@ -1136,12 +1136,12 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
             plugins: {
                 legend: {
                     labels: {
-                        color: 'rgba(26, 26, 46, 0.7)',
+                        color: 'rgba(13, 33, 55, 0.65)',
                         font: { family: "'Inter', sans-serif", size: 12 }
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(26, 26, 46, 0.92)',
+                    backgroundColor: 'rgba(0, 50, 100, 0.92)',
                     titleColor: '#fff',
                     bodyColor: 'rgba(255, 255, 255, 0.85)',
                     cornerRadius: 4,
@@ -1158,22 +1158,22 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                     title: {
                         display: true,
                         text: 'Time (min)',
-                        color: 'rgba(26, 26, 46, 0.7)',
+                        color: 'rgba(13, 33, 55, 0.65)',
                         font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
-                    ticks: { color: 'rgba(26, 26, 46, 0.7)', font: { size: 10 } },
-                    grid: { color: 'rgba(26, 26, 46, 0.08)' }
+                    ticks: { color: 'rgba(13, 33, 55, 0.65)', font: { size: 10 } },
+                    grid: { color: 'rgba(0, 100, 178, 0.07)' }
                 },
                 y: {
                     type: 'linear',
                     title: {
                         display: true,
                         text: 'dRI (RIU)',
-                        color: 'rgba(26, 26, 46, 0.7)',
+                        color: 'rgba(13, 33, 55, 0.65)',
                         font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
-                    ticks: { color: 'rgba(26, 26, 46, 0.7)', font: { size: 10 } },
-                    grid: { color: 'rgba(26, 26, 46, 0.08)' }
+                    ticks: { color: 'rgba(13, 33, 55, 0.65)', font: { size: 10 } },
+                    grid: { color: 'rgba(0, 100, 178, 0.07)' }
                 }
             }
         }
