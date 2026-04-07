@@ -4,14 +4,14 @@
  */
 
 const DNDC_CHART_COLORS = {
-    uv: 'rgba(45, 49, 146, 0.85)',
-    ri: 'rgba(26, 122, 76, 0.85)',
-    baseline: 'rgba(180, 83, 9, 0.6)',
-    fit: 'rgba(196, 43, 28, 0.85)',
-    scatter: 'rgba(45, 49, 146, 0.7)',
-    peakRegion: 'rgba(45, 49, 146, 0.08)',
-    grid: 'rgba(26, 26, 46, 0.08)',
-    text: 'rgba(26, 26, 46, 0.7)'
+    uv: 'rgba(0, 100, 178, 0.85)',           // Deep blue #0064B2
+    ri: 'rgba(93, 166, 157, 0.85)',          // Gray-teal #5DA69D
+    baseline: 'rgba(180, 83, 9, 0.6)',       // Amber (unchanged)
+    fit: 'rgba(196, 43, 28, 0.85)',          // Red (unchanged)
+    scatter: 'rgba(0, 100, 178, 0.7)',
+    peakRegion: 'rgba(0, 100, 178, 0.07)',
+    grid: 'rgba(0, 100, 178, 0.07)',
+    text: 'rgba(13, 33, 55, 0.65)'
 };
 
 const dndcChartDefaults = {
@@ -25,10 +25,10 @@ const dndcChartDefaults = {
             }
         },
         tooltip: {
-            backgroundColor: 'rgba(26, 26, 46, 0.92)',
+            backgroundColor: 'rgba(0, 50, 100, 0.92)',
             titleColor: '#fff',
             bodyColor: 'rgba(255, 255, 255, 0.85)',
-            borderColor: 'rgba(26, 26, 46, 0.2)',
+            borderColor: 'rgba(0, 100, 178, 0.3)',
             borderWidth: 1,
             cornerRadius: 4,
             padding: 8,

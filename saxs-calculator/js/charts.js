@@ -3,19 +3,19 @@
  * 使用 Chart.js 產生視覺化圖表
  */
 
-// 顏色配置 — light theme
+// 顏色配置 — light theme (blue-to-lime palette)
 const CHART_COLORS = {
-    primary: 'rgba(45, 49, 146, 1)',        // Deep royal blue
-    primaryLight: 'rgba(45, 49, 146, 0.12)',
-    secondary: 'rgba(26, 122, 76, 1)',      // Forest green
-    secondaryLight: 'rgba(26, 122, 76, 0.12)',
-    tertiary: 'rgba(180, 83, 9, 1)',        // Amber
+    primary: 'rgba(0, 100, 178, 1)',         // Deep blue #0064B2
+    primaryLight: 'rgba(0, 100, 178, 0.12)',
+    secondary: 'rgba(124, 188, 150, 1)',     // Gray-green #7CBC96
+    secondaryLight: 'rgba(124, 188, 150, 0.12)',
+    tertiary: 'rgba(180, 83, 9, 1)',         // Amber (warning, unchanged)
     tertiaryLight: 'rgba(180, 83, 9, 0.12)',
-    danger: 'rgba(196, 43, 28, 1)',         // Red
+    danger: 'rgba(196, 43, 28, 1)',          // Red (error, unchanged)
     dangerLight: 'rgba(196, 43, 28, 0.12)',
-    text: 'rgba(26, 26, 46, 0.7)',          // Dark navy muted
-    grid: 'rgba(26, 26, 46, 0.08)',         // Very subtle
-    background: 'rgba(248, 247, 244, 1)'    // Warm paper
+    text: 'rgba(13, 33, 55, 0.65)',          // Deep slate muted
+    grid: 'rgba(0, 100, 178, 0.07)',         // Very subtle blue tint
+    background: 'rgba(244, 246, 248, 1)'     // Light cool gray
 };
 
 // 通用圖表配置
@@ -30,10 +30,10 @@ const commonOptions = {
             }
         },
         tooltip: {
-            backgroundColor: 'rgba(26, 26, 46, 0.92)',
+            backgroundColor: 'rgba(0, 50, 100, 0.92)',
             titleColor: '#fff',
             bodyColor: 'rgba(255, 255, 255, 0.85)',
-            borderColor: 'rgba(26, 26, 46, 0.2)',
+            borderColor: 'rgba(0, 100, 178, 0.3)',
             borderWidth: 1,
             cornerRadius: 6,
             padding: 10,
@@ -108,7 +108,7 @@ function createCompositionChart(canvasId, composition) {
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(26, 26, 46, 0.92)',
+                    backgroundColor: 'rgba(0, 50, 100, 0.92)',
                     callbacks: {
                         label: function (context) {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
@@ -140,8 +140,8 @@ function createCompositionBarChart(canvasId, composition) {
             datasets: [{
                 label: 'Count',
                 data: data,
-                backgroundColor: 'rgba(45, 49, 146, 0.7)',
-                hoverBackgroundColor: 'rgba(45, 49, 146, 0.9)',
+                backgroundColor: 'rgba(0, 100, 178, 0.7)',
+                hoverBackgroundColor: 'rgba(0, 100, 178, 0.9)',
                 borderColor: 'transparent',
                 borderRadius: 3,
                 borderSkipped: false
