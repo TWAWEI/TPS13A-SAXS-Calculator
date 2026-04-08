@@ -455,16 +455,16 @@ function displayAllChannelsChart(parsed) {
     const time = data.map(r => r[0]);
 
     const colors = [
-        'rgba(0, 100, 178, 0.85)',
-        'rgba(93, 166, 157, 0.85)',
-        'rgba(62, 144, 164, 0.85)',
-        'rgba(155, 210, 143, 0.85)',
-        'rgba(31, 122, 171, 0.85)',
-        'rgba(184, 233, 134, 0.85)',
-        'rgba(124, 188, 150, 0.85)',
-        'rgba(0, 80, 145, 0.85)',
-        'rgba(62, 144, 164, 0.85)',
-        'rgba(93, 166, 157, 0.85)'
+        'rgba(240, 78, 78, 0.85)',
+        'rgba(16, 185, 129, 0.85)',
+        'rgba(236, 130, 130, 0.85)',
+        'rgba(5, 150, 105, 0.85)',
+        'rgba(234, 156, 156, 0.85)',
+        'rgba(52, 211, 153, 0.85)',
+        'rgba(232, 182, 182, 0.85)',
+        'rgba(200, 50, 50, 0.85)',
+        'rgba(236, 130, 130, 0.85)',
+        'rgba(16, 185, 129, 0.85)'
     ];
 
     // 建立 checkbox toggles（跳過 Time 欄）
@@ -1068,14 +1068,14 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
     if (!canvas) return;
 
     const colors = [
-        'rgba(0, 100, 178, 0.8)',
-        'rgba(93, 166, 157, 0.8)',
-        'rgba(62, 144, 164, 0.8)',
-        'rgba(155, 210, 143, 0.8)',
-        'rgba(31, 122, 171, 0.8)',
-        'rgba(184, 233, 134, 0.8)',
-        'rgba(124, 188, 150, 0.8)',
-        'rgba(0, 80, 145, 0.8)'
+        'rgba(240, 78, 78, 0.8)',
+        'rgba(16, 185, 129, 0.8)',
+        'rgba(236, 130, 130, 0.8)',
+        'rgba(5, 150, 105, 0.8)',
+        'rgba(234, 156, 156, 0.8)',
+        'rgba(52, 211, 153, 0.8)',
+        'rgba(232, 182, 182, 0.8)',
+        'rgba(200, 50, 50, 0.8)'
     ];
 
     const datasets = [];
@@ -1118,8 +1118,8 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
             { x: intEnd, y: yMax + yPad },
             { x: intEnd, y: yMin - yPad }
         ],
-        backgroundColor: 'rgba(0, 100, 178, 0.07)',
-        borderColor: 'rgba(0, 100, 178, 0.3)',
+        backgroundColor: 'rgba(240, 78, 78, 0.07)',
+        borderColor: 'rgba(240, 78, 78, 0.3)',
         borderWidth: 1,
         borderDash: [4, 4],
         pointRadius: 0,
@@ -1136,12 +1136,12 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
             plugins: {
                 legend: {
                     labels: {
-                        color: 'rgba(13, 33, 55, 0.65)',
+                        color: 'rgba(26, 26, 46, 0.65)',
                         font: { family: "'Inter', sans-serif", size: 12 }
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(0, 50, 100, 0.92)',
+                    backgroundColor: 'rgba(80, 20, 20, 0.92)',
                     titleColor: '#fff',
                     bodyColor: 'rgba(255, 255, 255, 0.85)',
                     cornerRadius: 4,
@@ -1158,22 +1158,22 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                     title: {
                         display: true,
                         text: 'Time (min)',
-                        color: 'rgba(13, 33, 55, 0.65)',
+                        color: 'rgba(26, 26, 46, 0.65)',
                         font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
-                    ticks: { color: 'rgba(13, 33, 55, 0.65)', font: { size: 10 } },
-                    grid: { color: 'rgba(0, 100, 178, 0.07)' }
+                    ticks: { color: 'rgba(26, 26, 46, 0.65)', font: { size: 10 } },
+                    grid: { color: 'rgba(240, 78, 78, 0.07)' }
                 },
                 y: {
                     type: 'linear',
                     title: {
                         display: true,
                         text: 'dRI (RIU)',
-                        color: 'rgba(13, 33, 55, 0.65)',
+                        color: 'rgba(26, 26, 46, 0.65)',
                         font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
-                    ticks: { color: 'rgba(13, 33, 55, 0.65)', font: { size: 10 } },
-                    grid: { color: 'rgba(0, 100, 178, 0.07)' }
+                    ticks: { color: 'rgba(26, 26, 46, 0.65)', font: { size: 10 } },
+                    grid: { color: 'rgba(240, 78, 78, 0.07)' }
                 }
             }
         }

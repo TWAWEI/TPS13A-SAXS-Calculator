@@ -5,42 +5,42 @@
 
 /* ===== CSS Variables ===== */
 :root {
-    /* Surface Colors — clean neutral whites */
-    --color-bg-primary: #f4f6f8;
+    /* Surface Colors — ice blue-gray light theme */
+    --color-bg-primary: #E5E9EB;
     --color-bg-secondary: #ffffff;
-    --color-bg-tertiary: #eef1f5;
+    --color-bg-tertiary: #eef0f2;
     --color-bg-card: #ffffff;
-    --color-bg-hover: #eef1f5;
+    --color-bg-hover: #f0f2f4;
 
-    /* Accent — blue-to-lime scientific palette */
-    --color-accent-primary: #0064B2;
-    --color-accent-primary-light: #1F7AAB;
-    --color-accent-secondary: #7CBC96;
-    --color-accent-secondary-dark: #5DA69D;
-    --color-accent-tertiary: #b45309;
-    --color-accent-tertiary-dark: #92400e;
-    --color-accent-danger: #c42b1c;
-    --color-accent-purple: #3E90A4;
-    --color-accent-pink: #5DA69D;
-    --color-accent-pink-hot: #3E90A4;
+    /* Accent — coral-to-rose scientific palette */
+    --color-accent-primary: #F04E4E;
+    --color-accent-primary-light: #EE6868;
+    --color-accent-secondary: #10b981;
+    --color-accent-secondary-dark: #059669;
+    --color-accent-tertiary: #f59e0b;
+    --color-accent-tertiary-dark: #d97706;
+    --color-accent-danger: #dc2626;
+    --color-accent-purple: #EC8282;
+    --color-accent-pink: #EA9C9C;
+    --color-accent-pink-hot: #EC8282;
 
-    /* Text — deep slate, never pure black */
-    --color-text-primary: #0d2137;
-    --color-text-secondary: #2a4560;
-    --color-text-muted: #5a7a96;
+    /* Text — deep warm slate, never pure black */
+    --color-text-primary: #1a1a2e;
+    --color-text-secondary: #3d3d5c;
+    --color-text-muted: #6b6b8a;
     --color-text-on-accent: #fff;
     --color-text-on-accent-muted: rgba(255, 255, 255, 0.92);
     --color-text-on-accent-dim: rgba(255, 255, 255, 0.85);
     --color-text-on-accent-faint: rgba(255, 255, 255, 0.78);
 
-    /* Borders — cool blue-gray */
-    --color-border: #c8d8e8;
-    --color-border-light: #dce8f0;
+    /* Borders — soft warm-gray */
+    --color-border: #d4d8dc;
+    --color-border-light: #e2e6ea;
 
-    /* Shadows — cool, subtle */
-    --shadow-sm: 0 1px 2px rgba(0, 100, 178, 0.06);
-    --shadow-md: 0 2px 8px rgba(0, 100, 178, 0.08);
-    --shadow-lg: 0 8px 24px rgba(0, 100, 178, 0.1);
+    /* Shadows — warm, subtle */
+    --shadow-sm: 0 1px 2px rgba(240, 78, 78, 0.06);
+    --shadow-md: 0 2px 8px rgba(240, 78, 78, 0.08);
+    --shadow-lg: 0 8px 24px rgba(240, 78, 78, 0.1);
 
     /* Spacing — 4px base, generous rhythm */
     --spacing-xs: 0.25rem;
@@ -168,7 +168,7 @@ a:hover {
 /* ===== Sidebar ===== */
 .sidebar {
     width: var(--sidebar-width);
-    background: #0064B2;
+    background: #F04E4E;
     border-right: none;
     display: flex;
     flex-direction: column;
@@ -440,10 +440,10 @@ a:hover {
     flex-shrink: 0;
 }
 
-.stat-icon.primary { background: rgba(0, 100, 178, 0.1); color: var(--color-accent-primary); }
-.stat-icon.success { background: rgba(124, 188, 150, 0.15); color: var(--color-accent-secondary); }
-.stat-icon.warning { background: rgba(180, 83, 9, 0.1); color: var(--color-accent-tertiary); }
-.stat-icon.danger { background: rgba(196, 43, 28, 0.1); color: var(--color-accent-danger); }
+.stat-icon.primary { background: rgba(240, 78, 78, 0.1); color: var(--color-accent-primary); }
+.stat-icon.success { background: rgba(16, 185, 129, 0.12); color: var(--color-accent-secondary); }
+.stat-icon.warning { background: rgba(245, 158, 11, 0.12); color: var(--color-accent-tertiary); }
+.stat-icon.danger { background: rgba(220, 38, 38, 0.1); color: var(--color-accent-danger); }
 
 .stat-content {
     flex: 1;
@@ -500,11 +500,11 @@ a:hover {
 }
 
 .gradient-stat--purple {
-    background: linear-gradient(135deg, #3E90A4 0%, #5DA69D 100%);
+    background: linear-gradient(135deg, #F04E4E 0%, #EC8282 100%);
 }
 
 .gradient-stat--pink {
-    background: linear-gradient(135deg, #5DA69D 0%, #7CBC96 100%);
+    background: linear-gradient(135deg, #EC8282 0%, #EA9C9C 100%);
 }
 
 /* ===== Info Panels (Theory / Detector Suggestion) ===== */
@@ -515,11 +515,11 @@ a:hover {
 }
 
 .info-panel--success {
-    background: linear-gradient(135deg, #0064B2 0%, #3E90A4 100%);
+    background: linear-gradient(135deg, #F04E4E 0%, #EC8282 100%);
 }
 
 .info-panel--warning {
-    background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
 }
 
 .info-panel-header {
@@ -631,15 +631,15 @@ a:hover {
 }
 
 .result-card--primary {
-    background: linear-gradient(135deg, #0064B2 0%, #1F7AAB 100%);
+    background: linear-gradient(135deg, #F04E4E 0%, #EC8282 100%);
 }
 
 .result-card--success {
-    background: linear-gradient(135deg, #5DA69D 0%, #7CBC96 100%);
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
 }
 
 .result-card--pink {
-    background: linear-gradient(135deg, #3E90A4 0%, #5DA69D 100%);
+    background: linear-gradient(135deg, #EC8282 0%, #EA9C9C 100%);
 }
 
 .result-card--warning {
@@ -754,7 +754,7 @@ a:hover {
 .form-select:focus {
     outline: none;
     border-color: var(--color-accent-primary);
-    box-shadow: 0 0 0 3px rgba(0, 100, 178, 0.12);
+    box-shadow: 0 0 0 3px rgba(240, 78, 78, 0.12);
 }
 
 .form-input::placeholder,
@@ -1171,8 +1171,8 @@ a:hover {
 }
 
 .alert-info {
-    background: rgba(0, 100, 178, 0.06);
-    border: 1px solid rgba(0, 100, 178, 0.2);
+    background: rgba(240, 78, 78, 0.06);
+    border: 1px solid rgba(240, 78, 78, 0.2);
     color: var(--color-accent-primary);
 }
 
@@ -1368,7 +1368,7 @@ a:hover {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 50, 100, 0.4);
+    background: rgba(80, 20, 20, 0.4);
     z-index: 99;
     opacity: 0;
     visibility: hidden;
