@@ -4,27 +4,30 @@
  */
 
 // 氨基酸資料表
+// volume / electrons 為「殘基」值（已扣一個水），與 TPS13A Excel
+// `Protein_Io_cal_` 分頁（電子數 B 欄、殘基體積 AN 欄）一致。
+// mw 仍為自由氨基酸分子量，聚合時另扣 (n−1) × H2O。
 const AMINO_ACIDS = {
-    'A': { name: 'Ala', mw: 89.09, volume: 88.6, electrons: 38 },
-    'R': { name: 'Arg', mw: 174.20, volume: 173.4, electrons: 86 },
-    'N': { name: 'Asn', mw: 132.12, volume: 114.1, electrons: 66 },
-    'D': { name: 'Asp', mw: 133.10, volume: 111.1, electrons: 62 },
-    'C': { name: 'Cys', mw: 121.16, volume: 108.5, electrons: 54 },
-    'E': { name: 'Glu', mw: 147.13, volume: 138.4, electrons: 70 },
-    'Q': { name: 'Gln', mw: 146.15, volume: 143.8, electrons: 72 },
-    'G': { name: 'Gly', mw: 75.07, volume: 60.1, electrons: 30 },
-    'H': { name: 'His', mw: 155.16, volume: 153.2, electrons: 72 },
-    'I': { name: 'Ile', mw: 131.18, volume: 166.7, electrons: 62 },
-    'L': { name: 'Leu', mw: 131.18, volume: 166.7, electrons: 62 },
-    'K': { name: 'Lys', mw: 146.19, volume: 168.6, electrons: 70 },
-    'M': { name: 'Met', mw: 149.21, volume: 162.9, electrons: 70 },
-    'F': { name: 'Phe', mw: 165.19, volume: 189.9, electrons: 78 },
-    'P': { name: 'Pro', mw: 115.13, volume: 112.7, electrons: 50 },
-    'S': { name: 'Ser', mw: 105.09, volume: 89.0, electrons: 46 },
-    'T': { name: 'Thr', mw: 119.12, volume: 116.1, electrons: 54 },
-    'W': { name: 'Trp', mw: 204.23, volume: 227.8, electrons: 98 },
-    'Y': { name: 'Tyr', mw: 181.19, volume: 193.6, electrons: 86 },
-    'V': { name: 'Val', mw: 117.15, volume: 140.0, electrons: 54 }
+    'A': { name: 'Ala', mw: 89.09, volume: 91.5, electrons: 38 },
+    'R': { name: 'Arg', mw: 174.20, volume: 180.8, electrons: 85 },
+    'N': { name: 'Asn', mw: 132.12, volume: 135.2, electrons: 60 },
+    'D': { name: 'Asp', mw: 133.10, volume: 113.6, electrons: 59 },
+    'C': { name: 'Cys', mw: 121.16, volume: 105.6, electrons: 53 },
+    'E': { name: 'Glu', mw: 147.13, volume: 140.6, electrons: 67 },
+    'Q': { name: 'Gln', mw: 146.15, volume: 161.1, electrons: 68 },
+    'G': { name: 'Gly', mw: 75.07, volume: 66.4, electrons: 30 },
+    'H': { name: 'His', mw: 155.16, volume: 167.3, electrons: 72 },
+    'I': { name: 'Ile', mw: 131.18, volume: 168.8, electrons: 62 },
+    'L': { name: 'Leu', mw: 131.18, volume: 167.9, electrons: 62 },
+    'K': { name: 'Lys', mw: 146.19, volume: 176.2, electrons: 71 },
+    'M': { name: 'Met', mw: 149.21, volume: 170.8, electrons: 70 },
+    'F': { name: 'Phe', mw: 165.19, volume: 203.4, electrons: 78 },
+    'P': { name: 'Pro', mw: 115.13, volume: 129.3, electrons: 52 },
+    'S': { name: 'Ser', mw: 105.09, volume: 99.1, electrons: 46 },
+    'T': { name: 'Thr', mw: 119.12, volume: 122.1, electrons: 54 },
+    'W': { name: 'Trp', mw: 204.23, volume: 237.6, electrons: 98 },
+    'Y': { name: 'Tyr', mw: 181.19, volume: 203.6, electrons: 86 },
+    'V': { name: 'Val', mw: 117.15, volume: 141.7, electrons: 54 }
 };
 
 // 消光係數 (280nm, M-1 cm-1)
@@ -116,20 +119,15 @@ function calculateDryVolume(composition) {
  */
 function calculateElectronCount(composition) {
     let electrons = 0;
-    let totalResidues = 0;
-    
+
     for (const [aa, count] of Object.entries(composition)) {
         if (AMINO_ACIDS[aa]) {
             electrons += AMINO_ACIDS[aa].electrons * count;
-            totalResidues += count;
         }
     }
-    
-    // 減去聚合時失去的水分子電子 (每個水分子10個電子)
-    if (totalResidues > 1) {
-        electrons -= (totalResidues - 1) * 10;
-    }
-    
+
+    // 表值為殘基電子數（已扣一個水），與 TPS13A Excel `Protein_Io_cal_!B16`
+    // 一致（該式的扣水項乘 0），因此這裡不再扣水。
     return electrons;
 }
 

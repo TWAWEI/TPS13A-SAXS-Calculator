@@ -308,8 +308,9 @@ function displayProteinResults(result, name) {
                 <div class="result-value">${result.electronCount}</div>
             </div>
             <div class="result-item">
-                <div class="result-label">部分比容 <i>v̄</i></div>
+                <div class="result-label"><i>v̄</i> = <i>V</i><sub>dry</sub>/<i>M</i></div>
                 <div class="result-value">${result.partialSpecificVolume.toFixed(4)} <span style="font-size: 0.75rem;">cm³/g</span></div>
+                <div style="font-size: 0.7rem; color: var(--color-text-muted); margin-top: 0.25rem;">晶體殘基體積推得，SAXS 對比用；非熱力學偏比容</div>
             </div>
             <div class="result-item">
                 <div class="result-label">dn/dc</div>
@@ -415,10 +416,11 @@ function updateFormsWithProteinData(result) {
     if (mwInput) mwInput.value = result.molecularWeight.toFixed(2);
 
     // Update Centrifuge form
+    // 注意: 不要把序列算出的 v̄ (= V_dry/M，晶體殘基體積推得) 填進離心頁。
+    // Svedberg 方程需要的是熱力學偏比容 (BSA 0.733 cm³/g)，兩者不同，
+    // 離心頁維持 0.73 的預設值。
     const centrifugeMw = document.getElementById('centrifugeMw');
-    const vbar = document.getElementById('vbar');
     if (centrifugeMw) centrifugeMw.value = result.molecularWeight.toFixed(0);
-    if (vbar) vbar.value = result.partialSpecificVolume.toFixed(4);
 
     // Update MW Resolution form
     const mwResolutionInput = document.getElementById('mwInput');
@@ -428,6 +430,53 @@ function updateFormsWithProteinData(result) {
 // ========================
 // SAXS Parameters Section
 // ========================
+
+/**
+ * 取得序列分析可提供的理論值選用參數 (電子數、乾燥體積、殘基數)。
+ * 有這些資訊時 calculateTheoreticalI0 會改用 Excel `Protein_Io_cal_` 精確式。
+ *
+ * 只有在「理論值面板實際使用的 MW」與序列分析結果相符時才回傳，
+ * 避免使用者手動改 MW 後，仍套用另一個蛋白質的電子數與乾燥體積。
+ *
+ * @param {number} mwUsed - 面板實際採用的分子量 (Da)
+ * @returns {object} opts (可能為空物件)
+ */
+/**
+ * 顯示理論 I(0) 與其計算方法。
+ * Excel 精確式（需序列的電子數與乾體積）與經驗式（c × MW × 7.9e-7）對 BSA 相差約 20%，
+ * 兩者並列，讓使用者知道自己看的是哪一個。
+ */
+function renderTheoreticalI0(result, valueEl) {
+    const methodEl = document.getElementById('theoreticalI0Method');
+    if (valueEl) valueEl.textContent = result.theoreticalI0.toExponential(2);
+    if (!methodEl) return;
+    if (result.i0Method === 'excel-exact') {
+        methodEl.textContent = `Excel 精確式（序列電子數／乾體積）· 經驗式 ${result.empiricalI0.toExponential(2)}`;
+    } else {
+        methodEl.textContent = '經驗式 c×MW×7.9×10⁻⁷（BSA 校正；分析序列後改用 Excel 精確式）';
+    }
+}
+
+function getTheoreticalOpts(mwUsed) {
+    const protein = AppState.proteinData;
+    if (!protein || !Number.isFinite(protein.molecularWeight)) return {};
+    if (!Number.isFinite(mwUsed)) return {};
+    // MW 欄位以整數顯示，容許 1 Da 的四捨五入誤差
+    if (Math.abs(mwUsed - protein.molecularWeight) > 1) return {};
+
+    const opts = {};
+    if (Number.isFinite(protein.electronCount) && protein.electronCount > 0) {
+        opts.electrons = protein.electronCount;
+    }
+    if (Number.isFinite(protein.dryVolume) && protein.dryVolume > 0) {
+        opts.dryVolume = protein.dryVolume;
+    }
+    if (Number.isFinite(protein.length) && protein.length > 0) {
+        opts.nResidues = protein.length;
+    }
+    return opts;
+}
+
 function initSAXSSection() {
     const calculateBtn = document.getElementById('calculateSAXS');
     const concentrationInput = document.getElementById('sampleConcentration');
@@ -448,11 +497,9 @@ function initSAXSSection() {
 
         if (proteinMw) {
             // Calculate all theoretical parameters at once
-            const result = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular');
+            const result = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular', getTheoreticalOpts(proteinMw));
 
-            if (theoreticalI0Display) {
-                theoreticalI0Display.textContent = result.theoreticalI0.toExponential(2);
-            }
+            renderTheoreticalI0(result, theoreticalI0Display);
             if (theoreticalRgDisplay) {
                 theoreticalRgDisplay.textContent = result.theoreticalRg.toFixed(1);
             }
@@ -465,6 +512,8 @@ function initSAXSSection() {
             // MW input already has the value, no need to update
         } else {
             if (theoreticalI0Display) theoreticalI0Display.textContent = '--';
+            const theoreticalI0Method = document.getElementById('theoreticalI0Method');
+            if (theoreticalI0Method) theoreticalI0Method.textContent = '';
             if (theoreticalRgDisplay) theoreticalRgDisplay.textContent = '--';
             if (predictedRgDisplay) predictedRgDisplay.textContent = '--';
             if (theoreticalDmaxDisplay) theoreticalDmaxDisplay.textContent = '--';
@@ -523,7 +572,7 @@ function initSAXSSection() {
         let theoreticalParams = null;
         const proteinMw = AppState.proteinData?.molecularWeight;
         if (proteinMw) {
-            theoreticalParams = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular');
+            theoreticalParams = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular', getTheoreticalOpts(proteinMw));
         }
 
         // Store SAXS data
@@ -573,11 +622,9 @@ function updateTheoreticalValuesFromProtein() {
     const proteinMw = AppState.proteinData?.molecularWeight;
 
     if (proteinMw) {
-        const result = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular');
+        const result = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular', getTheoreticalOpts(proteinMw));
 
-        if (theoreticalI0Display) {
-            theoreticalI0Display.textContent = result.theoreticalI0.toExponential(2);
-        }
+        renderTheoreticalI0(result, theoreticalI0Display);
         if (theoreticalRgDisplay) {
             theoreticalRgDisplay.textContent = result.theoreticalRg.toFixed(1);
         }
@@ -908,7 +955,8 @@ function initSampleSection() {
             epsilon,
             mw,
             concentration,
-            concentrationMolar: (concentration * 1000 / mw) * 1e6 // μM
+            // Excel `Calculations of sample!N65`: c(mg/mL) × 10⁶ / MW → μM
+            concentrationMolar: (concentration / mw) * 1e6 // μM
         });
     });
 
@@ -1220,9 +1268,9 @@ function initCentrifugeSection() {
         const rcf = SAXSCalculations.calculateRCF(rpm, radius);
 
         // Estimate particle radius from MW (assuming spherical protein)
-        // R ≈ (3 × v̄ × MW / (4π × NA))^(1/3)
+        // R[cm] = (3 × v̄[cm³/g] × MW[g/mol] / (4π × NA[1/mol]))^(1/3)
         const NA = 6.022e23;
-        const particleRadius = Math.pow(3 * vbar * mw / (4 * Math.PI * NA * 1e-3), 1 / 3) * 1e-2; // m
+        const particleRadius = Math.pow(3 * vbar * mw / (4 * Math.PI * NA), 1 / 3) * 1e-2; // cm → m
 
         // Calculate sedimentation
         const sedResult = SAXSCalculations.calculateSedimentation(mw, viscosity, particleRadius, vbar, rho);
@@ -1263,6 +1311,7 @@ function displayCentrifugeResults(data) {
             <div class="result-item">
                 <div class="result-label">估算粒子半徑</div>
                 <div class="result-value">${data.particleRadius.toFixed(2)} <span style="font-size: 0.75rem;">nm</span></div>
+                <div style="font-size: 0.7rem; color: var(--color-text-muted); margin-top: 0.25rem;">無水球近似；實際沉降係數約為此值的 0.75–0.85 倍（水合與形狀因子）</div>
             </div>
             <div class="result-item">
                 <div class="result-label">浮力因子</div>

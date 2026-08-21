@@ -56,15 +56,50 @@ function temperatureCorrection(dndcAt25, targetTemp) {
 }
 
 /**
- * Apply wavelength correction using the λ⁻² dispersion relation.
+ * Default Cauchy dispersion coefficients for the specific refractive index
+ * increment of proteins.
+ *
+ * 由蛋白質色散錨點 0.190 mL/g @ 589 nm、0.188 mL/g @ 633 nm 反推的 Cauchy
+ * 擬合（A = 0.1756 mL/g、B = 5.0 × 10³ nm²·mL/g）；**未經原始文獻表值驗證**，
+ * 僅作為比 λ⁻² 更合理的一階色散近似。若有實測色散資料應改用實測值。
+ *   A: mL/g (wavelength-independent term)
+ *   B: nm²·mL/g (dispersion term)
+ * @type {{A: number, B: number}}
+ */
+const WAVELENGTH_CAUCHY_DEFAULTS = Object.freeze({ A: 0.1756, B: 5.0e3 });
+
+/**
+ * Apply wavelength correction using a Cauchy dispersion ratio.
+ *
+ *   dn/dc(λ₂) = dn/dc(λ₁) × (A + B/λ₂²) / (A + B/λ₁²)
+ *
+ * The previous λ⁻² scaling implicitly assumed A = 0, which overestimates the
+ * dispersion (e.g. 589 → 658 nm was 20 % low).
  *
  * @param {number} dndcRef - dn/dc at the reference wavelength (mL/g)
- * @param {number} refWavelength - Reference wavelength (nm)
- * @param {number} targetWavelength - Target wavelength (nm)
- * @returns {number} Wavelength-corrected dn/dc
+ * @param {number} lambdaRef - Reference wavelength (nm)
+ * @param {number} lambdaTarget - Target wavelength (nm)
+ * @param {number} [cauchyA] - Cauchy constant term A (mL/g), protein default
+ * @param {number} [cauchyB] - Cauchy dispersion term B (nm²·mL/g), protein default
+ * @returns {number} Wavelength-corrected dn/dc (mL/g)
  */
-function wavelengthCorrection(dndcRef, refWavelength, targetWavelength) {
-    return dndcRef * (refWavelength / targetWavelength) ** 2;
+function wavelengthCorrection(
+    dndcRef,
+    lambdaRef,
+    lambdaTarget,
+    cauchyA = WAVELENGTH_CAUCHY_DEFAULTS.A,
+    cauchyB = WAVELENGTH_CAUCHY_DEFAULTS.B
+) {
+    if (!Number.isFinite(lambdaRef) || lambdaRef <= 0
+        || !Number.isFinite(lambdaTarget) || lambdaTarget <= 0) {
+        throw new Error('波長必須為大於 0 的有限數值 (nm)。');
+    }
+    const refTerm = cauchyA + cauchyB / (lambdaRef ** 2);
+    const targetTerm = cauchyA + cauchyB / (lambdaTarget ** 2);
+    if (!Number.isFinite(refTerm) || refTerm === 0) {
+        throw new Error('波長校正失敗：Cauchy 係數無效（A + B/λ² = 0）。');
+    }
+    return dndcRef * (targetTerm / refTerm);
 }
 
 /**
@@ -76,15 +111,21 @@ function wavelengthCorrection(dndcRef, refWavelength, targetWavelength) {
  * @param {number} refWave - Wavelength at which refDndc was measured (nm)
  * @param {number} targetTemp - Desired temperature (°C)
  * @param {number} targetWave - Desired wavelength (nm)
+ * @param {number} [cauchyA] - Cauchy constant term A (mL/g)
+ * @param {number} [cauchyB] - Cauchy dispersion term B (nm²·mL/g)
  * @returns {object} Correction breakdown
  */
-function comprehensiveCorrection(refDndc, refTemp, refWave, targetTemp, targetWave) {
+function comprehensiveCorrection(
+    refDndc, refTemp, refWave, targetTemp, targetWave,
+    cauchyA = WAVELENGTH_CAUCHY_DEFAULTS.A,
+    cauchyB = WAVELENGTH_CAUCHY_DEFAULTS.B
+) {
     const TEMP_COEFF = -4e-4;
     // Back-calculate the value at 25 °C from the reference conditions
     const at25 = refDndc / (1 + TEMP_COEFF * (refTemp - 25));
     const tempCorrected = temperatureCorrection(at25, targetTemp);
     const tempContribution = tempCorrected - refDndc;
-    const finalDndc = wavelengthCorrection(tempCorrected, refWave, targetWave);
+    const finalDndc = wavelengthCorrection(tempCorrected, refWave, targetWave, cauchyA, cauchyB);
     const waveContribution = finalDndc - tempCorrected;
 
     return {
@@ -94,37 +135,56 @@ function comprehensiveCorrection(refDndc, refTemp, refWave, targetTemp, targetWa
         tempCorrected,
         tempContribution,
         finalDndc,
-        waveContribution
+        waveContribution,
+        cauchyA,
+        cauchyB
     };
 }
 
 /**
- * Estimate dn/dc via the Lorentz-Lorenz equation.
+ * Estimate dn/dc via the Lorentz-Lorenz equation (volume-additivity form).
+ *
+ *   dn/dc = (n_s² + 2)² / (6·n_s) × [f(n_p) − f(n_s)] / ρ_p,
+ *   where f(n) = (n² − 1) / (n² + 2)
+ *
+ * Under the volume-additivity assumption both refraction terms are divided by
+ * the polymer density (the solvent volume displaced per gram of polymer is
+ * 1/ρ_p), so `densitySolvent` does not enter the formula.
  *
  * @param {number} nPolymer - Refractive index of the polymer
  * @param {number} nSolvent - Refractive index of the solvent
- * @param {number} densityPolymer - Density of the polymer (g/mL)
- * @param {number} densitySolvent - Density of the solvent (g/mL)
+ * @param {number} densityPolymer - Density of the polymer (g/mL), ≈ 1/v̄
+ * @param {number} [densitySolvent] - Density of the solvent (g/mL); kept for
+ *        API compatibility, unused under the volume-additivity assumption
  * @returns {number} Estimated dn/dc (mL/g)
  */
 function lorentzLorenz(nPolymer, nSolvent, densityPolymer, densitySolvent) {
+    if (!(densityPolymer > 0)) {
+        throw new Error('聚合物密度必須大於 0 g/mL。');
+    }
     const n0Sq = nSolvent ** 2;
     const npSq = nPolymer ** 2;
     const prefactor = (n0Sq + 2) ** 2 / (6.0 * nSolvent);
-    const rPolymer = (npSq - 1) / ((npSq + 2) * densityPolymer);
-    const rSolvent = (n0Sq - 1) / ((n0Sq + 2) * densitySolvent);
-    return prefactor * (rPolymer - rSolvent);
+    const fPolymer = (npSq - 1) / (npSq + 2);
+    const fSolvent = (n0Sq - 1) / (n0Sq + 2);
+    return prefactor * (fPolymer - fSolvent) / densityPolymer;
 }
 
 /**
  * Estimate dn/dc via the Gladstone-Dale approximation.
  *
- * @param {number} polymerRefraction - Specific refraction of the polymer
- * @param {number} solventRefraction - Specific refraction of the solvent
- * @returns {number} Estimated dn/dc
+ *   dn/dc = (n_p − n_s) / ρ_p   [mL/g]
+ *
+ * @param {number} nPolymer - Refractive index of the polymer
+ * @param {number} nSolvent - Refractive index of the solvent
+ * @param {number} densityPolymer - Density of the polymer (g/mL), ≈ 1/v̄
+ * @returns {number} Estimated dn/dc (mL/g)
  */
-function gladstoneDale(polymerRefraction, solventRefraction) {
-    return polymerRefraction - solventRefraction;
+function gladstoneDale(nPolymer, nSolvent, densityPolymer) {
+    if (!(densityPolymer > 0)) {
+        throw new Error('聚合物密度必須大於 0 g/mL。');
+    }
+    return (nPolymer - nSolvent) / densityPolymer;
 }
 
 /**
@@ -410,37 +470,111 @@ function _shiftSignal(signal, lag) {
 }
 
 /**
+ * Median of an array (does not mutate the input).
+ *
+ * @param {number[]} arr - Input array
+ * @returns {number} Median value (0 for an empty array)
+ */
+function _median(arr) {
+    if (arr.length === 0) { return 0; }
+    const sorted = arr.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+}
+
+/**
+ * Population standard deviation of an array.
+ *
+ * @param {number[]} arr - Input array
+ * @returns {number} Standard deviation (0 for an empty array)
+ */
+function _std(arr) {
+    const n = arr.length;
+    if (n === 0) { return 0; }
+    let sum = 0;
+    for (let i = 0; i < n; i++) { sum += arr[i]; }
+    const mean = sum / n;
+    let ssq = 0;
+    for (let i = 0; i < n; i++) { ssq += (arr[i] - mean) ** 2; }
+    return Math.sqrt(ssq / n);
+}
+
+/**
+ * Build a fully populated alignment-info object.
+ * Every caller receives the same shape so the UI never has to guess.
+ * A skipped alignment reports method 'none' — no strategy was actually run.
+ *
+ * @param {object} fields - Partial alignment info
+ * @returns {object} { lag, correlation, method, strategy, skipped, clamped, reason }
+ */
+function _alignmentInfo({ lag = 0, correlation = 0, method = 'peak_max', skipped = false, clamped = false, reason = null }) {
+    const resolvedMethod = skipped ? 'none' : method;
+    return { lag, correlation, method: resolvedMethod, strategy: resolvedMethod, skipped, clamped, reason };
+}
+
+/**
  * Compute the optimal time lag between a reference and target signal.
  *
  * Three strategies are available:
- *  - "peak_max": align by the index of maximum absolute value
+ *  - "peak_max": align by the index of maximum absolute deviation from the
+ *    signal's own median (so a non-zero offset does not bias the peak search)
  *  - "regional": cross-correlation within a masked region
  *  - "global": cross-correlation over the full signals
+ *
+ * Guard rails: a constant (or all-zero) reference signal carries no timing
+ * information, and a lag beyond `maxLag` is almost certainly spurious — in
+ * both cases lag 0 is returned with `skipped` / `clamped` set, so the caller
+ * never silently shifts the peak out of the integration window.
  *
  * @param {number[]} refSignal - Reference signal (e.g. UV)
  * @param {number[]} targetSignal - Target signal (e.g. RI)
  * @param {string} [strategy="peak_max"] - Alignment strategy
  * @param {boolean[]} [mask=null] - Boolean mask for regional strategy
- * @param {number} [maxLag=50] - Maximum lag to search (points)
- * @returns {object} { lag, correlation, strategy }
+ * @param {number} [maxLag=50] - Maximum lag to search / accept (points)
+ * @returns {object} { lag, correlation, method, strategy, skipped, clamped, reason }
  */
 function computeTimeLag(refSignal, targetSignal, strategy = "peak_max", mask = null, maxLag = 50) {
+    // A constant reference signal (typically an absent UV channel filled with
+    // zeros) cannot define a lag.
+    if (_std(refSignal) < 1e-12) {
+        return _alignmentInfo({
+            method: strategy,
+            skipped: true,
+            reason: 'reference signal is constant'
+        });
+    }
+
     if (strategy === "peak_max") {
-        // Find index of maximum absolute value in each signal
-        let maxRef = 0, idxRef = 0;
+        // Remove each signal's own median before locating the peak, so a
+        // baseline offset does not dominate the |max| search.
+        const refMedian = _median(refSignal);
+        const tgtMedian = _median(targetSignal);
+
+        let maxRef = -Infinity, idxRef = 0;
         for (let i = 0; i < refSignal.length; i++) {
-            const v = Math.abs(refSignal[i]);
+            const v = Math.abs(refSignal[i] - refMedian);
             if (v > maxRef) { maxRef = v; idxRef = i; }
         }
-        let maxTgt = 0, idxTgt = 0;
+        let maxTgt = -Infinity, idxTgt = 0;
         for (let i = 0; i < targetSignal.length; i++) {
-            const v = Math.abs(targetSignal[i]);
+            const v = Math.abs(targetSignal[i] - tgtMedian);
             if (v > maxTgt) { maxTgt = v; idxTgt = i; }
         }
         const lag = idxTgt - idxRef;
+
+        if (Math.abs(lag) > maxLag) {
+            return _alignmentInfo({
+                method: strategy,
+                clamped: true,
+                reason: `lag exceeds maxLag (${lag} > ±${maxLag} pts)`
+            });
+        }
+
         const shifted = _shiftSignal(targetSignal, -lag);
         const correlation = _pearsonCorrelation(refSignal, shifted);
-        return { lag, correlation, strategy };
+        return _alignmentInfo({ lag, correlation, method: strategy });
     }
 
     // Cross-correlation search (regional or global)
@@ -474,7 +608,7 @@ function computeTimeLag(refSignal, targetSignal, strategy = "peak_max", mask = n
         }
     }
 
-    return { lag: bestLag, correlation: bestCorr, strategy };
+    return _alignmentInfo({ lag: bestLag, correlation: bestCorr, method: strategy });
 }
 
 // ============================================================
@@ -560,9 +694,15 @@ function _createMask(time, start, end) {
 /**
  * Apply the RI detector delay by shifting the RI signal.
  *
+ * Sign convention (matches the UI label): a POSITIVE riDelay means the RI
+ * detector sits downstream of the UV detector, i.e. the RI peak arrives LATER
+ * than the UV peak. Compensating therefore moves the RI trace EARLIER
+ * (shiftArray with a negative point count).
+ *
  * @param {number[]} riSignal - RI detector signal
  * @param {number[]} time - Time axis
- * @param {number} riDelay - RI delay in time units (e.g. minutes)
+ * @param {number} riDelay - RI delay in time units (e.g. minutes); positive =
+ *        RI later than UV
  * @returns {number[]} Delay-corrected RI signal (new array)
  */
 function _applyRiDelay(riSignal, time, riDelay) {
@@ -570,7 +710,7 @@ function _applyRiDelay(riSignal, time, riDelay) {
     // Convert time-based delay to number of points
     const dt = time.length > 1 ? (time[time.length - 1] - time[0]) / (time.length - 1) : 1;
     const pts = Math.round(riDelay / dt);
-    return shiftArray(riSignal, pts);
+    return shiftArray(riSignal, -pts);
 }
 
 /**
@@ -578,10 +718,13 @@ function _applyRiDelay(riSignal, time, riDelay) {
  *
  * C = A / (ε × l)
  *
- * @param {number[]} uvSignal - UV absorbance signal
- * @param {number} epsilon - Molar absorptivity / extinction coefficient
+ * ε is the MASS extinction coefficient in mL/(mg·cm) (UI default 0.667 for
+ * protein at 280 nm), so the resulting concentration is in mg/mL.
+ *
+ * @param {number[]} uvSignal - UV absorbance signal (AU)
+ * @param {number} epsilon - Mass extinction coefficient, mL/(mg·cm)
  * @param {number} pathLen - Optical path length (cm)
- * @returns {number[]} Concentration array (same units as ε implies)
+ * @returns {number[]} Concentration array (mg/mL)
  */
 function _computeConcentration(uvSignal, epsilon, pathLen) {
     const factor = epsilon * pathLen;
@@ -589,6 +732,50 @@ function _computeConcentration(uvSignal, epsilon, pathLen) {
         throw new Error("epsilon × pathLen must not be zero.");
     }
     return uvSignal.map(a => a / factor);
+}
+
+/**
+ * Convert a concentration from mg/mL to g/mL.
+ * dn/dc = Δn / c is only in mL/g when c is expressed in g/mL.
+ *
+ * @param {number} concentrationMgml - Concentration in mg/mL
+ * @returns {number} Concentration in g/mL
+ */
+const MGML_PER_GML = 1000;
+function _toGramsPerMl(concentrationMgml) {
+    return concentrationMgml / MGML_PER_GML;
+}
+
+/**
+ * Decide whether auto-alignment is meaningful and, if so, apply it.
+ *
+ * Alignment is skipped when a manual concentration is supplied (the UV trace
+ * is then unused) or when the UV reference is constant/absent — in those cases
+ * a bogus lag would shift the RI peak out of the integration window and
+ * silently produce dn/dc = 0.
+ *
+ * @param {number[]} uvSignal - UV reference signal
+ * @param {number[]} riSignal - RI signal (already delay-corrected)
+ * @param {number|null|undefined} manualC - Manual concentration override
+ * @param {number} [maxLag=50] - Maximum acceptable lag (points)
+ * @returns {{alignmentInfo: object, riAligned: number[]}}
+ */
+function _resolveAlignment(uvSignal, riSignal, manualC, maxLag = 50) {
+    if (manualC !== null && manualC !== undefined) {
+        return {
+            alignmentInfo: _alignmentInfo({
+                skipped: true,
+                reason: 'manual concentration supplied — UV signal is not used'
+            }),
+            riAligned: riSignal
+        };
+    }
+
+    const info = computeTimeLag(uvSignal, riSignal, 'peak_max', null, maxLag);
+    if (info.skipped || info.clamped) {
+        return { alignmentInfo: info, riAligned: riSignal };
+    }
+    return { alignmentInfo: info, riAligned: _shiftSignal(riSignal, -info.lag) };
 }
 
 /**
@@ -607,16 +794,17 @@ function _computeConcentration(uvSignal, epsilon, pathLen) {
  * @param {number} params.bl1End - Baseline window 1 end
  * @param {number} params.bl2Start - Baseline window 2 start
  * @param {number} params.bl2End - Baseline window 2 end
- * @param {number} params.epsilon - Extinction coefficient
+ * @param {number} params.epsilon - Mass extinction coefficient, mL/(mg·cm)
  * @param {number} params.pathLen - Path length (cm)
  * @param {number} params.riFactor - RI calibration factor (RI units per Δn)
- * @param {number} params.riDelay - RI detector delay (time units)
+ * @param {number} params.riDelay - RI detector delay (time units, positive = RI later)
  * @param {string} params.baselineMode - "const" or "linear"
  * @param {string} params.peakMode - "height", "area", or "spi"
- * @param {number|null} params.manualC - Manual concentration override (if provided)
+ * @param {number|null} params.manualC - Manual concentration override, mg/mL
  * @param {boolean} params.autoAlign - Whether to auto-align UV and RI
- * @param {number} params.decimalPlaces - Rounding precision
- * @returns {object} Calculation result
+ * @param {number} params.decimalPlaces - Display precision hint (not applied here)
+ * @returns {object} Calculation result; `dndc` in mL/g, `concentration` in
+ *          mg/mL, `concentrationGml` in g/mL
  */
 function computeHplcDndc(time, uvSignal, riSignal, params) {
     const {
@@ -627,6 +815,14 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
         manualC, autoAlign, decimalPlaces
     } = params;
 
+    const hasManualC = manualC !== null && manualC !== undefined;
+
+    // A manual scalar concentration cannot normalise an integrated RI area:
+    // RIU·min ÷ (mg/mL) is not mL/g.
+    if (hasManualC && peakMode === 'area') {
+        throw new Error('手動濃度不能搭配「面積」模式（RIU·min ÷ mg/mL 量綱不成立）。請改用「峰高」模式，或到多注射擬合頁面使用質量法。');
+    }
+
     // Build masks
     const bl1Mask = _createMask(time, bl1Start, bl1End);
     const bl2Mask = _createMask(time, bl2Start, bl2End);
@@ -635,11 +831,12 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
     // Apply RI delay
     let riCorrected = _applyRiDelay(riSignal, time, riDelay);
 
-    // Auto-align if requested
+    // Auto-align if requested (skipped when it would be meaningless)
     let alignmentInfo = null;
     if (autoAlign) {
-        alignmentInfo = computeTimeLag(uvSignal, riCorrected, "peak_max", null, 50);
-        riCorrected = _shiftSignal(riCorrected, -alignmentInfo.lag);
+        const aligned = _resolveAlignment(uvSignal, riCorrected, manualC, 50);
+        alignmentInfo = aligned.alignmentInfo;
+        riCorrected = aligned.riAligned;
     }
 
     // Baseline correction
@@ -650,9 +847,9 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
     const riPeak = measurePeak(riBaselineCorrected, time, peakMask, peakMode);
     const riValue = riPeak.value / riFactor;
 
-    // Concentration from UV
+    // Concentration from UV (mg/mL)
     let concentration;
-    if (manualC !== null && manualC !== undefined) {
+    if (hasManualC) {
         concentration = manualC;
     } else {
         const concArray = _computeConcentration(uvCorrected, epsilon, pathLen);
@@ -660,16 +857,23 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
         concentration = uvPeak.value;
     }
 
-    // dn/dc
-    const dndc = concentration !== 0 ? riValue / concentration : 0;
+    // dn/dc [mL/g] = Δn / c[g/mL]
+    // 濃度為 0 / 負值 / 非有限值時直接失敗，不要靜默回傳 dn/dc = 0
+    const concentrationGml = _toGramsPerMl(concentration);
+    if (!Number.isFinite(concentrationGml) || concentrationGml <= 0) {
+        throw new Error('無法求得有效濃度（UV 峰區或基線區可能設錯、UV 全為雜訊、或手動濃度 ≤ 0），請檢查峰範圍與基線範圍');
+    }
+    const dndc = riValue / concentrationGml;
 
     return {
-        dndc: parseFloat(dndc.toFixed(decimalPlaces || 6)),
+        dndc,                    // mL/g (formatting is the display layer's job)
         riPeakValue: riPeak.value,
         riValue,
-        concentration,
+        concentration,           // mg/mL
+        concentrationGml,        // g/mL
         peakMode,
         baselineMode,
+        decimalPlaces,
         alignmentInfo,
         uvCorrected,
         riCorrected: riBaselineCorrected
@@ -688,7 +892,8 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
  * @param {number[]} riSignal - RI detector signal
  * @param {object} params - Same parameter object as computeHplcDndc
  * @param {number} [minUvFraction=0.05] - Minimum UV fraction to include a slice
- * @returns {object} Slice-based dn/dc result
+ * @returns {object} Slice-based dn/dc result; `dndc` in mL/g,
+ *          `sliceConcentrations` in g/mL, `sliceConcentrationsMgml` in mg/mL
  */
 function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05) {
     const {
@@ -707,19 +912,24 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
     // Apply RI delay
     let riCorrected = _applyRiDelay(riSignal, time, riDelay);
 
-    // Auto-align if requested
+    // Auto-align if requested (skipped when it would be meaningless).
+    // Slice mode always derives concentration point-by-point from UV, so a
+    // manual concentration must not gate the alignment here.
     let alignmentInfo = null;
     if (autoAlign) {
-        alignmentInfo = computeTimeLag(uvSignal, riCorrected, "peak_max", null, 50);
-        riCorrected = _shiftSignal(riCorrected, -alignmentInfo.lag);
+        const aligned = _resolveAlignment(uvSignal, riCorrected, null, 50);
+        alignmentInfo = aligned.alignmentInfo;
+        riCorrected = aligned.riAligned;
     }
 
     // Baseline correction
     const uvCorrected = baselineCorrect(time, uvSignal, baselineMode, bl1Mask, bl2Mask);
     const riBaselineCorrected = baselineCorrect(time, riCorrected, baselineMode, bl1Mask, bl2Mask);
 
-    // Concentration array from UV
-    const concArray = _computeConcentration(uvCorrected, epsilon, pathLen);
+    // Concentration array from UV (mg/mL)
+    const concArrayMgml = _computeConcentration(uvCorrected, epsilon, pathLen);
+    // dn/dc in mL/g requires concentration in g/mL
+    const concArray = concArrayMgml.map(_toGramsPerMl);
 
     // Find peak-region max UV for thresholding
     let maxUv = 0;
@@ -731,7 +941,8 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
     const uvThreshold = maxUv * minUvFraction;
 
     // Collect slice data
-    const sliceConcentrations = [];
+    const sliceConcentrations = [];      // g/mL
+    const sliceConcentrationsMgml = [];  // mg/mL
     const sliceRiValues = [];
     const sliceTimes = [];
     const sliceDndcValues = [];
@@ -745,6 +956,7 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
         if (c === 0) { continue; }
 
         sliceConcentrations.push(c);
+        sliceConcentrationsMgml.push(concArrayMgml[i]);
         sliceRiValues.push(ri);
         sliceTimes.push(time[i]);
         sliceDndcValues.push(ri / c);
@@ -761,13 +973,15 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
     }
 
     return {
-        dndc: parseFloat(dndc.toFixed(decimalPlaces || 6)),
+        dndc,                    // mL/g (formatting is the display layer's job)
         fitResult,
         sliceCount: sliceConcentrations.length,
-        sliceConcentrations,
+        sliceConcentrations,     // g/mL
+        sliceConcentrationsMgml, // mg/mL
         sliceRiValues,
         sliceTimes,
         sliceDndcValues,
+        decimalPlaces,
         alignmentInfo,
         uvCorrected,
         riCorrected: riBaselineCorrected
@@ -782,6 +996,7 @@ window.DndcCalculations = Object.freeze({
     // Theoretical
     EMPIRICAL_VALUES,
     LITERATURE_VALUES,
+    WAVELENGTH_CAUCHY_DEFAULTS,
     temperatureCorrection,
     wavelengthCorrection,
     comprehensiveCorrection,

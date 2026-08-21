@@ -71,7 +71,8 @@ function initDndcTheorySection() {
                 </div>
                 <div class="formula-note mt-md">
                     溫度校正: d<i>n</i>/d<i>c</i>(<i>T</i>) = d<i>n</i>/d<i>c</i>(25°C) × (1 + α×Δ<i>T</i>), α = −4×10⁻⁴ °C⁻¹<br>
-                    波長校正: d<i>n</i>/d<i>c</i>(λ₂) = d<i>n</i>/d<i>c</i>(λ₁) × (λ₁/λ₂)²
+                    波長校正 (Cauchy): d<i>n</i>/d<i>c</i>(λ₂) = d<i>n</i>/d<i>c</i>(λ₁) × (<i>A</i> + <i>B</i>/λ₂²) / (<i>A</i> + <i>B</i>/λ₁²)，
+                    蛋白質預設 <i>A</i> = 0.1756 mL/g、<i>B</i> = 5.0×10³ nm²·mL/g
                 </div>
             `;
         });
@@ -88,9 +89,23 @@ function initDndcTheorySection() {
                 showDndcAlert('llResults', 'error', '請填入所有參數');
                 return;
             }
+            if (dP <= 0) {
+                showDndcAlert('llResults', 'error', '聚合物密度必須大於 0 g/mL (蛋白質約 1.37 ≈ 1/v̄)');
+                return;
+            }
+            if (nP <= 0 || nS <= 0) {
+                showDndcAlert('llResults', 'error', '折射率必須大於 0');
+                return;
+            }
 
-            const llResult = DndcCalculations.lorentzLorenz(nP, nS, dP, dS);
-            const gdResult = DndcCalculations.gladstoneDale(nP, nS);
+            let llResult, gdResult;
+            try {
+                llResult = DndcCalculations.lorentzLorenz(nP, nS, dP, dS);
+                gdResult = DndcCalculations.gladstoneDale(nP, nS, dP);
+            } catch (err) {
+                showDndcAlert('llResults', 'error', `計算錯誤: ${err.message}`);
+                return;
+            }
 
             document.getElementById('llResults').innerHTML = `
                 <div class="result-grid">
@@ -106,6 +121,20 @@ function initDndcTheorySection() {
             `;
         });
     }
+}
+
+/**
+ * 解析「手動濃度」欄位。
+ * 空白（或純空白字元）視為未填 → null（改由 UV 計算）；
+ * 其餘一律 parseFloat，讓 0 與負值能被後續驗證攔下，而不是被當成未填。
+ *
+ * @param {string} rawValue - input 的原始字串
+ * @returns {number|null} 濃度 (mg/mL) 或 null
+ */
+function parseManualConcentration(rawValue) {
+    if (rawValue == null || String(rawValue).trim() === '') return null;
+    const parsed = parseFloat(rawValue);
+    return Number.isNaN(parsed) ? null : parsed;
 }
 
 // ========================
@@ -343,7 +372,8 @@ function initDndcHplcSection() {
                 riDelay: parseFloat(document.getElementById('dndcRiDelay').value) || 0,
                 baselineMode: document.getElementById('dndcBaselineMode').value,
                 peakMode: document.getElementById('dndcPeakMode').value || 'area',
-                manualC: parseFloat(document.getElementById('dndcManualC').value) || null,
+                // 空白 → null（自動從 UV 計算）；有填就照實傳，讓 <= 0 的值能被驗證接到
+                manualC: parseManualConcentration(document.getElementById('dndcManualC').value),
                 autoAlign: document.getElementById('dndcAutoAlign').checked,
                 decimalPlaces: 4
             };
@@ -386,18 +416,53 @@ function initDndcHplcSection() {
     }
 }
 
-function displayHplcDndcResults(result, params) {
-    const resultsDiv = document.getElementById('hplcDndcResults');
-    const ai = result.alignmentInfo;
-    let alignInfo = '';
-    if (ai) {
-        const corr = ai.correlation != null ? ai.correlation : null;
-        const corrBadge = corr != null
-            ? (corr >= 0.95 ? `<span class="alert-success" style="padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;">Good (${corr.toFixed(3)})</span>`
-            : corr >= 0.85 ? `<span class="alert-warning" style="padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;">Fair (${corr.toFixed(3)})</span>`
-            : `<span class="alert-error" style="padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;">Poor (${corr.toFixed(3)})</span>`)
-            : '';
-        alignInfo = `
+/**
+ * Translate a machine-readable alignment reason into a beamline-friendly
+ * Chinese message.
+ *
+ * @param {string|null} reason - alignmentInfo.reason
+ * @returns {string} Display text
+ */
+function alignmentReasonText(reason) {
+    if (!reason) return '';
+    if (reason.startsWith('reference signal is constant')) {
+        return 'UV 參考訊號為常數（多半是此檔案沒有 UV 通道），無法估算 UV–RI 時間偏移';
+    }
+    if (reason.startsWith('manual concentration supplied')) {
+        return '已輸入手動濃度，UV 訊號未參與計算，因此不進行自動對齊';
+    }
+    if (reason.startsWith('lag exceeds maxLag')) {
+        return `估算出的時間偏移超出容許範圍（${reason}），已忽略不套用，請改用「RI 延遲」手動輸入`;
+    }
+    return reason;
+}
+
+/**
+ * Build the alignment result-items plus an explicit warning banner when the
+ * auto-alignment was skipped or clamped.
+ *
+ * @param {object|null} ai - result.alignmentInfo
+ * @returns {{items: string, alert: string}} HTML fragments
+ */
+function renderAlignmentInfo(ai) {
+    if (!ai) return { items: '', alert: '' };
+
+    const inactive = ai.skipped || ai.clamped;
+    const corr = ai.correlation != null ? ai.correlation : null;
+    const badgeStyle = 'padding: 0.125rem 0.375rem; border-radius: 4px; font-size: 0.75rem;';
+
+    let corrBadge;
+    if (inactive) {
+        corrBadge = `<span class="alert-warning" style="${badgeStyle}">未套用</span>`;
+    } else if (corr != null) {
+        corrBadge = corr >= 0.95 ? `<span class="alert-success" style="${badgeStyle}">Good (${corr.toFixed(3)})</span>`
+            : corr >= 0.85 ? `<span class="alert-warning" style="${badgeStyle}">Fair (${corr.toFixed(3)})</span>`
+            : `<span class="alert-error" style="${badgeStyle}">Poor (${corr.toFixed(3)})</span>`;
+    } else {
+        corrBadge = '';
+    }
+
+    const items = `
             <div class="result-item">
                 <div class="result-label">UV-RI 時間偏移</div>
                 <div class="result-value">${ai.lag.toFixed(4)} <span style="font-size: 0.75rem;">pts</span></div>
@@ -406,10 +471,24 @@ function displayHplcDndcResults(result, params) {
                 <div class="result-label">對齊品質</div>
                 <div class="result-value">${corrBadge}</div>
             </div>`;
-    }
 
-    const peakUnit = params.peakMode === 'area' ? 'AU·min' : 'AU';
-    const riUnit = params.peakMode === 'area' ? 'RIU·min' : 'RIU';
+    const alert = inactive
+        ? `<div class="alert alert-warning mt-md">${ai.skipped ? '已略過自動對齊' : '自動對齊結果已被忽略'}：${escapeHtmlDndc(alignmentReasonText(ai.reason))}</div>`
+        : '';
+
+    return { items, alert };
+}
+
+function displayHplcDndcResults(result, params) {
+    const resultsDiv = document.getElementById('hplcDndcResults');
+    const alignment = renderAlignmentInfo(result.alignmentInfo);
+    const alignInfo = alignment.items;
+
+    const isArea = params.peakMode === 'area';
+    const riUnit = isArea ? 'RIU·min' : 'RIU';
+    // area 模式的分母其實是 UV 峰的梯形積分，不是瞬時濃度
+    const concLabel = isArea ? 'UV 積分' : '濃度';
+    const concUnit = isArea ? 'mg·min/mL' : 'mg/mL';
 
     resultsDiv.innerHTML = `
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
@@ -420,8 +499,8 @@ function displayHplcDndcResults(result, params) {
         </div>
         <div class="result-grid">
             <div class="result-item">
-                <div class="result-label">濃度</div>
-                <div class="result-value">${result.concentration != null ? result.concentration.toFixed(4) : '-'} <span style="font-size: 0.75rem;">mg/mL</span></div>
+                <div class="result-label">${concLabel}</div>
+                <div class="result-value">${result.concentration != null ? result.concentration.toFixed(4) : '-'} <span style="font-size: 0.75rem;">${concUnit}</span></div>
             </div>
             <div class="result-item">
                 <div class="result-label">RI peak value</div>
@@ -437,6 +516,7 @@ function displayHplcDndcResults(result, params) {
             </div>
             ${alignInfo}
         </div>
+        ${alignment.alert}
     `;
 }
 
@@ -1243,10 +1323,10 @@ function initExportButtons() {
 
             const lines = [
                 'Parameter,Value',
-                `dn/dc,${r.dndc}`,
+                `dn/dc (mL/g),${r.dndc}`,
                 `RI Peak Value,${r.riPeakValue}`,
                 `RI (corrected),${r.riValue}`,
-                `Concentration (mg/mL),${r.concentration}`,
+                `${p.peakMode === 'area' ? 'UV Integral (mg·min/mL)' : 'Concentration (mg/mL)'},${r.concentration}`,
                 `Peak Mode,${r.peakMode}`,
                 `Baseline Mode,${r.baselineMode}`,
                 `Alignment Lag,${r.alignmentInfo ? r.alignmentInfo.lag : 'N/A'}`,
@@ -1278,7 +1358,8 @@ function initExportButtons() {
             if (!table) return;
 
             const rows = table.querySelectorAll('tbody tr');
-            const lines = ['Concentration (mg/mL),RI Area,dn/dc (individual)'];
+            // 手動輸入表格的濃度欄位單位為 g/mL（見 index.html 表頭）
+            const lines = ['Concentration (g/mL),RI Area,dn/dc (individual)'];
             rows.forEach(row => {
                 const cells = row.querySelectorAll('td input, td');
                 const conc = row.querySelector('input[type="number"]:nth-of-type(1)')?.value || '';
@@ -1306,7 +1387,7 @@ function initExportButtons() {
                 ].join(','));
             }
             lines.push('');
-            lines.push(`Overall dn/dc,${r.dndc}`);
+            lines.push(`Overall dn/dc (mL/g),${r.dndc}`);
             if (r.fitResult) {
                 lines.push(`R-squared,${r.fitResult.rSquared}`);
                 lines.push(`Intercept,${r.fitResult.intercept}`);

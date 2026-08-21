@@ -7,88 +7,102 @@
 // SAXS 結構參數計算
 // ========================
 
+// ---- 物理常數 (模組層) ----
+const NA_AVOGADRO = 6.022e23;           // 亞佛加德羅常數 (1/mol)
+const ELECTRON_RADIUS_CM = 2.818e-13;   // 電子經典半徑 (cm)
+const RHO_E_PROTEIN = 0.44;             // 蛋白質平均電子密度 (e/Å³)
+const RHO_E_SOLVENT = 0.334;            // 水電子密度 (e/Å³)
+const VBAR_PROTEIN_REF = 0.73;          // 蛋白質參考部分比容 (cm³/g)
+
+// 散射長度密度差 (cm⁻²)
+// Δρ_e (e/Å³) × 10²⁴ (→ e/cm³) × r_e (cm) ≈ 2.99 × 10¹⁰ cm⁻²
+const DELTA_SLD = (RHO_E_PROTEIN - RHO_E_SOLVENT) * 1e24 * ELECTRON_RADIUS_CM;
+
 /**
- * 從分子量計算理論 I(0)
+ * I(0)/(c·MW) for proteins, cm⁻¹/(mg/mL·Da)
+ * 第一原理值 (v̄ = 0.73 cm³/g, ρ_e = 0.44 e/Å³) ≈ 7.9 × 10⁻⁷
+ * 推導: I(0) = (c/1000) × (MW/NA) × (Δρ_SLD × v̄)²，c 以 mg/mL 代入
+ * 與 Excel `Protein_Io_cal_` 的第一原理算法一致
+ */
+const I0_CONTRAST_FACTOR = Math.pow(DELTA_SLD * VBAR_PROTEIN_REF, 2) / (NA_AVOGADRO * 1000);
+
+/**
+ * 計算理論 I(0)
  * 用於與實驗值比較，驗證樣品單分散性
- * 
+ *
+ * 兩種算法：
+ *   1. 'excel-exact'（有序列組成時）— TPS13A Excel `Protein_Io_cal_` 的精確式:
+ *        I(0) [cm⁻¹] = n × [r_e × (N_e − ρ_s × V_dry)]²
+ *        n     = (c/1000) × NA / MW      分子數密度 (molecules/cm³)
+ *        N_e   = 分子總電子數 (由序列組成加總)
+ *        V_dry = 乾燥體積 (Å³)，ρ_s = 0.334 e/Å³ (水電子密度)
+ *        r_e   = 2.818 × 10⁻¹³ cm
+ *        單位: (e × cm)² × (1/cm³) = cm⁻¹
+ *        驗算: Excel 範例 (MW 38,536.61、N_e 20,605、V_dry 48,694.7 Å³)
+ *              @ 1 mg/mL → 0.0234 cm⁻¹ (Excel N18)
+ *
+ *   2. 'empirical'（只有 MW 時）— 平均蛋白質對比度的一階近似:
+ *        I(0) = c × MW × I0_CONTRAST_FACTOR (≈ 7.9 × 10⁻⁷)
+ *        驗算: BSA (66,430 Da) @ 1 mg/mL → 0.0525 cm⁻¹
+ *
+ * 注意: v̄ 不是 I(0) 的自由乘數 (過剩電子數已由 N_e − ρ_s·V_dry 決定)，
+ *       因此 partialSpecificVolume 僅作紀錄，不參與計算。
+ *
  * @param {number} mw - 分子量 (Da)
  * @param {number} concentration - 濃度 (mg/mL)
- * @param {number} partialSpecificVolume - 部分比容 (cm³/g), 蛋白質預設 0.73
- * @param {number} electronDensitySolvent - 溶劑電子密度 (e/Å³), 水約 0.334
- * @returns {object} 理論 I(0) 計算結果
- * 
- * 公式: I(0) = c × MW × Δρ² × v̄² × NA / 1000
- * 
- * 其中:
- *   c = 濃度 (mg/mL = g/L)
- *   MW = 分子量 (Da = g/mol)
- *   Δρ = 電子密度差 = ρ_protein - ρ_solvent
- *   v̄ = 部分比容
- *   NA = 亞佛加德羅常數
- * 
- * 對於蛋白質在水溶液中:
- *   - 蛋白質電子密度 ≈ 0.44 e/Å³
- *   - 水電子密度 ≈ 0.334 e/Å³
- *   - Δρ ≈ 2.8 × 10¹⁰ cm⁻² (轉換單位後)
- * 
- * 簡化公式 (對於蛋白質): I(0)/c ≈ MW × 7.8 × 10⁻⁶ cm⁻¹/(mg/mL × Da)
+ * @param {object|number} [opts] - 選用參數 (舊版可傳 v̄ 數值，僅作紀錄)
+ * @param {number} [opts.electrons] - 分子總電子數 N_e
+ * @param {number} [opts.dryVolume] - 乾燥體積 V_dry (Å³)
+ * @param {number} [opts.partialSpecificVolume] - 部分比容 (cm³/g)，僅作紀錄
+ * @returns {object} 理論 I(0) 計算結果，含 method: 'excel-exact' | 'empirical'
  */
-function calculateTheoreticalI0(mw, concentration, partialSpecificVolume = 0.73) {
-    // 常數
-    const NA = 6.022e23;  // 亞佛加德羅常數
-    const re = 2.818e-13; // 電子經典半徑 (cm)
+function calculateTheoreticalI0(mw, concentration, opts = {}) {
+    // 相容舊簽名 calculateTheoreticalI0(mw, c, vbar)
+    const options = (typeof opts === 'number')
+        ? { partialSpecificVolume: opts }
+        : (opts || {});
 
-    // 蛋白質平均值
-    const electronDensityProtein = 0.44;  // e/Å³
-    const electronDensitySolvent = 0.334; // e/Å³ (水)
+    const { electrons, dryVolume } = options;
+    const partialSpecificVolume = Number.isFinite(options.partialSpecificVolume)
+        ? options.partialSpecificVolume
+        : VBAR_PROTEIN_REF;
 
-    // 電子密度差 (e/Å³)
-    const deltaRho_eA3 = electronDensityProtein - electronDensitySolvent; // ≈ 0.106 e/Å³
+    const hasComposition = Number.isFinite(electrons) && electrons > 0
+        && Number.isFinite(dryVolume) && dryVolume > 0;
 
-    // 轉換到 cm⁻² (1 Å = 10⁻⁸ cm)
-    // Δρ (e/Å³) = Δρ (e/cm³) × (10⁻⁸)³ → Δρ (e/cm³) = Δρ (e/Å³) × 10²⁴
-    const deltaRho = deltaRho_eA3 * 1e24;  // e/cm³
+    let theoreticalI0, method, excessElectrons;
 
-    // 散射長度密度差 (cm⁻²)
-    // 對於 X-ray: SLD = ρ_e × r_e
-    const deltaSLD = deltaRho * re;  // ≈ 2.99 × 10¹⁰ cm⁻²
+    if (hasComposition) {
+        // Excel Protein_Io_cal_ 精確式
+        const numberDensity = (concentration / 1000) * NA_AVOGADRO / mw;  // molecules/cm³
+        excessElectrons = electrons - RHO_E_SOLVENT * dryVolume;          // e/molecule
+        const excessLength = ELECTRON_RADIUS_CM * excessElectrons;        // cm
+        theoreticalI0 = numberDensity * excessLength * excessLength;
+        method = 'excel-exact';
+    } else {
+        // 平均對比度近似
+        excessElectrons = null;
+        theoreticalI0 = concentration * mw * I0_CONTRAST_FACTOR;
+        method = 'empirical';
+    }
 
-    // 蛋白質體積 (cm³/g)
-    const vbar = partialSpecificVolume;
+    // 經驗式永遠一併回傳，讓 UI 能並列顯示兩種估計（兩者對 BSA 差約 20%：
+    // 晶體殘基體積推得的 ρ_e ≈ 0.42 e/Å³，低於經驗式假設的 0.44）
+    const empiricalI0 = concentration * mw * I0_CONTRAST_FACTOR;
 
-    // I(0) 計算
-    // I(0) [cm⁻¹] = c [g/cm³] × MW [g/mol] / NA [1/mol] × (Δρ × v)² 
-    // 注意: c [mg/mL] = c [g/L] = c [g/1000 cm³]
-    // c [g/cm³] = c [mg/mL] / 1000
-
-    const c_gcm3 = concentration / 1000;  // mg/mL → g/cm³
-
-    // 分子體積 (cm³/molecule)
-    const molecularVolume = mw * vbar / NA;  // (g/mol × cm³/g) / (1/mol) = cm³
-
-    // 過剩散射電子數 = Δρ_e × V_mol
-    // Δρ_e = (ρ_protein - ρ_solvent) 電子密度差
-    // 但更準確用 total electrons - excluded volume electrons
-
-    // 簡化使用經驗公式:
-    // 對於蛋白質: I(0)/c ≈ MW × k, where k ≈ 7.8e-6 cm⁻¹/(mg/mL × Da)
-    // 這個 k 值來自標準蛋白質校正 (假設 vbar ≈ 0.73 cm³/g)
-    // 若 vbar 偏離 0.73，用 Δρ² 比值修正:
-    // k_corrected = k_ref × (Δρ_actual / Δρ_ref)² × (v_actual / v_ref)²
-    const vbar_ref = 0.73;
-    const k_ref = 7.8e-6;  // cm⁻¹/(mg/mL × Da) - 經驗常數 at vbar=0.73
-    const k_protein = k_ref * Math.pow(vbar / vbar_ref, 2);
-
-    const theoreticalI0 = concentration * mw * k_protein;
-
-    // 額外計算比值 I(0)/c/MW
-    const I0_per_c_per_MW = theoreticalI0 / concentration / mw;
+    const perConcentration = concentration !== 0 ? theoreticalI0 / concentration : 0;
+    const I0_per_c_per_MW = mw !== 0 ? perConcentration / mw : 0;
 
     return {
         theoreticalI0: theoreticalI0,           // cm⁻¹
-        I0_per_concentration: theoreticalI0 / concentration,  // cm⁻¹/(mg/mL)
+        I0_per_concentration: perConcentration, // cm⁻¹/(mg/mL)
         I0_per_c_per_MW: I0_per_c_per_MW,       // cm⁻¹/(mg/mL × Da)
-        constant_k: k_protein,
+        constant_k: I0_per_c_per_MW,
+        method: method,                         // 'excel-exact' | 'empirical'
+        empiricalI0: empiricalI0,               // cm⁻¹，c × MW × I0_CONTRAST_FACTOR
+        electrons: hasComposition ? electrons : null,
+        dryVolume: hasComposition ? dryVolume : null,
+        excessElectrons: excessElectrons,       // N_e − ρ_s × V_dry
         mw: mw,
         concentration: concentration,
         partialSpecificVolume: partialSpecificVolume
@@ -101,50 +115,64 @@ function calculateTheoreticalI0(mw, concentration, partialSpecificVolume = 0.73)
  * 
  * @param {number} mw - 分子量 (Da)
  * @param {string} proteinType - 蛋白質類型: 'globular', 'unfolded', 'idp'
+ * @param {number} [nResidues] - 殘基數 N（unfolded / IDP 分支需要）
  * @returns {object} 理論 Rg 計算結果
- * 
- * 經驗公式:
- *   球狀蛋白質 (globular): Rg = 0.66 × MW^0.395 (Receveur-Bréchot et al. 2012)
- *   展開蛋白質 (unfolded): Rg = 2.54 × MW^0.522
- *   本質無序蛋白 (IDP): Rg = 2.49 × MW^0.509
- * 
- * Excel Predicted Rg (實驗校正):
- *   Predicted Rg = 0.2508 × MW^0.4301 (基於 TPS13A Excel 數據)
- *   校正自: MW=20000→Rg=17.76, MW=38542→Rg=23.55
- * 
- * 參考文獻:
+ *
+ * 經驗公式（注意自變數不同）:
+ *   球狀蛋白質 (globular): Rg = 0.251 × MW^0.43   ← MW (Da)
+ *   展開蛋白質 (unfolded): Rg = 2.54 × N^0.522    ← N (殘基數)
+ *   本質無序蛋白 (IDP):    Rg = 2.49 × N^0.509    ← N (殘基數)
+ *
+ * 球狀分支來源: TPS13A Excel `Input protein information!M21`
+ *   Rg = 10^(0.43·log10(MW/1000) − 0.31) × 10 (Å) ≡ 0.2508 × MW^0.4301
+ *   驗算: BSA 66,430 → 29.7 Å；lysozyme 14,313 → 15.4 Å
+ *
+ * unfolded / IDP 的冪次律以「殘基數」為自變數（不是 Da）；未提供 nResidues 時
+ * 以 MW / 110 Da 估算並在回傳物件標記 residueEstimate = true。
+ *   驗算: BSA 583 殘基 → unfolded 70.6 Å（若誤用 Da 會得到 836 Å）
+ *
+ * 參考文獻 (unfolded / IDP 分支):
  *   Fischer et al. (2004) Protein Science
  *   Bernado & Blackledge (2009) Biophys J
  */
-function calculateTheoreticalRg(mw, proteinType = 'globular') {
-    let Rg, formula, coefficient, exponent;
+function calculateTheoreticalRg(mw, proteinType = 'globular', nResidues = null) {
+    const AVG_RESIDUE_MW = 110;  // Da/殘基（一般蛋白質平均）
+    const hasResidueCount = Number.isFinite(nResidues) && nResidues > 0;
+    const residues = hasResidueCount ? nResidues : Math.round(mw / AVG_RESIDUE_MW);
+
+    let Rg, formula, coefficient, exponent, basis;
 
     switch (proteinType.toLowerCase()) {
         case 'globular':
-            // Guinier (1939) / Receveur-Bréchot et al. (2012)
-            coefficient = 0.66;
-            exponent = 0.395;
-            formula = 'Rg = 0.66 × MW^0.395';
+            // TPS13A Excel 校正 (Input protein information!M21)
+            coefficient = 0.2508;
+            exponent = 0.4301;
+            basis = 'mw';
+            formula = 'Rg = 0.251 × MW^0.43 (TPS13A Excel 校正)';
             break;
         case 'unfolded':
-            // For chemically unfolded proteins
+            // For chemically unfolded proteins (N = 殘基數)
             coefficient = 2.54;
             exponent = 0.522;
-            formula = 'Rg = 2.54 × MW^0.522';
+            basis = 'residues';
+            formula = 'Rg = 2.54 × N^0.522 (N = 殘基數)';
             break;
         case 'idp':
-            // For intrinsically disordered proteins
+            // For intrinsically disordered proteins (N = 殘基數)
             coefficient = 2.49;
             exponent = 0.509;
-            formula = 'Rg = 2.49 × MW^0.509';
+            basis = 'residues';
+            formula = 'Rg = 2.49 × N^0.509 (N = 殘基數)';
             break;
         default:
-            coefficient = 0.66;
-            exponent = 0.395;
-            formula = 'Rg = 0.66 × MW^0.395';
+            coefficient = 0.2508;
+            exponent = 0.4301;
+            basis = 'mw';
+            formula = 'Rg = 0.251 × MW^0.43 (TPS13A Excel 校正)';
     }
 
-    Rg = coefficient * Math.pow(mw, exponent);
+    const usesResidues = basis === 'residues';
+    Rg = coefficient * Math.pow(usesResidues ? residues : mw, exponent);
 
     // Excel Predicted Rg (基於 TPS13A Excel 數據校正)
     // 公式: Predicted Rg = 0.2508 × MW^0.4301
@@ -160,13 +188,16 @@ function calculateTheoreticalRg(mw, proteinType = 'globular') {
     const qMaxGuinier = 1.3 / Rg;  // Å⁻¹
 
     return {
-        theoreticalRg: Rg,           // Å (文獻公式)
+        theoreticalRg: Rg,           // Å (該構型的經驗公式)
         predictedRg: predictedRg,    // Å (Excel 實驗校正)
         formula: formula,
         predictedFormula: 'Rg = 0.2508 × MW^0.4301',
         proteinType: proteinType,
         coefficient: coefficient,
         exponent: exponent,
+        basis: basis,                // 'mw' | 'residues'
+        nResidues: usesResidues ? residues : null,
+        residueEstimate: usesResidues && !hasResidueCount,
         qMaxGuinier: qMaxGuinier,    // Å⁻¹
         mw: mw
     };
@@ -235,11 +266,16 @@ function calculateTheoreticalDmax(rg, shape = 'globular') {
  * @param {number} mw - 分子量 (Da)
  * @param {number} concentration - 濃度 (mg/mL)
  * @param {string} proteinType - 蛋白質類型
+ * @param {object} [opts] - 選用序列資訊
+ * @param {number} [opts.electrons] - 分子總電子數 N_e (啟用 Excel 精確 I(0))
+ * @param {number} [opts.dryVolume] - 乾燥體積 V_dry (Å³)
+ * @param {number} [opts.nResidues] - 殘基數 (unfolded / IDP 的 Rg 用)
  * @returns {object} 所有理論參數
  */
-function calculateAllTheoreticalParams(mw, concentration, proteinType = 'globular') {
-    const i0Result = calculateTheoreticalI0(mw, concentration);
-    const rgResult = calculateTheoreticalRg(mw, proteinType);
+function calculateAllTheoreticalParams(mw, concentration, proteinType = 'globular', opts = {}) {
+    const options = opts || {};
+    const i0Result = calculateTheoreticalI0(mw, concentration, options);
+    const rgResult = calculateTheoreticalRg(mw, proteinType, options.nResidues);
     const dmaxResult = calculateTheoreticalDmax(rgResult.theoreticalRg, proteinType === 'elongated' ? 'elongated' : 'globular');
 
     // 理論乾燥體積 (from MW)
@@ -252,12 +288,16 @@ function calculateAllTheoreticalParams(mw, concentration, proteinType = 'globula
 
         // I(0) 理論值
         theoreticalI0: i0Result.theoreticalI0,
+        i0Method: i0Result.method,   // 'excel-exact' | 'empirical'
+        empiricalI0: i0Result.empiricalI0,
 
-        // Rg 理論值 (文獻公式)
+        // Rg 理論值 (該構型的經驗公式)
         theoreticalRg: rgResult.theoreticalRg,
         // Predicted Rg (Excel 實驗校正)
         predictedRg: rgResult.predictedRg,
         rgFormula: rgResult.formula,
+        rgBasis: rgResult.basis,
+        rgResidueEstimate: rgResult.residueEstimate,
         predictedRgFormula: rgResult.predictedFormula,
         qMaxGuinier: rgResult.qMaxGuinier,
 
@@ -275,12 +315,12 @@ function calculateAllTheoreticalParams(mw, concentration, proteinType = 'globula
  * 從 I(0) 計算分子量
  * @param {number} I0 - 零角散射強度 (cm⁻¹)
  * @param {number} concentration - 濃度 (mg/mL)
- * @param {number} contrastFactor - 對比因子
+ * @param {number} contrastFactor - 對比因子 cm⁻¹/(mg/mL × Da)，預設為蛋白質第一原理值
  * @returns {number} 分子量 (Da)
  */
-function calculateMwFromI0(I0, concentration, contrastFactor = 7.8e-6) {
+function calculateMwFromI0(I0, concentration, contrastFactor = I0_CONTRAST_FACTOR) {
     // MW = I(0) / (c × k)
-    // k = 7.8e-6 cm⁻¹/(mg/mL × Da) for proteins
+    // k = I0_CONTRAST_FACTOR ≈ 7.9e-7 cm⁻¹/(mg/mL × Da) for proteins (v̄ = 0.73)
     const mw = I0 / (concentration * contrastFactor);
     return mw;
 }
@@ -806,7 +846,7 @@ function calculateSuggestedParams(peakCenter3ul, peakFWHM3ul) {
  *   - Rg = 0.6914 × MW^(1/3) (BSA 校正，球狀蛋白 cube-root scaling)
  *   - qmin = 0.224 / Rg (基於 BSA: Rg=28, qmin=0.008)
  *   - 9M SD = 67.857 × Rg (基於 BSA: Rg=28, SD=1900)
- *   注意：此處 Rg 公式與 SAXS 理論頁面的 Rg = 0.66 × MW^0.395 不同，
+ *   注意：此處 Rg 公式與 SAXS 理論頁面的 Rg = 0.251 × MW^0.43 不同，
  *   因為本函數是專門為偵測器距離估算而用 TPS13A 實測數據校正的。
  * 
  * 參考數據 (from Excel):
@@ -879,6 +919,9 @@ function calculateDilutionFactorEmpirical(injectedVolume) {
 
 // 導出函數
 window.SAXSCalculations = {
+    // 物理常數
+    I0_CONTRAST_FACTOR,
+
     // SAXS 分析
     calculateMwFromI0,
     calculatePorodVolume,

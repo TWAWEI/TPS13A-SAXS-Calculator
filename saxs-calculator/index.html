@@ -103,7 +103,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.4
+                Version 4.5
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" title="收合/展開側邊欄">
                 <span id="sidebarToggleIcon">◀</span>
@@ -254,13 +254,7 @@
                                         <div class="info-panel-label">理論 <i>I</i>(0)</div>
                                         <div class="info-panel-value" id="theoreticalI0Display">--</div>
                                         <div class="info-panel-unit">cm⁻¹</div>
-                                    </div>
-
-                                    <!-- 理論 <i>R</i><sub>g</sub> (文獻) -->
-                                    <div class="info-panel-item">
-                                        <div class="info-panel-label">理論 <i>R</i><sub>g</sub></div>
-                                        <div class="info-panel-value" id="theoreticalRgDisplay">--</div>
-                                        <div class="info-panel-unit">Å</div>
+                                        <div class="info-panel-unit" id="theoreticalI0Method"></div>
                                     </div>
 
                                     <!-- Predicted <i>R</i><sub>g</sub> (Excel 實驗校正) -->
@@ -279,8 +273,7 @@
                                 </div>
 
                                 <div class="info-panel-formula">
-                                    公式: <i>I</i>(0)=<i>c</i>×MW×7.8×10⁻⁶ | <i>R</i><sub>g</sub>=0.77×MW<sup>0.37</sup> | <span class="info-panel-label--highlight">Predicted
-                                        <i>R</i><sub>g</sub>=0.2508×MW<sup>0.4301</sup></span> | <i>D</i><sub>max</sub>≈2.8×<i>R</i><sub>g</sub>
+                                    公式: <i>I</i>(0)=<i>c</i>×MW×7.9×10⁻⁷ | <span class="info-panel-label--highlight"><i>R</i><sub>g</sub>=0.2508×MW<sup>0.4301</sup>（TPS13A Excel 校正）</span> | <i>D</i><sub>max</sub>≈2.8×<i>R</i><sub>g</sub>
                                 </div>
                             </div>
 
@@ -316,7 +309,7 @@
                                 </div>
 
                                 <div class="info-panel-formula">
-                                    公式: <i>q</i><sub>min</sub>=1.3/(3×<i>R</i><sub>g</sub>) | SD=(<i>R</i><sub>g</sub>/28)×8000 (參考: BSA <i>R</i><sub>g</sub>=28 Å, SD=8 m)
+                                    公式: <i>q</i><sub>min</sub>=0.224/<i>R</i><sub>g</sub> | SD=67.9×<i>R</i><sub>g</sub> (mm) (參考: BSA <i>R</i><sub>g</sub>=28 Å, <i>q</i><sub>min</sub>=0.008 Å⁻¹, 9M SD=1900 mm)
                                 </div>
                             </div>
 
@@ -1050,7 +1043,7 @@
                                     </tr>
                                     <tr>
                                         <td></td>
-                                        <td>Partial specific volume</td>
+                                        <td><i>v̄</i> = <i>V</i><sub>dry</sub>/<i>M</i>（晶體殘基體積推得，SAXS 對比用；非熱力學偏比容）</td>
                                         <td id="iucr-vbar">-</td>
                                         <td></td>
                                         <td>cm³/g</td>
@@ -1134,7 +1127,7 @@
                                 • <i>R</i><sub>g</sub> = 0.69 × MW<sup>1/3</sup> (TPS13A BSA 實測校正，僅用於偵測器距離估算)<br>
                                 • <i>q</i><sub>min</sub> = 0.224 / <i>R</i><sub>g</sub><br>
                                 • 9M SD = 67.86 × <i>R</i><sub>g</sub><br>
-                                <small style="color: var(--color-text-muted);">※ SAXS 理論頁面使用文獻公式 <i>R</i><sub>g</sub> = 0.66 × MW<sup>0.395</sup>，兩者用途不同</small>
+                                <small style="color: var(--color-text-muted);">※ SAXS 理論頁面使用 Excel 校正公式 <i>R</i><sub>g</sub> = 0.251 × MW<sup>0.43</sup>，兩者用途不同</small>
                             </div>
                         </div>
                     </div>
@@ -1306,9 +1299,10 @@
                             <div class="form-group">
                                 <label class="form-label" for="llNPolymer">聚合物折射率 <i>n</i><sub>polymer</sub></label>
                                 <div class="form-input-group">
-                                    <input type="number" class="form-input" id="llNPolymer" value="1.45" step="0.001">
+                                    <input type="number" class="form-input" id="llNPolymer" value="1.60" step="0.001">
                                     <span class="input-unit"></span>
                                 </div>
+                                <small style="color: var(--color-text-muted);">乾蛋白質約 1.60；一般合成高分子 1.45–1.60</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="llNSolvent">溶劑折射率 <i>n</i><sub>solvent</sub></label>
@@ -1320,9 +1314,10 @@
                             <div class="form-group">
                                 <label class="form-label" for="llDensityPolymer">聚合物密度 <i>ρ</i><sub>polymer</sub></label>
                                 <div class="form-input-group">
-                                    <input type="number" class="form-input" id="llDensityPolymer" value="1.35" step="0.01">
+                                    <input type="number" class="form-input" id="llDensityPolymer" value="1.37" step="0.01">
                                     <span class="input-unit">g/mL</span>
                                 </div>
+                                <small style="color: var(--color-text-muted);"><i>ρ</i><sub>polymer</sub> ≈ 1/v̄；蛋白質 v̄ = 0.73 cm³/g → 1.37 g/mL</small>
                             </div>
                             <div class="form-group">
                                 <label class="form-label" for="llDensitySolvent">溶劑密度 <i>ρ</i><sub>solvent</sub></label>
@@ -1330,6 +1325,7 @@
                                     <input type="number" class="form-input" id="llDensitySolvent" value="1.0" step="0.001">
                                     <span class="input-unit">g/mL</span>
                                 </div>
+                                <small style="color: var(--color-text-muted);">體積可加假設下不進入 Lorentz-Lorenz 公式，僅作紀錄</small>
                             </div>
                             <button class="btn btn-primary btn-lg btn-full" id="calculateLorentzLorenz">
                                 計算 <span class="sci-var">dn/dc</span>
@@ -1543,7 +1539,7 @@
                             <div class="form-group form-group--compact">
                                 <label class="form-label form-label--sm" for="dndcManualC">手動濃度（留空則從 UV 計算）</label>
                                 <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcManualC" step="0.001" placeholder="自動計算" title="若檔案無 UV 通道或 UV 不可靠，在此輸入已知濃度。留空則自動從 UV 信號和消光係數計算">
+                                    <input type="number" class="form-input" id="dndcManualC" step="0.001" placeholder="自動計算" title="若檔案無 UV 通道或 UV 不可靠，在此輸入已知濃度。留空則自動從 UV 信號和消光係數計算。注意：手動濃度僅能搭配「峰高」模式（面積模式的 RIU·min ÷ mg/mL 量綱不成立）">
                                     <span class="input-unit">mg/mL</span>
                                 </div>
                             </div>
