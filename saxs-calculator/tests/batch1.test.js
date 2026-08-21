@@ -282,3 +282,19 @@ test('[47] 流速 / 峰參數為 0 或 NaN → throw 而非產出負時間', () 
     assert.throws(() => SAXS.calculateHPLCSAXSSettings({ ...EXCEL_CASE, peakFWHM: 0 }), /FWHM/);
     assert.throws(() => SAXS.calculateHPLCSAXSSettings({ ...EXCEL_CASE, peakCenter: NaN }), /Peak center/);
 });
+
+// ---------------------------------------------------------------- detector Rg panel (v4.9)
+test('compareRg: measured 27.9 vs predicted 29.7 → −6%', () => {
+    const r = SAXS.compareRg(27.9, 29.7);
+    approx(r.percent, -6.06, 0.01, 'percent');
+    assert.throws(() => SAXS.compareRg(27.9, 0));
+    assert.throws(() => SAXS.compareRg(NaN, 29.7));
+});
+
+test('detector suggestion from a typed Rg matches the Excel anchor (28 Å → qmin 0.008, SD 1900)', () => {
+    const r = SAXS.calculateDetectorDistance(28, 'rg');
+    approx(r.qmin, 0.008, 1e-3, 'qmin');
+    approx(r.suggestedSD, 1900, 1e-3, 'SD');
+    const r35 = SAXS.calculateDetectorDistance(35, 'rg');
+    approx(r35.suggestedSD, 2375, 2e-3, 'SD at 35 Å');
+});

@@ -667,7 +667,9 @@ function initSAXSSection() {
                 theoreticalDmaxDisplay.textContent = result.theoreticalDmax.toFixed(0);
             }
             // MW input already has the value, no need to update
+            window.DetectorRgPanel?.setPredictedFromMw(proteinMw);
         } else {
+            window.DetectorRgPanel?.setPredictedFromMw(NaN);
             if (theoreticalI0Display) theoreticalI0Display.textContent = '--';
             const theoreticalI0Method = document.getElementById('theoreticalI0Method');
             if (theoreticalI0Method) theoreticalI0Method.textContent = '';
@@ -700,6 +702,7 @@ function initSAXSSection() {
         const xrayEnergy = parseFloat(document.getElementById('xrayEnergy').value);
         const i0Guinier = parseFloat(document.getElementById('i0Guinier').value);
         const rgGuinier = parseFloat(document.getElementById('rgGuinier').value);
+        window.DetectorRgPanel?.notifyMeasured(rgGuinier);
         const guinierQmax = parseFloat(document.getElementById('guinierQmax').value);
         const i0Pr = parseFloat(document.getElementById('i0Pr').value);
         const rgPr = parseFloat(document.getElementById('rgPr').value);
@@ -767,12 +770,6 @@ function updateTheoreticalValuesFromProtein() {
     const theoreticalDmaxDisplay = document.getElementById('theoreticalDmaxDisplay');
     const theoreticalMWInput = document.getElementById('theoreticalMWInput');
 
-    // Detector distance elements
-    const detectorDistanceSource = document.getElementById('detectorDistanceSource');
-    const suggestedQminDisplay = document.getElementById('suggestedQminDisplay');
-    const suggestedSDDisplay = document.getElementById('suggestedSDDisplay');
-    const suggestedQrangeDisplay = document.getElementById('suggestedQrangeDisplay');
-
     if (!concentrationInput) return;
 
     const concentrationState = readPanelConcentration();
@@ -797,21 +794,8 @@ function updateTheoreticalValuesFromProtein() {
             theoreticalMWInput.value = proteinMw.toFixed(0);
         }
 
-        // Calculate and display detector distance recommendations using MW
-        const detectorResult = SAXSCalculations.calculateDetectorDistance(proteinMw, 'mw');
-
-        if (detectorDistanceSource) {
-            detectorDistanceSource.textContent = `Rg: ${detectorResult.rg.toFixed(1)} Å`;
-        }
-        if (suggestedQminDisplay) {
-            suggestedQminDisplay.textContent = detectorResult.qmin.toFixed(4);
-        }
-        if (suggestedSDDisplay) {
-            suggestedSDDisplay.textContent = detectorResult.suggestedSD.toLocaleString();
-        }
-        if (suggestedQrangeDisplay) {
-            suggestedQrangeDisplay.textContent = `${detectorResult.qmin.toFixed(3)}-0.4`;
-        }
+        // 偵測器距離建議：只更新「序列預測」Rg，面板若在手動／實測來源不會被覆蓋
+        window.DetectorRgPanel?.setPredictedFromMw(proteinMw);
     }
 }
 
@@ -1751,7 +1735,7 @@ const STORAGE_KEY = 'tps13a-form-state';
 
 // 永不持久化：檔案欄位（無意義）與密碼欄位（光束線是共用電腦，明文外洩）
 const PERSIST_SKIP_TYPES = Object.freeze(['file', 'password']);
-const PERSIST_SKIP_IDS = Object.freeze(['dndcPasswordInput']);
+const PERSIST_SKIP_IDS = Object.freeze(['dndcPasswordInput', 'detectorRgInput']);
 
 // 還原後需要補派 input 事件的欄位（其衍生顯示不會在 init 時自行重算）
 const PERSIST_DERIVED_IDS = Object.freeze([
@@ -1983,6 +1967,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initFormPersistence();
     initNavigation();
     initProteinSection();
+    window.DetectorRgPanel?.init();
     initSAXSSection();
     initHPLCSection();
     initSampleSection();

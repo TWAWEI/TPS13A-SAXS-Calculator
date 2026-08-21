@@ -103,7 +103,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.8
+                Version 4.9
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" aria-label="收合側邊欄" aria-expanded="true" aria-controls="sidebar">
                 <span id="sidebarToggleIcon" aria-hidden="true">◀</span>
@@ -281,8 +281,15 @@
                             <div class="form-group info-panel info-panel--warning">
                                 <div class="info-panel-header">
                                     <div class="info-panel-title">📡 偵測器距離建議</div>
-                                    <div class="info-panel-source" id="detectorDistanceSource">Rg: -- Å</div>
+                                    <div class="info-panel-header-right">
+                                        <span class="info-panel-chip info-panel-chip--predicted" id="detectorRgSource" title="Rg = 0.6906 × MW^⅓（球狀蛋白，Excel 偵測器表校正）">序列預測</span>
+                                        <span class="info-panel-header-label"><i>R</i><sub>g</sub></span>
+                                        <input type="number" id="detectorRgInput" class="info-panel-mw-input info-panel-mw-input--rg"
+                                            aria-label="偵測器距離建議使用的 Rg (Å)" placeholder="--" step="0.1" min="0.1" inputmode="decimal">
+                                        <span class="info-panel-header-label">Å</span>
+                                    </div>
                                 </div>
+                                <div class="info-panel-hint" id="detectorRgHint" role="status" hidden></div>
 
                                 <!-- 三個值並排顯示 -->
                                 <div class="info-panel-grid">
@@ -308,8 +315,12 @@
                                     </div>
                                 </div>
 
-                                <div class="info-panel-formula">
-                                    公式: <i>q</i><sub>min</sub>=0.224/<i>R</i><sub>g</sub> | SD=67.9×<i>R</i><sub>g</sub> (mm) (參考: BSA <i>R</i><sub>g</sub>=28 Å, <i>q</i><sub>min</sub>=0.008 Å⁻¹, 9M SD=1900 mm)
+                                <div class="info-panel-formula info-panel-formula--row">
+                                    <span>公式: <i>q</i><sub>min</sub>=0.224/<i>R</i><sub>g</sub> | SD=67.9×<i>R</i><sub>g</sub> (mm) (參考: BSA <i>R</i><sub>g</sub>=28 Å, <i>q</i><sub>min</sub>=0.008 Å⁻¹, 9M SD=1900 mm)</span>
+                                    <span class="info-panel-links">
+                                        <button type="button" class="info-panel-link" id="detectorRgReset" hidden>↺ 回到序列預測</button>
+                                        <button type="button" class="info-panel-link" id="detectorRgUseMeasured" hidden>↺ 改用實測</button>
+                                    </span>
                                 </div>
                             </div>
 
@@ -1767,6 +1778,7 @@
     <script src="js/a11y-utils.js"></script>
     <script src="js/protein.js"></script>
     <script src="js/calculations.js"></script>
+    <script src="js/detector-rg-panel.js"></script>
     <script src="js/charts.js"></script>
     <script src="js/dndc-calculations.js"></script>
     <script src="js/dndc-file-parser.js"></script>

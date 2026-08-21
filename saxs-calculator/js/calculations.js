@@ -882,6 +882,20 @@ function calculateSuggestedParams(peakCenter3ul, peakFWHM3ul) {
 // ========================
 
 /**
+ * 比較實測 Rg 與預測 Rg（偵測器距離面板的「改用實測」提示用）。
+ * @param {number} measured - 實測 Rg (Å)
+ * @param {number} predicted - 預測 Rg (Å)
+ * @returns {{ percent: number, ratio: number }} percent = (measured − predicted)/predicted × 100
+ */
+function compareRg(measured, predicted) {
+    if (!Number.isFinite(measured) || !Number.isFinite(predicted) || predicted <= 0) {
+        throw new Error('compareRg: measured 與 predicted 必須是有限數且 predicted > 0');
+    }
+    const ratio = measured / predicted;
+    return { percent: (ratio - 1) * 100, ratio };
+}
+
+/**
  * 計算 SAXS 偵測器建議距離
  * 根據蛋白質 MW 或 Rg 計算最佳的樣本到偵測器距離 (Sample-Detector distance)
  * 
@@ -978,6 +992,7 @@ window.SAXSCalculations = {
     calculateTheoreticalDmax,
     calculateAllTheoreticalParams,
     calculateDetectorDistance,
+    compareRg,
 
     // 離心參數
     calculateRCF,

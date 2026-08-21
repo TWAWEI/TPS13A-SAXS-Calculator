@@ -672,6 +672,83 @@ a:hover {
     font-family: var(--font-mono);
 }
 
+/* ===== Detector-distance panel: Rg source chip / inline input / links ===== */
+.info-panel-chip {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: var(--color-text-on-accent);
+    white-space: nowrap;
+}
+
+.info-panel-chip--manual {
+    background: #ffffff;
+    border-color: #ffffff;
+    color: #92400e;
+}
+
+.info-panel-chip--measured {
+    background: var(--color-text-primary);
+    border-color: var(--color-text-primary);
+    color: #ffffff;
+}
+
+.info-panel-mw-input--rg {
+    width: 64px;
+    text-align: right;
+}
+
+.info-panel-hint {
+    font-size: 0.6875rem;
+    color: var(--color-text-on-accent);
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: var(--radius-sm);
+    padding: 0.2rem 0.5rem;
+    margin: -0.25rem 0 0.5rem;
+}
+
+.info-panel-formula--row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+
+.info-panel-links {
+    display: inline-flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.info-panel-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-text-on-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.info-panel-link:hover {
+    text-decoration-thickness: 2px;
+}
+
+.info-panel-link:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 /* ===== Result Cards (Detector Section) ===== */
 .result-card {
     padding: var(--spacing-md);
