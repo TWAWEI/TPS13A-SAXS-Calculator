@@ -7,16 +7,18 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 **Modern, Helpful, Smart** — A friendly yet technically competent scientific tool. It should feel like a capable assistant that understands the domain, not a cold instrument panel or a toy.
 
 ### Aesthetic Direction
-> 2026-08-21 同步至實作（v4.4，commit 040984b「coral-to-ice」）。先前的深色/indigo 規格已於 2026-04 連續三次改版後廢棄；改動配色時請同步更新本節與 `css/styles.css` 的 `:root` tokens。
+> 2026-08-21 v4.6「muted coral」(palette C)。上一版 v4.4 coral-to-ice 的亮 coral 白字只有 3.6:1，使用者要求整體柔和；改動配色時請同步更新本節與 `css/styles.css` 的 `:root` tokens。
 
 - **Theme:** Light "Precision Editorial" — ice blue-gray page background (#E5E9EB), white cards (#ffffff), no dark mode
-- **Primary accent:** Coral (#F04E4E) — solid sidebar background, primary buttons, skip link; lighter tints #EC8282 / #EA9C9C for gradients and secondary emphasis
-- **Secondary accents:** Emerald (#10b981) for success/positive, Amber (#f59e0b) for warnings, Red (#dc2626) for errors
-- **Text:** Deep warm slate, never pure black — primary #1a1a2e, secondary #3d3d5c, muted #6b6b8a; white text on coral surfaces
+- **Primary accent:** Muted coral (#A85555) — solid sidebar background, primary buttons, gradient panels (#A85555 → #8F4646); white text on it is 5.1:1. Hover goes one step **darker** (#8F4646), never lighter
+- **Accent text on light surfaces:** #A83737 (6.4:1 on white) for values, card-title modifiers; #902F2F for info alerts on tinted backgrounds. Bright brand coral #F04E4E survives only as `--color-accent-brand` for chart lines
+- **Secondary accents:** Emerald (#10b981) fills / #047857 text, Amber #f59e0b fills only — amber **text** is #92400e, amber panels #b45309 → #92400e; Red (#dc2626) for errors
+- **Text:** Deep warm slate, never pure black — primary #1a1a2e, secondary #3d3d5c, muted #5a5a78; sidebar nav is pure white at 0.9375rem (≈16px) with a 3px white inset bar on the active item
 - **Typography:** Inter + Noto Sans TC for UI text (Google Fonts), JetBrains Mono with `tabular-nums` for scientific values and sequences; `html { font-size: 17px }`
 - **Icons:** No decorative icon system (scientific emoji removed in 6697dd9). A few functional glyphs remain in index.html/app.js (🔒/🔓 lock, 📥 export ×3, ☰ menu, 📊 📡 💡 🔍 🖼 section markers) — don't add new ones; removing the remaining section markers is an open cleanup item
-- **Visual effects:** Flat cards with 1px borders (#d4d8dc) and 3/6/8px radii; coral-tinted shadows; fast transitions (120/200ms ease-out); `backdrop-filter: blur(4px)` only on the modal overlay — no glassmorphism on cards, no hover lifts
+- **Visual effects:** Flat cards with 1px borders (#d4d8dc) and 3/6/8px radii; coral-tinted shadows (rgba(168,85,85,…)); fast transitions (120/200ms ease-out); `backdrop-filter: blur(4px)` only on the modal overlay — no glassmorphism on cards, no hover lifts
 - **Layout:** Fixed 240px sidebar (collapsible to 56px, state persisted), 4px spacing scale
+- **Contrast rule:** every text/background pair ≥ 4.5:1 (UI components ≥ 3:1). Never put white text on a tint lighter than #A85555; never use #f59e0b / #10b981 / #F04E4E as text
 - **Anti-references:** Avoid looking like a generic dashboard template, overly playful consumer apps, or cluttered legacy lab software
 
 ### Design Principles
