@@ -30,23 +30,23 @@ const I0_CONTRAST_FACTOR = Math.pow(DELTA_SLD * VBAR_PROTEIN_REF, 2) / (NA_AVOGA
  * 計算理論 I(0)
  * 用於與實驗值比較，驗證樣品單分散性
  *
- * 兩種算法：
- *   1. 'excel-exact'（有序列組成時）— TPS13A Excel `Protein_Io_cal_` 的精確式:
- *        I(0) [cm⁻¹] = n × [r_e × (N_e − ρ_s × V_dry)]²
- *        n     = (c/1000) × NA / MW      分子數密度 (molecules/cm³)
- *        N_e   = 分子總電子數 (由序列組成加總)
- *        V_dry = 乾燥體積 (Å³)，ρ_s = 0.334 e/Å³ (水電子密度)
- *        r_e   = 2.818 × 10⁻¹³ cm
- *        單位: (e × cm)² × (1/cm³) = cm⁻¹
- *        驗算: Excel 範例 (MW 38,536.61、N_e 20,605、V_dry 48,694.7 Å³)
- *              @ 1 mg/mL → 0.0234 cm⁻¹ (Excel N18)
+ * 主值 theoreticalI0 一律用經驗式（與 TPS13A 實測 BSA 一致）:
+ *   I(0) = c × MW × I0_CONTRAST_FACTOR (≈ 7.9 × 10⁻⁷ cm⁻¹/(mg/mL·Da))
+ *   驗算: BSA (66,430 Da) @ 1 mg/mL → 0.0525 cm⁻¹ (實測 0.0526)
  *
- *   2. 'empirical'（只有 MW 時）— 平均蛋白質對比度的一階近似:
- *        I(0) = c × MW × I0_CONTRAST_FACTOR (≈ 7.9 × 10⁻⁷)
- *        驗算: BSA (66,430 Da) @ 1 mg/mL → 0.0525 cm⁻¹
+ * 有序列組成時另外附上 exactI0 — TPS13A Excel `Protein_Io_cal_` 的第一原理式:
+ *   I(0) [cm⁻¹] = n × [r_e × (N_e − ρ_s × V_dry)]²
+ *   n     = (c/1000) × NA / MW      分子數密度 (molecules/cm³)
+ *   N_e   = 分子總電子數 (由序列組成加總)
+ *   V_dry = 乾燥體積 (Å³，Excel 晶體殘基體積表)，ρ_s = 0.334 e/Å³
+ *   r_e   = 2.818 × 10⁻¹³ cm
+ *   驗算: Excel 範例 (MW 38,536.61、N_e 20,605、V_dry 48,694.7 Å³) @ 1 mg/mL
+ *         → 0.0234 cm⁻¹ (Excel N18)
+ *   注意: 晶體殘基體積讓 ρ_e 只有 ≈0.42 e/Å³，此式對 BSA 給 0.042，比實測低約
+ *         20%——所以只作參考，不當主值（2026-08-21 使用者決定）。
  *
- * 注意: v̄ 不是 I(0) 的自由乘數 (過剩電子數已由 N_e − ρ_s·V_dry 決定)，
- *       因此 partialSpecificVolume 僅作紀錄，不參與計算。
+ * v̄ 不是 I(0) 的自由乘數 (過剩電子數已由 N_e − ρ_s·V_dry 決定)，
+ * partialSpecificVolume 僅作紀錄，不參與計算。
  *
  * @param {number} mw - 分子量 (Da)
  * @param {number} concentration - 濃度 (mg/mL)
@@ -54,7 +54,7 @@ const I0_CONTRAST_FACTOR = Math.pow(DELTA_SLD * VBAR_PROTEIN_REF, 2) / (NA_AVOGA
  * @param {number} [opts.electrons] - 分子總電子數 N_e
  * @param {number} [opts.dryVolume] - 乾燥體積 V_dry (Å³)
  * @param {number} [opts.partialSpecificVolume] - 部分比容 (cm³/g)，僅作紀錄
- * @returns {object} 理論 I(0) 計算結果，含 method: 'excel-exact' | 'empirical'
+ * @returns {object} 理論 I(0) 計算結果：theoreticalI0（經驗式主值）、exactI0（Excel 精確式，無組成時為 null）
  */
 function calculateTheoreticalI0(mw, concentration, opts = {}) {
     // 相容舊簽名 calculateTheoreticalI0(mw, c, vbar)
@@ -70,25 +70,18 @@ function calculateTheoreticalI0(mw, concentration, opts = {}) {
     const hasComposition = Number.isFinite(electrons) && electrons > 0
         && Number.isFinite(dryVolume) && dryVolume > 0;
 
-    let theoreticalI0, method, excessElectrons;
+    // 主值：經驗式（與實測 BSA 0.0526 cm⁻¹ 一致）
+    const theoreticalI0 = concentration * mw * I0_CONTRAST_FACTOR;
 
+    // 參考值：Excel Protein_Io_cal_ 精確式（需序列組成）
+    let exactI0 = null;
+    let excessElectrons = null;
     if (hasComposition) {
-        // Excel Protein_Io_cal_ 精確式
         const numberDensity = (concentration / 1000) * NA_AVOGADRO / mw;  // molecules/cm³
         excessElectrons = electrons - RHO_E_SOLVENT * dryVolume;          // e/molecule
         const excessLength = ELECTRON_RADIUS_CM * excessElectrons;        // cm
-        theoreticalI0 = numberDensity * excessLength * excessLength;
-        method = 'excel-exact';
-    } else {
-        // 平均對比度近似
-        excessElectrons = null;
-        theoreticalI0 = concentration * mw * I0_CONTRAST_FACTOR;
-        method = 'empirical';
+        exactI0 = numberDensity * excessLength * excessLength;
     }
-
-    // 經驗式永遠一併回傳，讓 UI 能並列顯示兩種估計（兩者對 BSA 差約 20%：
-    // 晶體殘基體積推得的 ρ_e ≈ 0.42 e/Å³，低於經驗式假設的 0.44）
-    const empiricalI0 = concentration * mw * I0_CONTRAST_FACTOR;
 
     const perConcentration = concentration !== 0 ? theoreticalI0 / concentration : 0;
     const I0_per_c_per_MW = mw !== 0 ? perConcentration / mw : 0;
@@ -98,8 +91,9 @@ function calculateTheoreticalI0(mw, concentration, opts = {}) {
         I0_per_concentration: perConcentration, // cm⁻¹/(mg/mL)
         I0_per_c_per_MW: I0_per_c_per_MW,       // cm⁻¹/(mg/mL × Da)
         constant_k: I0_per_c_per_MW,
-        method: method,                         // 'excel-exact' | 'empirical'
-        empiricalI0: empiricalI0,               // cm⁻¹，c × MW × I0_CONTRAST_FACTOR
+        method: 'empirical',                    // 主值算法（固定經驗式）
+        empiricalI0: theoreticalI0,             // 與 theoreticalI0 相同，保留給既有讀取處
+        exactI0: exactI0,                       // cm⁻¹，Excel 精確式；無組成時 null
         electrons: hasComposition ? electrons : null,
         dryVolume: hasComposition ? dryVolume : null,
         excessElectrons: excessElectrons,       // N_e − ρ_s × V_dry
@@ -288,8 +282,9 @@ function calculateAllTheoreticalParams(mw, concentration, proteinType = 'globula
 
         // I(0) 理論值
         theoreticalI0: i0Result.theoreticalI0,
-        i0Method: i0Result.method,   // 'excel-exact' | 'empirical'
+        i0Method: i0Result.method,   // 'empirical'（主值）
         empiricalI0: i0Result.empiricalI0,
+        exactI0: i0Result.exactI0,   // Excel 精確式參考值（無序列組成時 null）
 
         // Rg 理論值 (該構型的經驗公式)
         theoreticalRg: rgResult.theoreticalRg,

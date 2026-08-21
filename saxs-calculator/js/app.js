@@ -442,18 +442,17 @@ function updateFormsWithProteinData(result) {
  * @returns {object} opts (可能為空物件)
  */
 /**
- * 顯示理論 I(0) 與其計算方法。
- * Excel 精確式（需序列的電子數與乾體積）與經驗式（c × MW × 7.9e-7）對 BSA 相差約 20%，
- * 兩者並列，讓使用者知道自己看的是哪一個。
+ * 顯示理論 I(0)：主值為經驗式（與實測 BSA 一致），
+ * 有序列組成時附上 Excel 精確式作參考（對 BSA 低約 20%，見 calculations.js 說明）。
  */
 function renderTheoreticalI0(result, valueEl) {
     const methodEl = document.getElementById('theoreticalI0Method');
     if (valueEl) valueEl.textContent = result.theoreticalI0.toExponential(2);
     if (!methodEl) return;
-    if (result.i0Method === 'excel-exact') {
-        methodEl.textContent = `Excel 精確式（序列電子數／乾體積）· 經驗式 ${result.empiricalI0.toExponential(2)}`;
+    if (Number.isFinite(result.exactI0)) {
+        methodEl.textContent = `經驗式（BSA 校正）· Excel 精確式（序列）${result.exactI0.toExponential(2)}`;
     } else {
-        methodEl.textContent = '經驗式 c×MW×7.9×10⁻⁷（BSA 校正；分析序列後改用 Excel 精確式）';
+        methodEl.textContent = '經驗式 c×MW×7.9×10⁻⁷（BSA 校正）';
     }
 }
 

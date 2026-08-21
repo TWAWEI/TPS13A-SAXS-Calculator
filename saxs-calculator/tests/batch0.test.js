@@ -33,7 +33,9 @@ test('BSA 1 mg/mL theoretical I(0) ≈ 0.05 cm⁻¹ (Excel Protein_Io_cal_ metho
 
 test('Excel-exact I(0): example protein (N_e 20605, V_dry 48694.7 Å³) → Protein_Io_cal_!N18 = 0.02337 cm⁻¹', () => {
     const r = SAXS.calculateTheoreticalI0(38536.61, 1, { electrons: 20605, dryVolume: 48694.7 });
-    approx(r.theoreticalI0, 0.023371, 2e-3, 'Excel N18');
+    approx(r.exactI0, 0.023371, 2e-3, 'Excel N18 (reference value)');
+    // primary value stays empirical, matching measured BSA 0.0526 cm⁻¹ at 1 mg/mL
+    approx(r.theoreticalI0, 38536.61 * 7.9e-7, 0.02, 'primary I(0) is empirical');
 });
 
 test('I(0) no longer scales with (v̄/0.73)² — v̄ is not a free multiplier on contrast', () => {
