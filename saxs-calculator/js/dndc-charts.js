@@ -10,7 +10,7 @@ const DNDC_CHART_COLORS = {
     fit: 'rgba(220, 38, 38, 0.85)',          // Deep red
     scatter: 'rgba(240, 78, 78, 0.7)',
     peakRegion: 'rgba(240, 78, 78, 0.07)',
-    grid: 'rgba(240, 78, 78, 0.07)',
+    grid: 'rgba(26, 26, 46, 0.12)',   // neutral slate, readable in dim beamline light
     text: 'rgba(26, 26, 46, 0.65)'
 };
 

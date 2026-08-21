@@ -14,7 +14,7 @@ const CHART_COLORS = {
     danger: 'rgba(220, 38, 38, 1)',          // Red (error)
     dangerLight: 'rgba(220, 38, 38, 0.12)',
     text: 'rgba(26, 26, 46, 0.65)',          // Deep warm slate muted
-    grid: 'rgba(240, 78, 78, 0.07)',         // Very subtle coral tint
+    grid: 'rgba(26, 26, 46, 0.12)',          // Neutral slate: 1.09:1 coral tint was invisible
     background: 'rgba(229, 233, 235, 1)'     // Ice blue-gray
 };
 

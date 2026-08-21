@@ -750,6 +750,9 @@ function displayHplcDndcResults(result, params, warnings = []) {
         </div>
         ${alignment.alert}
     `;
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('hplcDndcResults');
 }
 
 // ========================
@@ -856,7 +859,7 @@ function redrawChannelsChart() {
             type: 'linear',
             title: { display: true, text: 'Time (min)', color: 'rgba(13,33,55,0.65)', font: { family: "'Inter', sans-serif", size: 12, style: 'italic' } },
             ticks: { color: 'rgba(13,33,55,0.65)', font: { size: 10 } },
-            grid: { color: 'rgba(0,100,178,0.07)' }
+            grid: { color: 'rgba(26, 26, 46, 0.12)' }
         }
     };
 
@@ -866,7 +869,7 @@ function redrawChannelsChart() {
             position: i === 0 ? 'left' : 'right',
             title: { display: i < 2, text: ds.label, color: ds.borderColor, font: { family: "'Inter', sans-serif", size: 11 } },
             ticks: { color: ds.borderColor, font: { size: 9 } },
-            grid: { display: i === 0, color: 'rgba(0,100,178,0.06)' }
+            grid: { display: i === 0, color: 'rgba(26, 26, 46, 0.10)' }
         };
     });
 
@@ -913,6 +916,12 @@ function displayChromatogram(time, uv, ri, params) {
             bl2Start: params.bl2Start, bl2End: params.bl2End
         }
     );
+
+    A11y.describeChart('dndcChromatogramChart',
+        `UV 與 RI 色譜圖，共 ${time.length} 個時間點；` +
+        `峰範圍 ${params.peakStart}–${params.peakEnd} 分鐘，` +
+        `基線 1 ${params.bl1Start}–${params.bl1End} 分鐘，` +
+        `基線 2 ${params.bl2Start}–${params.bl2End} 分鐘`);
 }
 
 // ========================
@@ -933,9 +942,9 @@ function initDndcMultiSection() {
             const row = tbody.insertRow();
             row.innerHTML = `
                 <td>${rowCount}</td>
-                <td><input type="number" class="form-input" step="0.0001"></td>
-                <td><input type="number" class="form-input" step="0.000001"></td>
-                <td><button class="btn btn-sm btn-secondary" onclick="this.closest('tr').remove()">✕</button></td>
+                <td><input type="number" class="form-input" step="0.0001" aria-label="第 ${rowCount} 組 濃度 (g/mL)"></td>
+                <td><input type="number" class="form-input" step="0.000001" aria-label="第 ${rowCount} 組 ΔRI (RIU)"></td>
+                <td><button type="button" class="btn btn-sm btn-secondary" aria-label="刪除第 ${rowCount} 組資料" onclick="this.closest('tr').remove()">✕</button></td>
             `;
         });
     }
@@ -1070,6 +1079,14 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
         'multiDndcChart', xData, yData, result,
         { xLabel: meta.xLabel, yLabel: meta.yLabel }
     );
+
+    // Chart.js 只畫像素；把關鍵數字寫進 aria-label，AT 才讀得到圖的結論
+    A11y.describeChart('multiDndcChart',
+        `多注射線性擬合圖：${meta.xLabel} 對 ${meta.yLabel}，${xData.length} 個資料點，` +
+        `dn/dc ${formatDndc(result.dnDc)} mL/g，R² ${result.rSquared.toFixed(4)}（擬合品質${r2Quality}）`);
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('multiDndcResults');
 }
 
 // ========================
@@ -1184,6 +1201,13 @@ function displaySliceResults(result, warnings = []) {
         'sliceDndcChart', result.sliceConcentrations, result.sliceRiValues, result.fitResult,
         { xLabel: 'Concentration (g/mL)', yLabel: 'Δn (RIU)' }
     );
+
+    A11y.describeChart('sliceDndcChart',
+        `Slice-by-slice 線性擬合圖：濃度 (g/mL) 對 Δn (RIU)，${result.sliceCount} 個有效切片，` +
+        `dn/dc ${formatDndc(fit.slope)} mL/g，R² ${rSquared.toFixed(4)}（擬合品質${r2Quality}）`);
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('sliceDndcResults');
 }
 
 // ========================
@@ -1338,11 +1362,11 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
 
     // 顯示解析結果表格，讓使用者確認/修改濃度和體積
     let tableHtml = `
-        <div class="table-wrapper mt-md">
+        <div class="table-wrapper mt-md" tabindex="0" role="region" aria-label="ASTRA 注射解析結果表（可橫向捲動）">
             <table class="table" id="astraInjectionTable">
                 <thead>
                     <tr>
-                        <th><input type="checkbox" id="astraSelectAll" checked></th>
+                        <th><input type="checkbox" id="astraSelectAll" aria-label="全選／取消全選所有注射" checked></th>
                         <th>檔案</th>
                         <th>樣品</th>
                         <th>濃度 (g/mL)</th>
@@ -1357,11 +1381,11 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
     injections.forEach((inj, i) => {
         tableHtml += `
             <tr>
-                <td><input type="checkbox" class="astra-row-check" data-astra-idx="${i}" checked></td>
+                <td><input type="checkbox" class="astra-row-check" data-astra-idx="${i}" aria-label="納入 ${inj.sampleName} 的擬合" checked></td>
                 <td style="font-size: 0.75rem;">${inj.fileName}</td>
                 <td>${inj.sampleName}</td>
-                <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc"></td>
-                <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL"></td>
+                <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc" aria-label="${inj.sampleName} 濃度 (g/mL)"></td>
+                <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL" aria-label="${inj.sampleName} 注射體積 (mL)"></td>
                 <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.riAreaVolume.toExponential(2)}</td>
                 <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.kCal ? inj.kCal.toExponential(2) : '-'}</td>
             </tr>
@@ -1498,6 +1522,11 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
         fill: true
     });
 
+    A11y.describeChart('astraChromatogramCanvas',
+        `ASTRA RI 色譜圖疊加，共 ${datasets.length - 1} 條注射曲線；` +
+        `積分範圍 ${intStart.toFixed(1)}–${intEnd.toFixed(1)} 分鐘。` +
+        '各注射的濃度、體積與 RI 面積見上方注射解析結果表');
+
     DndcState.charts.astraChromatogram = new Chart(canvas, {
         type: 'scatter',
         data: { datasets },
@@ -1533,7 +1562,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                         font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: 'rgba(26, 26, 46, 0.65)', font: { size: 10 } },
-                    grid: { color: 'rgba(240, 78, 78, 0.07)' }
+                    grid: { color: 'rgba(26, 26, 46, 0.12)' }
                 },
                 y: {
                     type: 'linear',
@@ -1544,7 +1573,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                         font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
                     },
                     ticks: { color: 'rgba(26, 26, 46, 0.65)', font: { size: 10 } },
-                    grid: { color: 'rgba(240, 78, 78, 0.07)' }
+                    grid: { color: 'rgba(26, 26, 46, 0.12)' }
                 }
             }
         }
@@ -1581,8 +1610,10 @@ function escapeHtmlDndc(text) {
 function showDndcAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
     if (container) {
+        // live region 要標在持久存在的容器上，訊息節點本身標了不會被朗讀
+        A11y.markLiveRegion(container, type);
         container.innerHTML =
-            `<div class="alert alert-${type}" role="status">${escapeHtmlDndc(message)}</div>`;
+            `<div class="alert alert-${type}">${escapeHtmlDndc(message)}</div>`;
     }
 }
 
@@ -1597,8 +1628,9 @@ function showDndcAlert(containerId, type, message) {
 function showDndcAlerts(containerId, type, messages) {
     const container = document.getElementById(containerId);
     if (!container || !Array.isArray(messages) || messages.length === 0) return;
+    A11y.markLiveRegion(container, type);
     const items = messages.map(m => `<div>${escapeHtmlDndc(m)}</div>`).join('');
-    container.innerHTML = `<div class="alert alert-${type}" role="status">${items}</div>`;
+    container.innerHTML = `<div class="alert alert-${type}">${items}</div>`;
 }
 
 // ========================

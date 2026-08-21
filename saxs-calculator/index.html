@@ -32,7 +32,7 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar" id="sidebar" aria-label="主導航">
             <div class="sidebar-header">
-                <div class="logo">
+                <div class="logo" data-short="13A">
                     <span class="logo-text">TPS13A SAXS</span>
                 </div>
             </div>
@@ -41,52 +41,52 @@
                 <div class="nav-section">
                     <div class="nav-section-title" id="nav-tools-label">分析工具</div>
 
-                    <button class="nav-item active" data-section="protein" aria-current="page">
+                    <button class="nav-item active" data-section="protein" data-short="蛋白" data-title="蛋白質分析" aria-current="page">
                         <span class="nav-item-text">蛋白質分析</span>
                     </button>
 
-                    <button class="nav-item" data-section="saxs">
+                    <button class="nav-item" data-section="saxs" data-short="SAXS" data-title="SAXS 結構參數">
                         <span class="nav-item-text">SAXS 結構參數</span>
                     </button>
 
-                    <button class="nav-item" data-section="hplc">
+                    <button class="nav-item" data-section="hplc" data-short="HPLC" data-title="HPLC-SAXS 設定">
                         <span class="nav-item-text">HPLC-SAXS 設定</span>
                     </button>
 
-                    <button class="nav-item" data-section="sample">
+                    <button class="nav-item" data-section="sample" data-short="樣品" data-title="樣品計算">
                         <span class="nav-item-text">樣品計算</span>
                     </button>
 
-                    <button class="nav-item" data-section="mw">
+                    <button class="nav-item" data-section="mw" data-short="MW" data-title="分子量解析度">
                         <span class="nav-item-text">分子量解析度</span>
                     </button>
 
-                    <button class="nav-item" data-section="centrifuge">
+                    <button class="nav-item" data-section="centrifuge" data-short="離心" data-title="離心參數">
                         <span class="nav-item-text">離心參數</span>
                     </button>
 
-                    <button class="nav-item" data-section="detector">
+                    <button class="nav-item" data-section="detector" data-short="偵測" data-title="偵測器距離">
                         <span class="nav-item-text">偵測器距離</span>
                     </button>
                 </div>
 
                 <div class="nav-section" id="dndcNavSection">
-                    <div class="nav-section-title" style="cursor: pointer;" id="dndcNavUnlock">🔒 dn/dc 工具</div>
+                    <button type="button" class="nav-section-title nav-section-title--button" id="dndcNavUnlock" aria-haspopup="dialog" aria-controls="dndcPasswordModal" aria-expanded="false">🔒 dn/dc 工具</button>
 
                     <div id="dndcNavItems" class="hidden">
-                        <button class="nav-item" data-section="dndc-theory">
+                        <button class="nav-item" data-section="dndc-theory" data-short="理論" data-title="dn/dc 理論計算">
                             <span class="nav-item-text">dn/dc 理論計算</span>
                         </button>
 
-                        <button class="nav-item" data-section="dndc-hplc">
+                        <button class="nav-item" data-section="dndc-hplc" data-short="dn/dc" data-title="HPLC dn/dc">
                             <span class="nav-item-text">HPLC dn/dc</span>
                         </button>
 
-                        <button class="nav-item" data-section="dndc-multi">
+                        <button class="nav-item" data-section="dndc-multi" data-short="多注" data-title="多注射擬合">
                             <span class="nav-item-text">多注射擬合</span>
                         </button>
 
-                        <button class="nav-item" data-section="dndc-slice">
+                        <button class="nav-item" data-section="dndc-slice" data-short="Slice" data-title="Slice-by-slice">
                             <span class="nav-item-text">Slice-by-slice</span>
                         </button>
                     </div>
@@ -95,7 +95,7 @@
                 <div class="nav-section">
                     <div class="nav-section-title" id="nav-output-label">輸出</div>
 
-                    <button class="nav-item" data-section="iucr">
+                    <button class="nav-item" data-section="iucr" data-short="IUCr" data-title="IUCr 表格">
                         <span class="nav-item-text">IUCr 表格</span>
                     </button>
                 </div>
@@ -103,10 +103,10 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.7
+                Version 4.8
             </div>
-            <button class="sidebar-toggle" id="sidebarToggle" title="收合/展開側邊欄">
-                <span id="sidebarToggleIcon">◀</span>
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="收合側邊欄" aria-expanded="true" aria-controls="sidebar">
+                <span id="sidebarToggleIcon" aria-hidden="true">◀</span>
             </button>
         </aside>
 
@@ -132,7 +132,7 @@
                     <!-- Input Card -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">序列輸入</h3>
+                            <h2 class="card-title">序列輸入</h2>
                             <button class="btn btn-sm btn-secondary" id="loadSampleSequence">載入範例</button>
                         </div>
                         <div class="card-body">
@@ -164,7 +164,7 @@
                     <!-- Results Card -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">分析結果</h3>
+                            <h2 class="card-title">分析結果</h2>
                         </div>
                         <div class="card-body" id="proteinResults">
                             <div class="alert alert-info">
@@ -181,7 +181,7 @@
                 <!-- Composition Chart -->
                 <div class="card mt-lg hidden" id="compositionCard">
                     <div class="card-header">
-                        <h3 class="card-title">氨基酸組成</h3>
+                        <h2 class="card-title">氨基酸組成</h2>
                         <div class="tabs tabs--inline">
                             <button class="tab active" data-chart="bar">長條圖</button>
                             <button class="tab" data-chart="doughnut">圓餅圖</button>
@@ -189,10 +189,10 @@
                     </div>
                     <div class="card-body">
                         <div class="chart-container" id="chartContainer-bar">
-                            <canvas id="compositionBarChart"></canvas>
+                            <canvas id="compositionBarChart" role="img" aria-label="氨基酸組成長條圖；各殘基數量詳見左側「氨基酸組成」數值列表"></canvas>
                         </div>
                         <div class="chart-container hidden" id="chartContainer-doughnut">
-                            <canvas id="compositionDoughnutChart"></canvas>
+                            <canvas id="compositionDoughnutChart" role="img" aria-label="氨基酸分類比例環圖；分類百分比詳見左側數值列表"></canvas>
                         </div>
                     </div>
                 </div>
@@ -210,7 +210,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">參數輸入</h3>
+                            <h2 class="card-title">參數輸入</h2>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info">
@@ -242,7 +242,7 @@
                                     <div class="info-panel-header-right">
                                         <span class="info-panel-header-label">MW:</span>
                                         <input type="number" id="theoreticalMWInput" class="info-panel-mw-input"
-                                            placeholder="--" step="1" min="0">
+                                            aria-label="分子量 MW (Da)" placeholder="--" step="1" min="0">
                                         <span class="info-panel-header-label">Da</span>
                                     </div>
                                 </div>
@@ -385,7 +385,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">計算結果</h3>
+                            <h2 class="card-title">計算結果</h2>
                         </div>
                         <div class="card-body" id="saxsResults">
                             <div class="alert alert-info">
@@ -410,7 +410,7 @@
                     <!-- Pre-run Parameters Input -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Pre-run 參數輸入</h3>
+                            <h2 class="card-title">Pre-run 參數輸入</h2>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info alert--compact">
@@ -477,12 +477,12 @@
                     </div>
 
                     <!-- Detector Settings Table -->
-                    <div class="card">
+                    <div class="card" id="hplcSaxsResults" tabindex="-1">
                         <div class="card-header">
-                            <h3 class="card-title card-title--warning">Detector Setting</h3>
+                            <h2 class="card-title card-title--warning">Detector Setting</h2>
                         </div>
                         <div class="card-body">
-                            <div class="table-wrapper">
+                            <div class="table-wrapper" tabindex="0" role="region" aria-label="Detector Setting 設定表（可橫向捲動）">
                                 <table class="table" id="detectorSettingsTable">
                                     <thead>
                                         <tr>
@@ -517,10 +517,10 @@
                     <!-- Flow Rate Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Flow Rate Table</h3>
+                            <h2 class="card-title">Flow Rate Table</h2>
                         </div>
                         <div class="card-body">
-                            <div class="table-wrapper">
+                            <div class="table-wrapper" tabindex="0" role="region" aria-label="Flow Rate Table 流速表（可橫向捲動）">
                                 <table class="table" id="flowRateTable">
                                     <thead>
                                         <tr>
@@ -543,7 +543,7 @@
                     <!-- Fraction Collector -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title card-title--purple">Fraction Collector</h3>
+                            <h2 class="card-title card-title--purple">Fraction Collector</h2>
                         </div>
                         <div class="card-body">
                             <div class="gradient-stat gradient-stat--purple">
@@ -568,7 +568,7 @@
                 <!-- Third Row: Suggested Values -->
                 <div class="card mt-lg">
                     <div class="card-header">
-                        <h3 class="card-title card-title--warning">Pre-run 10μL 建議值 (用於下次 pre-run)</h3>
+                        <h2 class="card-title card-title--warning">Pre-run 10μL 建議值 (用於下次 pre-run)</h2>
                     </div>
                     <div class="card-body" id="hplcSuggestedValues">
                         <div class="suggested-values">
@@ -605,7 +605,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">UV 測量參數</h3>
+                            <h2 class="card-title">UV 測量參數</h2>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -652,7 +652,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">計算結果</h3>
+                            <h2 class="card-title">計算結果</h2>
                         </div>
                         <div class="card-body" id="sampleResults">
                             <div class="alert alert-info">
@@ -666,7 +666,7 @@
                 <div class="grid grid-2 mt-lg">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">SEC 稀釋因子估算</h3>
+                            <h2 class="card-title">SEC 稀釋因子估算</h2>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -689,7 +689,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">稀釋因子結果</h3>
+                            <h2 class="card-title">稀釋因子結果</h2>
                         </div>
                         <div class="card-body" id="dilutionFactorResults">
                             <div class="alert alert-info">
@@ -712,7 +712,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">輸入參數</h3>
+                            <h2 class="card-title">輸入參數</h2>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info">
@@ -789,7 +789,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">計算結果</h3>
+                            <h2 class="card-title">計算結果</h2>
                         </div>
                         <div class="card-body" id="mwResults">
                             <div class="alert alert-info">
@@ -812,7 +812,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">離心機參數</h3>
+                            <h2 class="card-title">離心機參數</h2>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -885,7 +885,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">計算結果</h3>
+                            <h2 class="card-title">計算結果</h2>
                         </div>
                         <div class="card-body" id="centrifugeResults">
                             <div class="alert alert-info">
@@ -907,7 +907,7 @@
 
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">IUCr Protein Solution SAXS Parameters Table</h3>
+                        <h2 class="card-title">IUCr Protein Solution SAXS Parameters Table</h2>
                         <button class="btn btn-secondary" id="copyIUCrTable">複製表格</button>
                     </div>
                     <div class="card-body">
@@ -915,7 +915,7 @@
                             <strong>提示：</strong>請先完成「蛋白質分析」和「SAXS 參數」頁面的輸入，數據會自動填入表格。
                         </div>
 
-                        <div class="table-wrapper">
+                        <div class="table-wrapper" tabindex="0" role="region" aria-label="IUCr Protein Solution SAXS Parameters 表（可橫向捲動）">
                             <table class="table iucr-table" id="iucrTable">
                                 <thead>
                                     <tr>
@@ -963,14 +963,14 @@
                                     <tr>
                                         <td></td>
                                         <td><i>q</i>-range</td>
-                                        <td><input type="text" class="form-input form-input--inline" id="iucr-qrange" value="0.007–0.39"></td>
+                                        <td><input type="text" class="form-input form-input--inline" id="iucr-qrange" aria-label="q-range (Å⁻¹)" value="0.007–0.39"></td>
                                         <td></td>
                                         <td>Å⁻¹</td>
                                     </tr>
                                     <tr>
                                         <td></td>
                                         <td>Exposure time</td>
-                                        <td><input type="text" class="form-input form-input--inline" id="iucr-exposure" value="300s (5×60s)"></td>
+                                        <td><input type="text" class="form-input form-input--inline" id="iucr-exposure" aria-label="Exposure time" value="300s (5×60s)"></td>
                                         <td></td>
                                         <td></td>
                                     </tr>
@@ -984,7 +984,7 @@
                                     <tr>
                                         <td></td>
                                         <td>Temperature</td>
-                                        <td><input type="text" class="form-input form-input--inline" id="iucr-temperature" value="288"></td>
+                                        <td><input type="text" class="form-input form-input--inline" id="iucr-temperature" aria-label="Temperature (K)" value="288"></td>
                                         <td></td>
                                         <td>K</td>
                                     </tr>
@@ -1084,10 +1084,10 @@
                     <!-- Reference Proteins Table -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">標準蛋白質參考值</h3>
+                            <h2 class="card-title">標準蛋白質參考值</h2>
                         </div>
                         <div class="card-body">
-                            <div class="table-wrapper">
+                            <div class="table-wrapper" tabindex="0" role="region" aria-label="標準蛋白質參考值表（可橫向捲動）">
                                 <table class="table">
                                     <thead>
                                         <tr>
@@ -1137,7 +1137,7 @@
                     <!-- Target Protein Calculator -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">目標蛋白質計算</h3>
+                            <h2 class="card-title">目標蛋白質計算</h2>
                         </div>
                         <div class="card-body">
                             <!-- Input Mode Toggle -->
@@ -1234,7 +1234,7 @@
                     <!-- 綜合校正 -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">溫度 / 波長校正</h3>
+                            <h2 class="card-title">溫度 / 波長校正</h2>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -1281,7 +1281,7 @@
                     <!-- 校正結果 -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">校正結果</h3>
+                            <h2 class="card-title">校正結果</h2>
                         </div>
                         <div class="card-body" id="dndcCorrectionResults">
                             <div class="alert alert-info">
@@ -1295,7 +1295,7 @@
                 <div class="grid grid-2 mt-lg">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Lorentz-Lorenz 模型</h3>
+                            <h2 class="card-title">Lorentz-Lorenz 模型</h2>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -1337,7 +1337,7 @@
 
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">Lorentz-Lorenz 結果</h3>
+                            <h2 class="card-title">Lorentz-Lorenz 結果</h2>
                         </div>
                         <div class="card-body" id="llResults">
                             <div class="alert alert-info">
@@ -1350,10 +1350,10 @@
                 <!-- 經驗值參考表 -->
                 <div class="card mt-lg">
                     <div class="card-header">
-                        <h3 class="card-title"><span class="sci-var">dn/dc</span> 文獻經驗值 (25°C, 589 nm)</h3>
+                        <h2 class="card-title"><span class="sci-var">dn/dc</span> 文獻經驗值 (25°C, 589 nm)</h2>
                     </div>
                     <div class="card-body">
-                        <div class="table-wrapper">
+                        <div class="table-wrapper" tabindex="0" role="region" aria-label="dn/dc 文獻經驗值表（可橫向捲動）">
                             <table class="table" id="dndcLiteratureTable">
                                 <thead>
                                     <tr>
@@ -1388,7 +1388,7 @@
                 <!-- 色譜圖（置頂） -->
                 <div class="card hidden" id="dndcChromatogramCard">
                     <div class="card-header">
-                        <h3 class="card-title">通道數據預覽</h3>
+                        <h2 class="card-title">通道數據預覽</h2>
                     </div>
                     <div class="card-body">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
@@ -1396,7 +1396,7 @@
                             <button class="btn btn-secondary btn-sm" id="resetChartZoom" title="重置縮放">↺ 重置縮放</button>
                         </div>
                         <div class="chart-container" style="height: 400px;">
-                            <canvas id="dndcChromatogramChart"></canvas>
+                            <canvas id="dndcChromatogramChart" role="img" aria-label="UV 與 RI 色譜圖，含峰值與基線標記；數值結果詳見下方擬合結果"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1404,7 +1404,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">數據載入與參數</h3>
+                            <h2 class="card-title">數據載入與參數</h2>
                         </div>
                         <div class="card-body">
                             <div class="form-group">
@@ -1561,7 +1561,7 @@
 
                     <div class="card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title">計算結果</h3>
+                            <h2 class="card-title">計算結果</h2>
                             <div class="export-buttons hidden" id="hplcExportBtns">
                                 <button class="btn btn-secondary btn-sm" id="exportHplcCsv" title="匯出結果為 CSV">📥 CSV</button>
                                 <button class="btn btn-secondary btn-sm" id="exportHplcChart" title="匯出色譜圖為 PNG">🖼 圖表</button>
@@ -1589,7 +1589,7 @@
                 <!-- ASTRA 檔案載入 -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">實驗數據載入</h3>
+                        <h2 class="card-title">實驗數據載入</h2>
                     </div>
                     <div class="card-body">
                         <div class="alert alert-info alert--compact">
@@ -1607,7 +1607,7 @@
                         <!-- 色譜圖（載入後顯示） -->
                         <div id="astraChromatogramCard" class="mt-lg hidden">
                             <div class="chart-container" style="height: 400px;">
-                                <canvas id="astraChromatogramCanvas"></canvas>
+                                <canvas id="astraChromatogramCanvas" role="img" aria-label="ASTRA 各注射的 RI 色譜圖與積分範圍；數值詳見上方注射解析結果表"></canvas>
                             </div>
 
                             <!-- 積分範圍（圖表下方調整） -->
@@ -1641,40 +1641,40 @@
                 <div class="grid grid-2 mt-md">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">手動資料輸入</h3>
+                            <h2 class="card-title">手動資料輸入</h2>
                             <button class="btn btn-sm btn-secondary" id="addInjectionRow">+ 新增</button>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info alert--compact">
                                 輸入每次注射的濃度 (g/mL) 和對應的 ΔRI (RIU) 值。
                             </div>
-                            <div class="table-wrapper">
+                            <div class="table-wrapper" tabindex="0" role="region" aria-label="多注射手動資料輸入表（可橫向捲動）">
                                 <table class="table" id="multiInjectionTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>
                                             <th>濃度 (g/mL)</th>
                                             <th>ΔRI (RIU)</th>
-                                            <th></th>
+                                            <th><span class="sr-only">操作</span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="multiInjectionBody">
                                         <tr>
                                             <td>1</td>
-                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.001"></td>
-                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000185"></td>
+                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.001" aria-label="第 1 組 濃度 (g/mL)"></td>
+                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000185" aria-label="第 1 組 ΔRI (RIU)"></td>
                                             <td></td>
                                         </tr>
                                         <tr>
                                             <td>2</td>
-                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.002"></td>
-                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000370"></td>
+                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.002" aria-label="第 2 組 濃度 (g/mL)"></td>
+                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000370" aria-label="第 2 組 ΔRI (RIU)"></td>
                                             <td></td>
                                         </tr>
                                         <tr>
                                             <td>3</td>
-                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.003"></td>
-                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000555"></td>
+                                            <td><input type="number" class="form-input" step="0.0001" placeholder="0.003" aria-label="第 3 組 濃度 (g/mL)"></td>
+                                            <td><input type="number" class="form-input" step="0.000001" placeholder="0.000555" aria-label="第 3 組 ΔRI (RIU)"></td>
                                             <td></td>
                                         </tr>
                                     </tbody>
@@ -1688,7 +1688,7 @@
 
                     <div class="card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title">擬合結果</h3>
+                            <h2 class="card-title">擬合結果</h2>
                             <div class="export-buttons hidden" id="multiExportBtns">
                                 <button class="btn btn-secondary btn-sm" id="exportMultiCsv" title="匯出擬合資料為 CSV">📥 CSV</button>
                             </div>
@@ -1700,7 +1700,7 @@
                         </div>
                         <!-- 擬合圖 -->
                         <div class="chart-container mt-md hidden" id="multiDndcChartContainer" style="height: 300px;">
-                            <canvas id="multiDndcChart"></canvas>
+                            <canvas id="multiDndcChart" role="img" aria-label="多注射線性擬合圖：濃度對 ΔRI；斜率與 R² 詳見上方擬合結果"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1718,7 +1718,7 @@
                 <div class="grid grid-2">
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">數據與參數</h3>
+                            <h2 class="card-title">數據與參數</h2>
                         </div>
                         <div class="card-body">
                             <div class="alert alert-info alert--compact">
@@ -1741,7 +1741,7 @@
 
                     <div class="card">
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title">分析結果</h3>
+                            <h2 class="card-title">分析結果</h2>
                             <div class="export-buttons hidden" id="sliceExportBtns">
                                 <button class="btn btn-secondary btn-sm" id="exportSliceCsv" title="匯出切片資料為 CSV">📥 CSV</button>
                             </div>
@@ -1753,7 +1753,7 @@
                         </div>
                         <!-- 擬合圖 -->
                         <div class="chart-container mt-md hidden" id="sliceDndcChartContainer" style="height: 300px;">
-                            <canvas id="sliceDndcChart"></canvas>
+                            <canvas id="sliceDndcChart" role="img" aria-label="Slice-by-slice 線性擬合圖：濃度對 Δn；dn/dc 與 R² 詳見上方結果"></canvas>
                         </div>
                     </div>
                 </div>
@@ -1764,6 +1764,7 @@
 
     <!-- Scripts -->
     <script src="js/form-utils.js"></script>
+    <script src="js/a11y-utils.js"></script>
     <script src="js/protein.js"></script>
     <script src="js/calculations.js"></script>
     <script src="js/charts.js"></script>
@@ -1775,18 +1776,19 @@
     <script src="js/app.js"></script>
 
     <!-- dn/dc Password Modal -->
-    <div id="dndcPasswordModal" class="modal-overlay hidden">
-        <div class="modal-content">
-            <h3 style="margin-bottom: 0.75rem;">🔒 dn/dc 工具</h3>
-            <p style="margin-bottom: 1rem; color: var(--color-text-secondary);">請輸入密碼以解鎖</p>
-            <input type="password" id="dndcPasswordInput" class="form-input" placeholder="密碼" style="margin-bottom: 0.75rem;">
-            <div id="dndcPasswordError" class="alert alert-error hidden" style="margin-bottom: 0.75rem;">密碼錯誤</div>
-            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                <button class="btn btn-secondary" id="dndcPasswordCancel">取消</button>
-                <button class="btn btn-primary" id="dndcPasswordSubmit">解鎖</button>
+    <dialog id="dndcPasswordModal" class="modal-dialog" aria-labelledby="dndcModalTitle" aria-describedby="dndcModalDesc">
+        <form method="dialog" class="modal-content" id="dndcPasswordForm">
+            <h2 class="modal-title" id="dndcModalTitle">🔒 dn/dc 工具</h2>
+            <p class="modal-desc" id="dndcModalDesc">請輸入密碼以解鎖</p>
+            <label class="form-label" for="dndcPasswordInput">密碼</label>
+            <input type="password" id="dndcPasswordInput" class="form-input" autocomplete="current-password" style="margin-bottom: 0.75rem;">
+            <div id="dndcPasswordError" class="alert alert-error hidden" role="alert" style="margin-bottom: 0.75rem;">密碼錯誤</div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="dndcPasswordCancel">取消</button>
+                <button type="submit" class="btn btn-primary" id="dndcPasswordSubmit">解鎖</button>
             </div>
-        </div>
-    </div>
+        </form>
+    </dialog>
 </body>
 
 </html>

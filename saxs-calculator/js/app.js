@@ -37,66 +37,131 @@ function initDndcLock() {
 
     // 檢查 sessionStorage 是否已解鎖
     if (safeSession.get('dndcUnlocked') === 'true') {
-        unlockDndc();
+        unlockDndc({ moveFocus: false });
         return;
     }
 
-    unlockBtn.addEventListener('click', () => {
-        if (AppState.dndcUnlocked) return;
+    const dialog = document.getElementById('dndcPasswordModal');
+    const input = document.getElementById('dndcPasswordInput');
+    const errorDiv = document.getElementById('dndcPasswordError');
+    const form = document.getElementById('dndcPasswordForm');
+    const cancelBtn = document.getElementById('dndcPasswordCancel');
+    if (!dialog || !input || !errorDiv || !form || !cancelBtn) return;
 
-        const modal = document.getElementById('dndcPasswordModal');
-        const input = document.getElementById('dndcPasswordInput');
-        const errorDiv = document.getElementById('dndcPasswordError');
-        const submitBtn = document.getElementById('dndcPasswordSubmit');
-        const cancelBtn = document.getElementById('dndcPasswordCancel');
+    // 原生 <dialog> 自帶焦點鎖定、Escape 關閉與背景 inert。
+    // 舊瀏覽器沒有 showModal 時退回 open 屬性，至少不讓 dn/dc 完全不可達。
+    const supportsDialog = typeof dialog.showModal === 'function';
 
-        modal.classList.remove('hidden');
-        input.value = '';
+    const clearError = () => {
         errorDiv.classList.add('hidden');
+        input.removeAttribute('aria-invalid');
+        input.removeAttribute('aria-describedby');
+    };
+
+    const showError = () => {
+        errorDiv.classList.remove('hidden');
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', 'dndcPasswordError');
+        input.value = '';
         input.focus();
+    };
 
-        const cleanup = () => {
-            modal.classList.add('hidden');
+    // 只要還鎖著，焦點就回到觸發器；已解鎖時交給 unlockDndc 處理。
+    const restoreTrigger = () => {
+        if (AppState.dndcUnlocked) return;
+        unlockBtn.setAttribute('aria-expanded', 'false');
+        unlockBtn.focus();
+    };
+
+    const openDialog = () => {
+        if (AppState.dndcUnlocked) return;
+        input.value = '';
+        clearError();
+        unlockBtn.setAttribute('aria-expanded', 'true');
+        if (supportsDialog) {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', '');
+        }
+        input.focus();
+    };
+
+    const closeDialog = () => {
+        if (supportsDialog) {
+            if (dialog.open) dialog.close();   // close 事件負責清值與還焦點
+        } else {
+            dialog.removeAttribute('open');
             input.value = '';
-        };
+            restoreTrigger();
+        }
+    };
 
-        const handleSubmit = async () => {
-            const pwd = input.value;
-            if (!pwd) return;
-
+    const handleSubmit = async (event) => {
+        if (event) event.preventDefault();
+        const pwd = input.value;
+        if (!pwd) {
+            input.focus();
+            return;
+        }
+        try {
             const hash = await sha256(pwd);
             if (hash === DNDC_HASH) {
-                cleanup();
-                unlockDndc();
+                clearError();
                 safeSession.set('dndcUnlocked', 'true');
+                unlockDndc({ moveFocus: false });
+                closeDialog();
+                focusFirstDndcNavItem();
             } else {
-                errorDiv.classList.remove('hidden');
-                input.value = '';
-                input.focus();
+                showError();
             }
-        };
+        } catch (err) {
+            // crypto.subtle 在非安全上下文（http:// 且非 localhost）不存在
+            console.error('dn/dc 密碼驗證失敗:', err);
+            errorDiv.textContent = '無法驗證密碼（瀏覽器不支援或非安全連線）';
+            showError();
+        }
+    };
 
-        submitBtn.onclick = handleSubmit;
-        cancelBtn.onclick = cleanup;
-        input.onkeydown = (e) => {
-            if (e.key === 'Enter') handleSubmit();
-            if (e.key === 'Escape') cleanup();
-        };
-        modal.onclick = (e) => {
-            if (e.target === modal) cleanup();
-        };
+    // 事件只綁一次；舊版每次開啟都重新指派 onclick
+    unlockBtn.addEventListener('click', openDialog);
+    form.addEventListener('submit', handleSubmit);
+    cancelBtn.addEventListener('click', closeDialog);
+    input.addEventListener('input', clearError);
+
+    // close 涵蓋所有關閉路徑：Escape、取消鈕、背景點擊、解鎖成功
+    dialog.addEventListener('close', () => {
+        input.value = '';
+        restoreTrigger();
+    });
+
+    // 點擊 backdrop（事件 target 是 dialog 本體）關閉
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) closeDialog();
     });
 }
 
-function unlockDndc() {
+function focusFirstDndcNavItem() {
+    const navItems = document.getElementById('dndcNavItems');
+    const firstItem = navItems && navItems.querySelector('.nav-item');
+    if (firstItem) firstItem.focus();
+}
+
+function unlockDndc({ moveFocus = false } = {}) {
     AppState.dndcUnlocked = true;
     const navItems = document.getElementById('dndcNavItems');
     const unlockBtn = document.getElementById('dndcNavUnlock');
     if (navItems) navItems.classList.remove('hidden');
     if (unlockBtn) {
         unlockBtn.textContent = '🔓 dn/dc 工具';
+        unlockBtn.setAttribute('aria-expanded', 'true');
+        // 解鎖後已無 dialog 可開：移除 popup 語意並退出 tab 順序，
+        // 避免留下一個「可聚焦但按了沒反應」的控制項。
+        unlockBtn.removeAttribute('aria-haspopup');
+        unlockBtn.removeAttribute('aria-controls');
+        unlockBtn.disabled = true;
         unlockBtn.style.cursor = 'default';
     }
+    if (moveFocus) focusFirstDndcNavItem();
 }
 
 // ========================
@@ -127,33 +192,43 @@ function initNavigation() {
             item.setAttribute('aria-current', 'page');
 
             // Close mobile menu if open
-            document.getElementById('sidebar').classList.remove('open');
-            document.getElementById('sidebarOverlay').classList.remove('active');
+            setMobileMenu(false);
         });
     });
 
     // Mobile menu toggle
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+    const setMobileMenu = (isOpen, { returnFocus = false } = {}) => {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) sidebar.classList.toggle('open', isOpen);
+        if (sidebarOverlay) sidebarOverlay.classList.toggle('active', isOpen);
+        if (mobileMenuBtn) {
+            mobileMenuBtn.setAttribute('aria-expanded', String(isOpen));
+            mobileMenuBtn.setAttribute('aria-label', isOpen ? '關閉選單' : '開啟選單');
+            if (!isOpen && returnFocus) mobileMenuBtn.focus();
+        }
+    };
+
     if (mobileMenuBtn) {
         mobileMenuBtn.addEventListener('click', () => {
             const sidebar = document.getElementById('sidebar');
-            const isOpen = sidebar.classList.toggle('open');
-            sidebarOverlay.classList.toggle('active', isOpen);
-            mobileMenuBtn.setAttribute('aria-expanded', String(isOpen));
-            mobileMenuBtn.setAttribute('aria-label', isOpen ? '關閉選單' : '開啟選單');
+            setMobileMenu(!(sidebar && sidebar.classList.contains('open')));
         });
     }
     if (sidebarOverlay) {
-        sidebarOverlay.addEventListener('click', () => {
-            document.getElementById('sidebar').classList.remove('open');
-            sidebarOverlay.classList.remove('active');
-            if (mobileMenuBtn) {
-                mobileMenuBtn.setAttribute('aria-expanded', 'false');
-                mobileMenuBtn.setAttribute('aria-label', '開啟選單');
-            }
-        });
+        sidebarOverlay.addEventListener('click', () => setMobileMenu(false));
     }
+
+    // Escape 關閉行動選單並把焦點還給漢堡鈕（側欄是 off-canvas，不關就沒有出口）
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && sidebar.classList.contains('open')) {
+            setMobileMenu(false, { returnFocus: true });
+        }
+    });
 
     // Sidebar collapse toggle
     const sidebarToggle = document.getElementById('sidebarToggle');
@@ -162,17 +237,35 @@ function initNavigation() {
     const appLayout = document.querySelector('.app-layout');
 
     if (sidebarToggle && sidebar && appLayout) {
+        // 圖示是 aria-hidden 的箭頭，狀態必須另外用 aria-expanded/aria-label 表達
+        const syncCollapseState = (isCollapsed) => {
+            appLayout.classList.toggle('sidebar-collapsed', isCollapsed);
+            if (toggleIcon) toggleIcon.textContent = isCollapsed ? '▶' : '◀';
+            sidebarToggle.setAttribute('aria-expanded', String(!isCollapsed));
+            sidebarToggle.setAttribute('aria-label', isCollapsed ? '展開側邊欄' : '收合側邊欄');
+
+            // 收合時只看得到 data-short 縮寫，補 title 讓 hover 讀得到完整名稱；
+            // 展開時標籤已經完整可見，留著 title 只會重複朗讀。
+            sidebar.querySelectorAll('.nav-item[data-title]').forEach(item => {
+                if (isCollapsed) {
+                    item.setAttribute('title', item.dataset.title);
+                } else {
+                    item.removeAttribute('title');
+                }
+            });
+        };
+
         // Restore state from sessionStorage
         if (safeSession.get('sidebarCollapsed') === 'true') {
             sidebar.classList.add('collapsed');
-            appLayout.classList.add('sidebar-collapsed');
-            toggleIcon.textContent = '▶';
+            syncCollapseState(true);
+        } else {
+            syncCollapseState(false);
         }
 
         sidebarToggle.addEventListener('click', () => {
             const isCollapsed = sidebar.classList.toggle('collapsed');
-            appLayout.classList.toggle('sidebar-collapsed', isCollapsed);
-            toggleIcon.textContent = isCollapsed ? '▶' : '◀';
+            syncCollapseState(isCollapsed);
             safeSession.set('sidebarCollapsed', String(isCollapsed));
         });
     }
@@ -353,6 +446,9 @@ function displayProteinResults(result, name) {
             </div>
         </div>
     `;
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('proteinResults');
 }
 
 function displayProteinStats(result) {
@@ -361,7 +457,6 @@ function displayProteinStats(result) {
 
     statsDiv.innerHTML = `
         <div class="stat-card">
-            <div class="stat-icon primary"></div>
             <div class="stat-content">
                 <div class="stat-label">分子量</div>
                 <div class="stat-value">${result.molecularWeightKDa.toFixed(2)}<span class="stat-unit">kDa</span></div>
@@ -369,21 +464,18 @@ function displayProteinStats(result) {
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon success"></div>
             <div class="stat-content">
                 <div class="stat-label">序列長度</div>
                 <div class="stat-value">${result.length}<span class="stat-unit">殘基</span></div>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon warning"></div>
             <div class="stat-content">
                 <div class="stat-label">乾燥體積</div>
                 <div class="stat-value">${(result.dryVolume / 1000).toFixed(1)}<span class="stat-unit">×10³ Å³</span></div>
             </div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon danger"></div>
             <div class="stat-content">
                 <div class="stat-label">消光係數 <i>ε</i></div>
                 <div class="stat-value">${(result.extinction.epsilon / 1000).toFixed(1)}<span class="stat-unit">×10³</span></div>
@@ -405,6 +497,34 @@ function createProteinCharts(composition) {
 
     // Create doughnut chart
     AppState.charts.doughnut = SAXSCharts.createCompositionChart('compositionDoughnutChart', composition);
+
+    // Chart.js 只畫像素；把關鍵數字寫進 aria-label，AT 才讀得到圖的結論
+    describeCompositionCharts(composition);
+}
+
+/**
+ * 依實際組成更新兩張氨基酸組成圖的無障礙描述。
+ *
+ * @param {Object} composition - 各殘基數量（key 為單字母代碼）
+ * @returns {void}
+ */
+function describeCompositionCharts(composition) {
+    const entries = Object.entries(composition || {})
+        .filter(([, n]) => Number(n) > 0)
+        .sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) return;
+
+    const total = entries.reduce((sum, [, n]) => sum + Number(n), 0);
+    const top = entries.slice(0, 5)
+        .map(([aa, n]) => `${aa} ${n} 個（${((n / total) * 100).toFixed(1)}%）`)
+        .join('、');
+
+    A11y.describeChart('compositionBarChart',
+        `氨基酸組成長條圖，共 ${total} 個殘基、${entries.length} 種氨基酸；` +
+        `最多的五種為 ${top}。完整數值見左側「氨基酸組成」列表`);
+    A11y.describeChart('compositionDoughnutChart',
+        `氨基酸分類比例環圖，共 ${total} 個殘基；` +
+        `占比最高的五種氨基酸為 ${top}。完整數值見左側「氨基酸組成」列表`);
 }
 
 function destroyCharts() {
@@ -833,6 +953,9 @@ function displaySAXSResults(data) {
 
         ${mwAlertHtml}
     `;
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('saxsResults');
 }
 
 // ========================
@@ -906,10 +1029,10 @@ function displayHPLCSAXSResults(result, suggested) {
     const flowRateTableBody = document.getElementById('flowRateTableBody');
     if (flowRateTableBody) {
         flowRateTableBody.innerHTML = result.flowRateTable.map(row => `
-            <tr${row.note ? ' style="background: rgba(var(--color-primary-rgb), 0.1);"' : ''}>
+            <tr${row.note ? ' class="flow-rate-row--note"' : ''}>
                 <td>${row.time.toFixed(2)}</td>
                 <td>${row.flowRate.toFixed(3)}</td>
-                <td style="color: ${row.note ? 'var(--color-primary)' : 'var(--color-text-muted)'}; font-weight: ${row.note ? '600' : '400'};">${row.note || '-'}</td>
+                <td>${row.note || '-'}</td>
             </tr>
         `).join('');
     }
@@ -952,6 +1075,9 @@ function displayHPLCSAXSResults(result, suggested) {
         }).join('');
     }
 
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('hplcSaxsResults');
 }
 
 function updateSuggestedValues(suggested) {
@@ -1064,6 +1190,9 @@ function displaySampleResults(data) {
             </div>
         </div>
     `;
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('sampleResults');
 }
 
 function displayDilutionFactorResults(data) {
@@ -1104,6 +1233,9 @@ function displayDilutionFactorResults(data) {
             <strong>注意：</strong>此為經驗公式估算，誤差約 ±7.33%
         </div>
     `;
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('dilutionFactorResults');
 }
 
 // ========================
@@ -1279,6 +1411,9 @@ function displayMWResults(data) {
             ` : ''}
         `;
     }
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('mwResults');
 }
 
 // ========================
@@ -1387,6 +1522,9 @@ function displayCentrifugeResults(data) {
             其中 r = ${data.radius} cm, N = ${data.rpm} rpm
         </div>
     `;
+
+    // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
+    A11y.focusResults('centrifugeResults');
 }
 
 // ========================
@@ -1584,8 +1722,9 @@ function updateIUCrTable() {
 function showAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    A11y.markLiveRegion(container, type);
     container.innerHTML =
-        `<div class="alert alert-${type}" role="status">${escapeHtml(message)}</div>`;
+        `<div class="alert alert-${type}">${escapeHtml(message)}</div>`;
 }
 
 /**

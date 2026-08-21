@@ -23,7 +23,8 @@
     --color-accent-tertiary: #f59e0b;        /* non-text use only (icons, fills) */
     --color-accent-tertiary-dark: #b45309;   /* white text on this: 5.0:1 */
     --color-accent-tertiary-text: #92400e;   /* warning TEXT on light: 6.5–7.1:1 */
-    --color-accent-danger: #dc2626;
+    --color-accent-danger: #dc2626;          /* fills / borders / left rules */
+    --color-accent-danger-text: #b91c1c;     /* error TEXT: #dc2626 is 4.38:1 on the alert tint */
     --color-accent-purple: #A83737;          /* text-safe coral shade (6.4:1 on white) */
     --color-accent-pink: #B86A6A;
     --color-accent-pink-hot: #A83737;
@@ -187,14 +188,50 @@ a:hover {
     width: var(--sidebar-collapsed-width);
 }
 
-.sidebar.collapsed .logo-text,
-.sidebar.collapsed .nav-item-text,
 .sidebar.collapsed .nav-section-title,
-.sidebar.collapsed .sidebar-footer,
-.sidebar.collapsed #dndcNavItems .nav-item-text {
+.sidebar.collapsed .sidebar-footer {
     opacity: 0;
     pointer-events: none;
     white-space: nowrap;
+}
+
+/* Collapsed rail (56px): the full label stays in the accessibility tree but is
+   visually clipped, and data-short renders instead so the rail is still legible.
+   Before this, 6697dd9 removed the icons and left 12 identical blank rectangles. */
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .nav-item-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.sidebar.collapsed .logo,
+.sidebar.collapsed .nav-item {
+    position: relative;
+}
+
+.sidebar.collapsed .logo::after,
+.sidebar.collapsed .nav-item::after {
+    content: attr(data-short);
+    display: block;
+    width: 100%;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: center;
+    letter-spacing: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sidebar.collapsed .logo::after {
+    font-size: 0.8125rem;
+    color: #ffffff;
 }
 
 .sidebar.collapsed .sidebar-header {
@@ -208,11 +245,9 @@ a:hover {
 
 .sidebar.collapsed .nav-item {
     justify-content: center;
-    padding: var(--spacing-sm);
-}
-
-.sidebar.collapsed .nav-item-icon {
-    margin: 0;
+    /* Narrow side padding: the 56px rail must fit 5-character labels
+       ("Slice", "dn/dc") without ellipsis. */
+    padding: var(--spacing-sm) 2px;
 }
 
 .sidebar.collapsed .sidebar-nav {
@@ -264,7 +299,7 @@ a:hover {
     padding: var(--spacing-md) var(--spacing-lg);
     border-top: 1px solid rgba(255, 255, 255, 0.18);
     font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.88);
+    color: rgba(255, 255, 255, 0.96);
     letter-spacing: 0.02em;
     text-transform: uppercase;
 }
@@ -276,9 +311,34 @@ a:hover {
 .nav-section-title {
     font-size: 0.75rem;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.9);
+    color: #ffffff;              /* 5.13:1 on the coral sidebar (0.9 alpha was 4.48:1) */
     letter-spacing: 0.04em;
     padding: var(--spacing-sm) var(--spacing-md) var(--spacing-xs);
+    line-height: 1.6;
+}
+
+/* Section title rendered as a real <button> (dn/dc unlock trigger).
+   Only neutralises UA button styling that .nav-section-title does not already set —
+   deliberately no `font:`/`color: inherit`, which would out-cascade the rule above. */
+.nav-section-title--button {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 0;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.nav-section-title--button:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: -2px;
+    border-radius: var(--radius-sm);
+}
+
+.nav-section-title--button[disabled] {
+    cursor: default;
+    opacity: 1;                  /* unlocked state is informational, keep it legible */
 }
 
 .nav-item {
@@ -301,7 +361,7 @@ a:hover {
 }
 
 .nav-item:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.10);   /* darken, never lighten — white text 6.05:1 */
     color: #ffffff;
 }
 
@@ -311,17 +371,10 @@ a:hover {
 }
 
 .nav-item.active {
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(0, 0, 0, 0.18);     /* was rgba(255,255,255,.22) -> white text 3.39:1 */
     color: #ffffff;
     font-weight: 600;
     box-shadow: inset 3px 0 0 #ffffff;   /* non-colour cue for the current page */
-}
-
-.nav-item-icon {
-    font-size: 1rem;
-    width: 20px;
-    text-align: center;
-    flex-shrink: 0;
 }
 
 .nav-item-text {
@@ -383,8 +436,11 @@ a:hover {
 }
 
 .card-title {
+    /* Semantically h2 (fixes the h1 -> h3 skip); visual weight unchanged from h3 */
+    font-family: var(--font-body);
     font-size: 0.8125rem;
     font-weight: 600;
+    line-height: 1.3;
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
@@ -434,21 +490,8 @@ a:hover {
     gap: var(--spacing-md);
 }
 
-.stat-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.125rem;
-    flex-shrink: 0;
-}
-
-.stat-icon.primary { background: rgba(168, 85, 85, 0.1); color: var(--color-accent-primary); }
-.stat-icon.success { background: rgba(16, 185, 129, 0.12); color: var(--color-accent-secondary); }
-.stat-icon.warning { background: rgba(245, 158, 11, 0.12); color: var(--color-accent-tertiary); }
-.stat-icon.danger { background: rgba(220, 38, 38, 0.1); color: var(--color-accent-danger); }
+/* .stat-icon removed in v4.8: 6697dd9 emptied the emoji but left four 40x40
+   colour blocks (40px + 17px gap) squeezing the monospace .stat-value. */
 
 .stat-content {
     flex: 1;
@@ -565,9 +608,10 @@ a:hover {
     text-align: right;
 }
 
-.info-panel-mw-input:focus {
-    outline: none;
-    border-color: rgba(255, 255, 255, 0.6);
+.info-panel-mw-input:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 1px;
+    border-color: #ffffff;
 }
 
 .info-panel-grid {
@@ -649,6 +693,12 @@ a:hover {
 
 .result-card--warning {
     background: var(--color-accent-tertiary-dark);
+}
+
+/* #b45309 leaves no headroom: .92 white is 4.49:1 and .85 white is 4.08:1 */
+.result-card--warning .result-card-label,
+.result-card--warning .result-card-unit {
+    color: var(--color-text-on-accent);
 }
 
 .result-card-label {
@@ -799,10 +849,11 @@ a:hover {
     min-width: 6rem;
 }
 
-.form-input--inline:focus {
+.form-input--inline:focus-visible {
     border: 1px solid var(--color-accent-primary);
     border-radius: var(--radius-sm);
-    outline: none;
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 1px;
 }
 
 .input-unit {
@@ -887,6 +938,14 @@ a:hover {
     font-size: 0.875rem;
 }
 
+/* Minimum comfortable target for the primary controls. .btn-sm / .copy-btn /
+   .btn-icon stay compact on purpose (they sit inside table rows and cards) but
+   still clear the 24px WCAG 2.2 AA floor. */
+.btn:not(.btn-sm):not(.btn-icon),
+.nav-item {
+    min-height: 2.5rem;
+}
+
 .btn-full {
     width: 100%;
 }
@@ -951,10 +1010,31 @@ a:hover {
 }
 
 /* ===== Tables ===== */
+/* Flow-rate switch points: the rows a scientist actually has to act on.
+   Replaces inline styles that referenced the undefined --color-primary(-rgb). */
+.flow-rate-row--note {
+    background: rgba(168, 85, 85, 0.1);
+}
+
+.flow-rate-row--note td {
+    font-weight: 600;
+}
+
+.flow-rate-row--note td:last-child {
+    color: var(--color-accent-primary-deep);
+}
+
 .table-wrapper {
     overflow-x: auto;
     border-radius: var(--radius-md);
     border: 1px solid var(--color-border);
+}
+
+/* tabindex="0" makes the overflow area reachable (Safari has no built-in
+   scroll-container focus); it needs a matching focus ring. */
+.table-wrapper:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 2px;
 }
 
 .table {
@@ -1056,18 +1136,6 @@ a:hover {
     letter-spacing: 0.5px;
 }
 
-.sequence-display .aa {
-    display: inline-block;
-    padding: 1px 3px;
-    border-radius: 2px;
-    transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.sequence-display .aa:hover {
-    background: var(--color-accent-primary);
-    color: white;
-}
-
 /* ===== Sequence Meta Row ===== */
 .sequence-meta {
     display: flex;
@@ -1107,34 +1175,6 @@ a:hover {
 .copy-btn.copied {
     color: var(--color-accent-secondary);
     border-color: var(--color-accent-secondary);
-}
-
-/* ===== Tooltips ===== */
-[data-tooltip] {
-    position: relative;
-}
-
-[data-tooltip]::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%) translateY(-4px);
-    background: var(--color-text-primary);
-    color: var(--color-bg-secondary);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--radius-sm);
-    font-size: 0.6875rem;
-    white-space: nowrap;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity var(--transition-fast), visibility var(--transition-fast);
-    z-index: 1000;
-}
-
-[data-tooltip]:hover::after {
-    opacity: 1;
-    visibility: visible;
 }
 
 /* ===== Loading State ===== */
@@ -1196,7 +1236,7 @@ a:hover {
 .alert-error {
     background: rgba(196, 43, 28, 0.06);
     border: 1px solid rgba(196, 43, 28, 0.15);
-    color: var(--color-accent-danger);
+    color: var(--color-accent-danger-text);   /* 5.9:1 on the tint; #dc2626 was 4.38:1 */
 }
 
 /* ===== Section Divider ===== */
@@ -1314,36 +1354,35 @@ a:hover {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Results containers receive programmatic focus after a calculation so keyboard
+   and screen-reader users land on the new output. */
+[tabindex="-1"]:focus {
+    outline: none;
+}
+
+[tabindex="-1"]:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 3px;
+    border-radius: var(--radius-md);
+}
+
 /* ===== Utility Classes ===== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
 .mt-sm { margin-top: var(--spacing-sm); }
 .mt-md { margin-top: var(--spacing-md); }
 .mt-lg { margin-top: var(--spacing-lg); }
 .hidden { display: none; }
-
-/* ===== Responsive ===== */
-@media (max-width: 1024px) {
-    .sidebar {
-        transform: translateX(-100%);
-    }
-
-    .sidebar.open {
-        transform: translateX(0);
-    }
-
-    .main-content {
-        margin-left: 0;
-        max-width: 100vw;
-        padding: var(--spacing-lg);
-    }
-
-    .mobile-menu-btn {
-        display: flex;
-    }
-
-    .sidebar-overlay {
-        display: block;
-    }
-}
 
 .mobile-menu-btn {
     display: none;
@@ -1385,6 +1424,35 @@ a:hover {
     visibility: visible;
 }
 
+/* ===== Responsive =====
+   NOTE: .mobile-menu-btn / .sidebar-overlay base rules are declared ABOVE this
+   block on purpose. They used to come after it, so the same-specificity
+   `display: none` always won and the hamburger never appeared below 1024px. */
+@media (max-width: 1024px) {
+    .sidebar {
+        transform: translateX(-100%);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    /* Top padding clears the 40px fixed hamburger so the h1 is never covered. */
+    .main-content {
+        margin-left: 0;
+        max-width: 100vw;
+        padding: calc(var(--spacing-md) + 40px + var(--spacing-md)) var(--spacing-lg) var(--spacing-3xl);
+    }
+
+    .mobile-menu-btn {
+        display: flex;
+    }
+
+    .sidebar-overlay {
+        display: block;
+    }
+}
+
 /* ===== IUCr Table Style ===== */
 .iucr-table {
     font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
@@ -1418,15 +1486,20 @@ a:hover {
     border: none;
     border-top: 1px solid rgba(255, 255, 255, 0.18);
     background: transparent;
-    color: rgba(255, 255, 255, 0.9);
+    color: #ffffff;
     cursor: pointer;
     font-size: 1rem;
     transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .sidebar-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.12);
     color: #ffffff;
+}
+
+.sidebar-toggle:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: -2px;
 }
 
 /* ===== Export Buttons ===== */
@@ -1435,20 +1508,23 @@ a:hover {
     gap: 0.375rem;
 }
 
-/* ===== Modal ===== */
-.modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    backdrop-filter: blur(4px);
+/* ===== Modal (native <dialog>: focus trap, Escape and inert background are free) ===== */
+.modal-dialog {
+    /* margin: auto restores the UA centring that the global `* { margin: 0 }`
+       reset would otherwise strip from <dialog>. */
+    margin: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    width: min(360px, calc(100% - 2 * var(--spacing-lg)));
+    max-width: 360px;
+    overflow: visible;
 }
 
-.modal-overlay.hidden {
-    display: none;
+.modal-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
 }
 
 .modal-content {
@@ -1457,8 +1533,28 @@ a:hover {
     border-radius: var(--radius-lg);
     padding: 1.5rem;
     width: 100%;
-    max-width: 360px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* h2 for correct outline order; keeps the previous h3 visual weight */
+.modal-title {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: normal;
+    margin-bottom: 0.75rem;
+}
+
+.modal-desc {
+    margin-bottom: 1rem;
+    color: var(--color-text-secondary);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
 }
 
 /* ===== Print Styles ===== */
