@@ -7,12 +7,16 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 **Modern, Helpful, Smart** — A friendly yet technically competent scientific tool. It should feel like a capable assistant that understands the domain, not a cold instrument panel or a toy.
 
 ### Aesthetic Direction
-- **Theme:** Dark mode (scientific instrument aesthetic with deep navy backgrounds)
-- **Primary accent:** Indigo (#6366f1) — modern, trustworthy, distinct from typical lab software
-- **Secondary accents:** Emerald (#10b981) for success/positive, Amber (#f59e0b) for warnings, Red (#ef4444) for errors
-- **Typography:** Inter for UI text, JetBrains Mono for scientific values and sequences
-- **Icons:** Emoji-based system (no image assets) — scientific themed (🔬🧬🧪⚗️📊)
-- **Visual effects:** Subtle glassmorphism on cards, smooth transitions (150-400ms), gentle hover lifts
+> 2026-08-21 同步至實作（v4.4，commit 040984b「coral-to-ice」）。先前的深色/indigo 規格已於 2026-04 連續三次改版後廢棄；改動配色時請同步更新本節與 `css/styles.css` 的 `:root` tokens。
+
+- **Theme:** Light "Precision Editorial" — ice blue-gray page background (#E5E9EB), white cards (#ffffff), no dark mode
+- **Primary accent:** Coral (#F04E4E) — solid sidebar background, primary buttons, skip link; lighter tints #EC8282 / #EA9C9C for gradients and secondary emphasis
+- **Secondary accents:** Emerald (#10b981) for success/positive, Amber (#f59e0b) for warnings, Red (#dc2626) for errors
+- **Text:** Deep warm slate, never pure black — primary #1a1a2e, secondary #3d3d5c, muted #6b6b8a; white text on coral surfaces
+- **Typography:** Inter + Noto Sans TC for UI text (Google Fonts), JetBrains Mono with `tabular-nums` for scientific values and sequences; `html { font-size: 17px }`
+- **Icons:** No decorative icon system (scientific emoji removed in 6697dd9). A few functional glyphs remain in index.html/app.js (🔒/🔓 lock, 📥 export ×3, ☰ menu, 📊 📡 💡 🔍 🖼 section markers) — don't add new ones; removing the remaining section markers is an open cleanup item
+- **Visual effects:** Flat cards with 1px borders (#d4d8dc) and 3/6/8px radii; coral-tinted shadows; fast transitions (120/200ms ease-out); `backdrop-filter: blur(4px)` only on the modal overlay — no glassmorphism on cards, no hover lifts
+- **Layout:** Fixed 240px sidebar (collapsible to 56px, state persisted), 4px spacing scale
 - **Anti-references:** Avoid looking like a generic dashboard template, overly playful consumer apps, or cluttered legacy lab software
 
 ### Design Principles
@@ -23,6 +27,36 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 
 3. **Speed of use** — Optimize for fast input-to-result workflows. Minimize clicks, keep related fields visible together, use smart defaults. Scientists are working under time pressure at the beamline.
 
-4. **Accessible by default** — WCAG AA compliance. High contrast text on dark backgrounds, proper form labels, semantic HTML. The dark theme should enhance readability in various lighting conditions.
+4. **Accessible by default** — WCAG AA compliance. High-contrast slate text on light surfaces (≥4.5:1 for body text, ≥3:1 for large text and UI components — check coral #F04E4E before using it for text), proper form labels, semantic HTML. Must stay readable in dim experimental hutches and over remote desktop.
 
 5. **Progressive disclosure** — Show essential results prominently, keep advanced details available but not overwhelming. Use section organization and collapsible areas to manage complexity.
+
+## Agent 工作流程
+
+1. 新功能/需求變更 → 先決定影響 saxs-calculator 還是 dndc calculator
+2. 涉及科學公式 → science-reviewer agent 審查
+3. 前端 JS 變更 → saxs-frontend agent
+4. Python 變更 → dndc-dev agent
+5. UI/UX 改善 → ui-designer agent
+6. 寫完程式碼 → qa agent 寫測試
+7. saxs-frontend + dndc-dev 可平行開發
+
+## 工作規範
+
+### 驗證
+- 修改 saxs-calculator 後，必須在瀏覽器開啟 index.html 確認無 console error
+- 修改 dndc calculator 後，必須執行 `cd "dndc calculator" && .venv_mac/bin/python -m pytest -q`（py3.9 venv；基準 2026-08-21：194 passed / 27 xfailed / 0 failed）。xfail 是以 `xfail(strict=True)` 鎖定的已知 bug——修好一個會變成 XPASS 失敗，此時移除該測試的 xfail 標記，不要改期望值
+- 不要說「應該可以」或「看起來沒問題」，要跑過才算
+
+### 檔案讀取
+- 超過 500 行的檔案，分段讀取（offset + limit）
+- saxs-calculator/index.html (98KB) 必須分段讀取
+- 編輯前一律重新讀取目標檔案，不信任記憶
+
+### 搜尋
+- 搜尋結果被截斷時，縮小範圍重搜
+- 不要假設搜尋結果是完整的
+
+### 複雜任務
+- 超過 5 個獨立檔案的變更，拆成子 Agent 平行處理
+- 長對話主動使用 /compact 壓縮上下文
