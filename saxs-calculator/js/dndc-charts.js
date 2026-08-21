@@ -203,42 +203,53 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
     const ctx = document.getElementById(canvasId);
     if (!ctx) return null;
 
+    // 沒有資料點就不畫（空陣列會讓 Math.min() 回 Infinity）
+    if (!Array.isArray(xData) || xData.length === 0) return null;
+
     const xLabel = (labels && labels.xLabel) || 'Concentration (g/mL)';
     const yLabel = (labels && labels.yLabel) || 'Δn (RIU)';
 
-    // 擬合線的端點
-    const xMin = Math.min(...xData);
-    const xMax = Math.max(...xData);
-    const margin = (xMax - xMin) * 0.05;
-    const fitLine = [
-        { x: xMin - margin, y: fitResult.dnDc * (xMin - margin) + fitResult.intercept },
-        { x: xMax + margin, y: fitResult.dnDc * (xMax + margin) + fitResult.intercept }
+    // 擬合失敗（例如有效切片 < 2）時 fitResult 為 null：只畫散點，不解參考
+    const hasFit = Boolean(fitResult) &&
+        Number.isFinite(fitResult.dnDc) && Number.isFinite(fitResult.intercept);
+
+    const datasets = [
+        {
+            label: 'Data',
+            data: xData.map((x, i) => ({ x, y: yData[i] })),
+            backgroundColor: DNDC_CHART_COLORS.scatter,
+            borderColor: DNDC_CHART_COLORS.scatter,
+            pointRadius: 4,
+            pointHoverRadius: 6
+        }
     ];
+
+    if (hasFit) {
+        // 擬合線的端點
+        const xMin = Math.min(...xData);
+        const xMax = Math.max(...xData);
+        const margin = (xMax - xMin) * 0.05;
+        const fitLine = [
+            { x: xMin - margin, y: fitResult.dnDc * (xMin - margin) + fitResult.intercept },
+            { x: xMax + margin, y: fitResult.dnDc * (xMax + margin) + fitResult.intercept }
+        ];
+        const r2Text = Number.isFinite(fitResult.rSquared) ? fitResult.rSquared.toFixed(6) : '-';
+
+        datasets.push({
+            label: `Fit (dn/dc = ${fitResult.dnDc.toFixed(4)}, R² = ${r2Text})`,
+            data: fitLine,
+            borderColor: DNDC_CHART_COLORS.fit,
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 0,
+            showLine: true,
+            borderDash: [6, 3]
+        });
+    }
 
     return new Chart(ctx, {
         type: 'scatter',
-        data: {
-            datasets: [
-                {
-                    label: 'Data',
-                    data: xData.map((x, i) => ({ x, y: yData[i] })),
-                    backgroundColor: DNDC_CHART_COLORS.scatter,
-                    borderColor: DNDC_CHART_COLORS.scatter,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                },
-                {
-                    label: `Fit (dn/dc = ${fitResult.dnDc.toFixed(4)}, R² = ${fitResult.rSquared.toFixed(6)})`,
-                    data: fitLine,
-                    borderColor: DNDC_CHART_COLORS.fit,
-                    backgroundColor: 'transparent',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    showLine: true,
-                    borderDash: [6, 3]
-                }
-            ]
-        },
+        data: { datasets },
         options: {
             ...dndcChartDefaults,
             scales: {

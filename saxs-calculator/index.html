@@ -103,7 +103,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.6
+                Version 4.7
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" title="收合/展開側邊欄">
                 <span id="sidebarToggleIcon">◀</span>
@@ -221,7 +221,7 @@
                                 <label class="form-label" for="sampleConcentration">樣品濃度</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="sampleConcentration" value="1.0"
-                                        step="0.1" min="0">
+                                        step="0.1" min="0.001">
                                     <span class="input-unit">mg/mL</span>
                                 </div>
                             </div>
@@ -444,7 +444,8 @@
                                     exp</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="hplcInjectionVolume" value="100"
-                                        step="1" min="1">
+                                        step="1" min="3" max="100"
+                                        title="峰寬多項式的校正範圍為 3–100 μL，超出範圍會外插出負的峰寬與倒置的收集時間">
                                     <span class="input-unit">μL</span>
                                 </div>
                             </div>
@@ -471,6 +472,7 @@
                             <button class="btn btn-primary btn-lg btn-full mt-sm" id="calculateHPLCSAXS">
                                 計算 HPLC-SAXS 設定
                             </button>
+                            <div id="hplcSaxsAlert" class="mt-sm" aria-live="polite"></div>
                         </div>
                     </div>
 
@@ -619,7 +621,7 @@
                                 <label class="form-label" for="pathLength">光徑長度</label>
                                 <div class="form-input-group">
                                     <input type="number" class="form-input" id="pathLength" value="0.2" step="0.01"
-                                        min="0">
+                                        min="0.001">
                                     <span class="input-unit">cm</span>
                                 </div>
                             </div>
@@ -1491,14 +1493,14 @@
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcEpsilon">消光係數 <i>ε</i></label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="dndcEpsilon" value="0.667" step="0.001" title="質量消光係數 (mass extinction coefficient)。BSA@280nm ≈ 0.667 mL/(mg·cm)。可從 ProtParam 或蛋白質分析頁面取得">
+                                        <input type="number" class="form-input" id="dndcEpsilon" value="0.667" step="0.001" min="0.000001" required title="質量消光係數 (mass extinction coefficient)。BSA@280nm ≈ 0.667 mL/(mg·cm)。可從 ProtParam 或蛋白質分析頁面取得">
                                         <span class="input-unit">mL/(mg·cm)</span>
                                     </div>
                                 </div>
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcPathLen">光徑長度</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="dndcPathLen" value="1" step="0.01" title="UV 偵測器流通池光徑。標準 HPLC: 1 cm, 微量池: 0.2-0.5 cm">
+                                        <input type="number" class="form-input" id="dndcPathLen" value="1" step="0.01" min="0.000001" required title="UV 偵測器流通池光徑。標準 HPLC: 1 cm, 微量池: 0.2-0.5 cm">
                                         <span class="input-unit">cm</span>
                                     </div>
                                 </div>
@@ -1507,7 +1509,7 @@
                                 <div class="form-group form-group--compact">
                                     <label class="form-label form-label--sm" for="dndcRiFactor">RI 校正因子 (<i>K</i><sub>RI</sub>)</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="dndcRiFactor" value="1.0" step="0.001" title="RI 偵測器校正常數。若 RI 已校正為 RIU 則設為 1.0">
+                                        <input type="number" class="form-input" id="dndcRiFactor" value="1.0" step="0.001" min="0.000001" required title="RI 偵測器校正常數。若 RI 已校正為 RIU 則設為 1.0">
                                         <span class="input-unit"></span>
                                     </div>
                                 </div>
@@ -1539,7 +1541,7 @@
                             <div class="form-group form-group--compact">
                                 <label class="form-label form-label--sm" for="dndcManualC">手動濃度（留空則從 UV 計算）</label>
                                 <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcManualC" step="0.001" placeholder="自動計算" title="若檔案無 UV 通道或 UV 不可靠，在此輸入已知濃度。留空則自動從 UV 信號和消光係數計算。注意：手動濃度僅能搭配「峰高」模式（面積模式的 RIU·min ÷ mg/mL 量綱不成立）">
+                                    <input type="number" class="form-input" id="dndcManualC" step="0.001" min="0.000001" placeholder="自動計算" title="若檔案無 UV 通道或 UV 不可靠，在此輸入已知濃度。留空則自動從 UV 信號和消光係數計算。注意：手動濃度僅能搭配「峰高」模式（面積模式的 RIU·min ÷ mg/mL 量綱不成立）">
                                     <span class="input-unit">mg/mL</span>
                                 </div>
                             </div>
@@ -1761,6 +1763,7 @@
     </div>
 
     <!-- Scripts -->
+    <script src="js/form-utils.js"></script>
     <script src="js/protein.js"></script>
     <script src="js/calculations.js"></script>
     <script src="js/charts.js"></script>

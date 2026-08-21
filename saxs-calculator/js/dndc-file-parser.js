@@ -102,14 +102,27 @@ function splitLine(line, delimiter) {
 }
 
 /**
+ * 空的解析結果（含統計欄位，讓呼叫端不必判斷 stats 是否存在）。
+ * @returns {{ headers: string[], data: number[][], stats: {rowCount: number, nonNumeric: number[]} }}
+ */
+function emptyParseResult() {
+    return { headers: [], data: [], stats: { rowCount: 0, nonNumeric: [] } };
+}
+
+/**
  * Parse CSV/TSV text into structured data.
+ *
+ * 非數值／空白格仍然存成 NaN（保留列與列之間的對應關係），但會逐欄統計筆數，
+ * 讓 UI 可以警告「Time 欄有 3 個非數值格」而不是靜默把 NaN 送進計算。
+ *
  * @param {string} text - Raw CSV/TSV text content
  * @param {string} [delimiter] - Delimiter character. Auto-detected if omitted.
- * @returns {{ headers: string[], data: number[][] }} Parsed headers and numeric data rows
+ * @returns {{ headers: string[], data: number[][], stats: {rowCount: number, nonNumeric: number[]} }}
+ *          Parsed headers, numeric data rows, and per-column non-numeric counts
  */
 function parseCSV(text, delimiter) {
     if (!text || typeof text !== 'string') {
-        return { headers: [], data: [] };
+        return emptyParseResult();
     }
 
     const resolvedDelimiter = delimiter || detectDelimiter(text);
@@ -119,7 +132,7 @@ function parseCSV(text, delimiter) {
     );
 
     if (lines.length === 0) {
-        return { headers: [], data: [] };
+        return emptyParseResult();
     }
 
     // First non-comment line is treated as headers
@@ -127,20 +140,31 @@ function parseCSV(text, delimiter) {
 
     // Remaining lines are data rows
     const data = [];
+    const nonNumeric = new Array(headers.length).fill(0);
+    const countNonNumeric = (col) => {
+        while (nonNumeric.length <= col) { nonNumeric.push(0); }
+        nonNumeric[col] += 1;
+    };
+
     for (let i = 1; i < lines.length; i++) {
         const fields = splitLine(lines[i], resolvedDelimiter);
-        const row = fields.map(field => {
+        const row = fields.map((field, col) => {
             const trimmed = field.trim();
             if (trimmed === '') {
+                countNonNumeric(col);
                 return NaN;
             }
             const num = Number(trimmed);
+            if (!Number.isFinite(num)) {
+                countNonNumeric(col);
+                return NaN;
+            }
             return num;
         });
         data.push(row);
     }
 
-    return { headers, data };
+    return { headers, data, stats: { rowCount: data.length, nonNumeric } };
 }
 
 /**

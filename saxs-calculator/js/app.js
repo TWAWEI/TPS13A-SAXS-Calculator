@@ -13,6 +13,12 @@ const AppState = {
     dndcUnlocked: false
 };
 
+// Storage 在部分瀏覽器設定下（Safari「阻擋所有 Cookie」、企業政策、無痕模式）
+// 連存取器本身都會 throw SecurityError。全部走 FormUtils 的安全包裝，
+// 避免一個 getItem 就讓 DOMContentLoaded 後面所有 init 停擺。
+const safeStorage = FormUtils.safeLocal;
+const safeSession = FormUtils.safeSession;
+
 // ========================
 // dn/dc Password Lock
 // ========================
@@ -30,7 +36,7 @@ function initDndcLock() {
     if (!unlockBtn) return;
 
     // 檢查 sessionStorage 是否已解鎖
-    if (sessionStorage.getItem('dndcUnlocked') === 'true') {
+    if (safeSession.get('dndcUnlocked') === 'true') {
         unlockDndc();
         return;
     }
@@ -62,7 +68,7 @@ function initDndcLock() {
             if (hash === DNDC_HASH) {
                 cleanup();
                 unlockDndc();
-                sessionStorage.setItem('dndcUnlocked', 'true');
+                safeSession.set('dndcUnlocked', 'true');
             } else {
                 errorDiv.classList.remove('hidden');
                 input.value = '';
@@ -157,7 +163,7 @@ function initNavigation() {
 
     if (sidebarToggle && sidebar && appLayout) {
         // Restore state from sessionStorage
-        if (sessionStorage.getItem('sidebarCollapsed') === 'true') {
+        if (safeSession.get('sidebarCollapsed') === 'true') {
             sidebar.classList.add('collapsed');
             appLayout.classList.add('sidebar-collapsed');
             toggleIcon.textContent = '▶';
@@ -167,7 +173,7 @@ function initNavigation() {
             const isCollapsed = sidebar.classList.toggle('collapsed');
             appLayout.classList.toggle('sidebar-collapsed', isCollapsed);
             toggleIcon.textContent = isCollapsed ? '▶' : '◀';
-            sessionStorage.setItem('sidebarCollapsed', String(isCollapsed));
+            safeSession.set('sidebarCollapsed', String(isCollapsed));
         });
     }
 }
@@ -445,15 +451,45 @@ function updateFormsWithProteinData(result) {
  * 顯示理論 I(0)：主值為經驗式（與實測 BSA 一致），
  * 有序列組成時附上 Excel 精確式作參考（對 BSA 低約 20%，見 calculations.js 說明）。
  */
-function renderTheoreticalI0(result, valueEl) {
+function renderTheoreticalI0(result, valueEl, concentrationState) {
     const methodEl = document.getElementById('theoreticalI0Method');
+
+    // 濃度未填／非數字／≤ 0 時不得靜默代入 1.0 mg/mL：理論 I(0) 與 c 成正比，
+    // 顯示出來的會是一個和樣品無關、卻格式完整看似權威的數字。
+    if (concentrationState && !concentrationState.valid) {
+        if (valueEl) valueEl.textContent = '--';
+        if (methodEl) {
+            methodEl.textContent = concentrationState.message;
+            methodEl.style.color = concentrationState.isError ? 'var(--color-accent-danger)' : '';
+        }
+        return;
+    }
+
     if (valueEl) valueEl.textContent = result.theoreticalI0.toExponential(2);
     if (!methodEl) return;
+    methodEl.style.color = '';
     if (Number.isFinite(result.exactI0)) {
         methodEl.textContent = `經驗式（BSA 校正）· Excel 精確式（序列）${result.exactI0.toExponential(2)}`;
     } else {
         methodEl.textContent = '經驗式 c×MW×7.9×10⁻⁷（BSA 校正）';
     }
+}
+
+/**
+ * 讀取「樣品濃度」欄位供理論值面板使用。
+ *
+ * @returns {{valid: boolean, isError: boolean, value: number|null, message: string}}
+ */
+function readPanelConcentration() {
+    const el = document.getElementById('sampleConcentration');
+    const value = parseFloat(el ? el.value : '');
+    if (!Number.isFinite(value)) {
+        return { valid: false, isError: false, value: null, message: '請輸入濃度 (mg/mL) 以取得理論 I(0)' };
+    }
+    if (value <= 0) {
+        return { valid: false, isError: true, value, message: `濃度必須大於 0（目前 ${value} mg/mL）` };
+    }
+    return { valid: true, isError: false, value, message: '' };
 }
 
 function getTheoreticalOpts(mwUsed) {
@@ -487,7 +523,9 @@ function initSAXSSection() {
 
     // Function to update all theoretical values display
     function updateTheoreticalValues() {
-        const concentration = parseFloat(concentrationInput.value) || 1.0;
+        const concentrationState = readPanelConcentration();
+        // Rg / Predicted Rg / Dmax 不依賴濃度，照常顯示；只有 I(0) 需要濃度
+        const concentration = concentrationState.valid ? concentrationState.value : NaN;
         // Use manual MW input if available, otherwise use protein data MW
         let proteinMw = parseFloat(theoreticalMWInput?.value);
         if (isNaN(proteinMw) || proteinMw <= 0) {
@@ -498,7 +536,7 @@ function initSAXSSection() {
             // Calculate all theoretical parameters at once
             const result = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular', getTheoreticalOpts(proteinMw));
 
-            renderTheoreticalI0(result, theoreticalI0Display);
+            renderTheoreticalI0(result, theoreticalI0Display, concentrationState);
             if (theoreticalRgDisplay) {
                 theoreticalRgDisplay.textContent = result.theoreticalRg.toFixed(1);
             }
@@ -617,13 +655,14 @@ function updateTheoreticalValuesFromProtein() {
 
     if (!concentrationInput) return;
 
-    const concentration = parseFloat(concentrationInput.value) || 1.0;
+    const concentrationState = readPanelConcentration();
+    const concentration = concentrationState.valid ? concentrationState.value : NaN;
     const proteinMw = AppState.proteinData?.molecularWeight;
 
     if (proteinMw) {
         const result = SAXSCalculations.calculateAllTheoreticalParams(proteinMw, concentration, 'globular', getTheoreticalOpts(proteinMw));
 
-        renderTheoreticalI0(result, theoreticalI0Display);
+        renderTheoreticalI0(result, theoreticalI0Display, concentrationState);
         if (theoreticalRgDisplay) {
             theoreticalRgDisplay.textContent = result.theoreticalRg.toFixed(1);
         }
@@ -808,33 +847,38 @@ function initHPLCSection() {
     }
 
     calculateBtn.addEventListener('click', () => {
-        const peakCenter = parseFloat(document.getElementById('hplcPeakCenter').value);
-        const peakFWHM = parseFloat(document.getElementById('hplcPeakFWHM').value);
-        const injectionVolume = parseFloat(document.getElementById('hplcInjectionVolume').value);
-        const targetFlowRate = parseFloat(document.getElementById('hplcTargetFlowRate').value);
-        const initialFlowRate = parseFloat(document.getElementById('hplcInitialFlowRate').value);
+        const ALERT_ID = 'hplcSaxsAlert';
 
-        // Validate inputs
-        if (isNaN(peakCenter) || isNaN(peakFWHM) || isNaN(injectionVolume) ||
-            isNaN(targetFlowRate) || isNaN(initialFlowRate)) {
-            alert('請填寫所有必要參數');
+        let params;
+        try {
+            params = {
+                peakCenter: FormUtils.readPositiveField('hplcPeakCenter', 'Peak center'),
+                peakFWHM: FormUtils.readPositiveField('hplcPeakFWHM', 'Peak width (FWHM)'),
+                injectionVolume: FormUtils.readPositiveField('hplcInjectionVolume', 'Volume to inject in SAXS exp'),
+                targetFlowRate: FormUtils.readPositiveField('hplcTargetFlowRate', 'Target flow rate'),
+                initialFlowRate: FormUtils.readPositiveField('hplcInitialFlowRate', 'Initial flow rate')
+            };
+        } catch (err) {
+            showAlert(ALERT_ID, 'error', err.message);
             return;
         }
 
-        // Calculate HPLC-SAXS settings
-        const result = SAXSCalculations.calculateHPLCSAXSSettings({
-            peakCenter,
-            peakFWHM,
-            injectionVolume,
-            targetFlowRate,
-            initialFlowRate
-        });
+        try {
+            // Calculate HPLC-SAXS settings（注射體積超出 3–100 μL 校正範圍會 throw）
+            const result = SAXSCalculations.calculateHPLCSAXSSettings(params);
 
-        // Calculate suggested values for 10μL pre-run
-        const suggested = SAXSCalculations.calculateSuggestedParams(peakCenter, peakFWHM);
+            // Calculate suggested values for 10μL pre-run
+            const suggested = SAXSCalculations.calculateSuggestedParams(params.peakCenter, params.peakFWHM);
 
-        // Display results
-        displayHPLCSAXSResults(result, suggested);
+            clearAlert(ALERT_ID);
+            displayHPLCSAXSResults(result, suggested);
+        } catch (err) {
+            // 領域驗證錯誤（超出校正範圍等）直接顯示；非預期錯誤另記 console 供除錯
+            if (err instanceof TypeError || err instanceof RangeError) {
+                console.error('[HPLC-SAXS]', err);
+            }
+            showAlert(ALERT_ID, 'error', err.message);
+        }
     });
 
     // Also update suggested values when peak center/FWHM changes
@@ -881,9 +925,9 @@ function displayHPLCSAXSResults(result, suggested) {
     const fractionStopTime = document.getElementById('fractionStopTime');
     const timePerFraction = document.getElementById('timePerFraction');
 
-    if (fractionStartTime) fractionStartTime.textContent = result.fractionCollector.startTime.toFixed(1);
-    if (fractionStopTime) fractionStopTime.textContent = result.fractionCollector.stopTime.toFixed(1);
-    if (timePerFraction) timePerFraction.textContent = result.fractionCollector.timePerFraction.toFixed(1);
+    if (fractionStartTime) fractionStartTime.textContent = result.fractionCollector.startTime.toFixed(2);
+    if (fractionStopTime) fractionStopTime.textContent = result.fractionCollector.stopTime.toFixed(2);
+    if (timePerFraction) timePerFraction.textContent = result.fractionCollector.timePerFraction.toFixed(2);
 
     // Update Detector Settings Table
     const detectorTableBody = document.getElementById('detectorSettingsTableBody');
@@ -928,23 +972,29 @@ function initSampleSection() {
     const calculateBtn = document.getElementById('calculateSample');
 
     calculateBtn.addEventListener('click', () => {
-        const absorbance = parseFloat(document.getElementById('uvAbsorbance').value);
-        const pathLength = parseFloat(document.getElementById('pathLength').value);
-        const epsilon = parseFloat(document.getElementById('inputEpsilon').value);
-        const mw = parseFloat(document.getElementById('inputMw').value);
-
-        if (isNaN(absorbance) || isNaN(epsilon) || isNaN(mw)) {
-            showAlert('sampleResults', 'error', '請填入所有必要參數');
-            return;
-        }
-        if (epsilon <= 0 || mw <= 0 || pathLength <= 0) {
-            showAlert('sampleResults', 'error', '消光係數、分子量和光徑長度必須大於 0');
+        // 空欄位 parseFloat 會得到 NaN，而 NaN <= 0 為 false——舊的檢查漏掉
+        // pathLength，NaN 會一路傳進計算並印出 "NaN mg/mL"、汙染 AppState
+        let absorbance, pathLength, epsilon, mw;
+        try {
+            absorbance = FormUtils.readPositiveField('uvAbsorbance', 'UV 吸光值');
+            pathLength = FormUtils.readPositiveField('pathLength', '光徑長度');
+            epsilon = FormUtils.readPositiveField('inputEpsilon', '消光係數 ε (莫耳)');
+            mw = FormUtils.readPositiveField('inputMw', '分子量');
+        } catch (err) {
+            showAlert('sampleResults', 'error', err.message);
             return;
         }
 
         const concentration = SAXSCalculations.calculateConcentrationFromUV(
             absorbance, epsilon, pathLength, mw
         );
+
+        // 最後一道防線：不讓 NaN／Infinity 寫進 AppState（稀釋倍率頁面會沿用）
+        if (!Number.isFinite(concentration) || concentration <= 0) {
+            showAlert('sampleResults', 'error',
+                '無法從輸入值算出有效濃度，請確認 UV 吸光值、消光係數、光徑長度與分子量');
+            return;
+        }
 
         // Store latest UV concentration for dilution factor use
         AppState.lastUVConcentration = concentration;
@@ -1475,29 +1525,51 @@ function initIUCrSection() {
     });
 }
 
+/**
+ * IUCr 表格用的數值格式化。
+ *
+ * `value?.toFixed(d) || '-'` 對 NaN 無效：NaN.toFixed(5) 回傳字串 "NaN"（truthy），
+ * 未填欄位會被直接抄進投稿用的 SAS 資料表。
+ *
+ * @param {number} value - 數值
+ * @param {number} digits - 小數位數
+ * @returns {string} 格式化字串，非有限值一律 '-'
+ */
+function formatIUCrValue(value, digits) {
+    return Number.isFinite(value) ? value.toFixed(digits) : '-';
+}
+
 function updateIUCrTable() {
     const protein = AppState.proteinData;
     const saxs = AppState.saxsData;
+    const fmt = formatIUCrValue;
+    const setText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
 
     // Update protein info
     if (protein) {
-        document.getElementById('iucr-protein').textContent = protein.name || '-';
-        document.getElementById('iucr-dryvol').textContent = protein.dryVolume?.toFixed(1) || '-';
-        document.getElementById('iucr-vbar').textContent = protein.partialSpecificVolume?.toFixed(6) || '-';
-        document.getElementById('iucr-mw-seq').textContent = protein.molecularWeight?.toFixed(2) || '-';
+        setText('iucr-protein', protein.name || '-');
+        setText('iucr-dryvol', fmt(protein.dryVolume, 1));
+        setText('iucr-vbar', fmt(protein.partialSpecificVolume, 6));
+        setText('iucr-mw-seq', fmt(protein.molecularWeight, 2));
     }
 
     // Update SAXS data
     if (saxs) {
-        document.getElementById('iucr-wavelength').textContent = saxs.wavelength?.toFixed(5) || '-';
-        document.getElementById('iucr-concentration').textContent = saxs.concentration || '-';
-        document.getElementById('iucr-i0-pr').textContent = saxs.i0Pr?.toFixed(5) || '-';
-        document.getElementById('iucr-rg-pr').textContent = saxs.rgPr?.toFixed(2) || '-';
-        document.getElementById('iucr-i0-guinier').textContent = saxs.i0Guinier?.toFixed(5) || '-';
-        document.getElementById('iucr-rg-guinier').textContent = saxs.rgGuinier?.toFixed(2) || '-';
-        document.getElementById('iucr-dmax').textContent = saxs.dmax || '-';
-        document.getElementById('iucr-porod').textContent = saxs.porodVolume?.toLocaleString() || '-';
-        document.getElementById('iucr-mw-porod').textContent = saxs.mwFromPorod?.toFixed(0) || '-';
+        setText('iucr-wavelength', fmt(saxs.wavelength, 5));
+        setText('iucr-concentration', Number.isFinite(saxs.concentration) ? String(saxs.concentration) : '-');
+        setText('iucr-i0-pr', fmt(saxs.i0Pr, 5));
+        setText('iucr-rg-pr', fmt(saxs.rgPr, 2));
+        setText('iucr-i0-guinier', fmt(saxs.i0Guinier, 5));
+        setText('iucr-rg-guinier', fmt(saxs.rgGuinier, 2));
+        setText('iucr-dmax', Number.isFinite(saxs.dmax) ? String(saxs.dmax) : '-');
+        // 固定 en-US：中文語系的 toLocaleString() 會把 NaN 印成「非數值」，
+        // 且千分位格式不應隨瀏覽器語系變動
+        setText('iucr-porod', Number.isFinite(saxs.porodVolume)
+            ? saxs.porodVolume.toLocaleString('en-US') : '-');
+        setText('iucr-mw-porod', fmt(saxs.mwFromPorod, 0));
     }
 
     // Hide warning if data is available
@@ -1512,7 +1584,19 @@ function updateIUCrTable() {
 function showAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    container.innerHTML = `<div class="alert alert-${type}">${escapeHtml(message)}</div>`;
+    container.innerHTML =
+        `<div class="alert alert-${type}" role="status">${escapeHtml(message)}</div>`;
+}
+
+/**
+ * 清空提示容器（計算成功後不要留著上一次的錯誤訊息）。
+ *
+ * @param {string} containerId - 容器 id
+ * @returns {void}
+ */
+function clearAlert(containerId) {
+    const container = document.getElementById(containerId);
+    if (container) container.innerHTML = '';
 }
 
 function escapeHtml(text) {
@@ -1526,52 +1610,231 @@ function escapeHtml(text) {
 // ========================
 const STORAGE_KEY = 'tps13a-form-state';
 
+// 永不持久化：檔案欄位（無意義）與密碼欄位（光束線是共用電腦，明文外洩）
+const PERSIST_SKIP_TYPES = Object.freeze(['file', 'password']);
+const PERSIST_SKIP_IDS = Object.freeze(['dndcPasswordInput']);
+
+// 還原後需要補派 input 事件的欄位（其衍生顯示不會在 init 時自行重算）
+const PERSIST_DERIVED_IDS = Object.freeze([
+    'proteinSequence',    // → 序列長度
+    'hplcPeakCenter',     // → 10 μL 建議值
+    'hplcPeakFWHM',       // → 10 μL 建議值
+    'retentionTimeInput'  // → RT → MW
+]);
+
+// 還原（與還原後補派的 input 事件）期間暫停自動存檔，否則 savedAt 會被改寫成
+// 「這次開啟頁面的時間」，提示條上的時間就永遠是現在。
+let suppressAutoSave = false;
+
+/**
+ * 在暫停自動存檔的狀態下執行 fn。
+ *
+ * @param {function(): void} fn - 要執行的動作
+ * @returns {void}
+ */
+function withAutoSaveSuppressed(fn) {
+    const previous = suppressAutoSave;
+    suppressAutoSave = true;
+    try {
+        fn();
+    } finally {
+        suppressAutoSave = previous;
+    }
+}
+
+/**
+ * 這個欄位可以被持久化嗎？
+ *
+ * @param {HTMLElement} el - 表單元素
+ * @returns {boolean} 可持久化為 true
+ */
+function isPersistableField(el) {
+    return !PERSIST_SKIP_TYPES.includes(el.type) && !PERSIST_SKIP_IDS.includes(el.id);
+}
+
+/**
+ * 取得欄位的預設值。
+ *
+ * <select> 沒有 defaultValue 屬性（回 undefined），若直接比對會讓每一個下拉都被
+ * 當成「已被使用者改過」而存檔，還原提示條就會每次開頁都出現。改為比對 HTML 上
+ * 標了 selected 的選項（沒有的話就是第一個選項）。
+ *
+ * @param {HTMLElement} el - 表單元素
+ * @returns {string} 預設值字串
+ */
+function fieldDefaultValue(el) {
+    if (el.tagName !== 'SELECT') return el.defaultValue;
+    const preselected = Array.from(el.options).find(opt => opt.defaultSelected) || el.options[0];
+    return preselected ? preselected.value : '';
+}
+
 function saveFormState() {
-    const state = {};
+    const values = {};
     document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
-        if (el.type === 'file') return;
+        if (!isPersistableField(el)) return;
+        // 只存「偏離預設值」的欄位：checkbox / select 若無條件存檔，存過一次之後
+        // 每次開頁都會被判定成「有還原內容」而彈出提示條
         if (el.type === 'checkbox') {
-            state[el.id] = el.checked;
-        } else if (el.value !== '' && el.value !== el.defaultValue) {
-            state[el.id] = el.value;
+            if (el.checked !== el.defaultChecked) values[el.id] = el.checked;
+        } else if (el.value !== '' && el.value !== fieldDefaultValue(el)) {
+            values[el.id] = el.value;
         }
     });
+    safeStorage.set(STORAGE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), values }));
+}
+
+/**
+ * 讀取存檔（相容 v4.6 之前的扁平格式），並一次性清掉曾經落地的敏感欄位。
+ *
+ * @returns {{savedAt: string|null, values: object}|null} 解析結果
+ */
+function readFormState() {
+    const raw = safeStorage.get(STORAGE_KEY);
+    if (!raw) return null;
+
+    let parsed;
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) { /* quota exceeded — ignore */ }
+        parsed = JSON.parse(raw);
+    } catch (err) {
+        console.warn('[form-state] 存檔格式損壞，已清除:', err.message);
+        safeStorage.remove(STORAGE_KEY);
+        return null;
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const hasEnvelope = parsed.values && typeof parsed.values === 'object';
+    const rawValues = hasEnvelope ? parsed.values : parsed;
+    const savedAt = typeof parsed.savedAt === 'string' ? parsed.savedAt : null;
+
+    // 一次性清理：舊版本可能已把明文密碼寫進 localStorage
+    const leaked = PERSIST_SKIP_IDS.filter(id => id in rawValues);
+    const values = { ...rawValues };
+    if (leaked.length > 0) {
+        leaked.forEach(id => { delete values[id]; });
+        safeStorage.set(STORAGE_KEY, JSON.stringify({ savedAt, values }));
+    }
+
+    return { savedAt, values };
+}
+
+/**
+ * 把 ISO 時間字串格式化成 YYYY-MM-DD HH:mm。
+ *
+ * @param {string|null} iso - ISO 時間字串
+ * @returns {string} 顯示字串（無法解析時回 '先前'）
+ */
+function formatSavedAt(iso) {
+    if (!iso) return '先前';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '先前';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * 顯示「已還原上次輸入值」提示條，附清除與關閉按鈕。
+ *
+ * 光束線工作站多人共用同一個瀏覽器 profile，靜默把上一位使用者的參數填回
+ * 欄位是實際會造成錯誤科學結論的資料完整性風險。
+ *
+ * @param {string|null} savedAt - 存檔時間（ISO）
+ * @returns {void}
+ */
+function showRestoreNotice(savedAt) {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+
+    const existing = document.getElementById('restoreNotice');
+    if (existing) existing.remove();
+
+    const notice = document.createElement('div');
+    notice.id = 'restoreNotice';
+    notice.className = 'alert alert-info';
+    notice.setAttribute('role', 'status');
+    notice.style.cssText = 'display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1rem;';
+
+    const text = document.createElement('span');
+    text.style.flex = '1 1 20rem';
+    text.textContent = `已還原 ${formatSavedAt(savedAt)} 儲存的輸入值，請確認是否為本次樣品的參數。`;
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn btn-sm btn-secondary';
+    clearBtn.textContent = '清除已儲存的輸入';
+    clearBtn.addEventListener('click', () => {
+        safeStorage.remove(STORAGE_KEY);
+        window.location.reload();
+    });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn-sm btn-secondary';
+    closeBtn.setAttribute('aria-label', '關閉還原提示');
+    closeBtn.textContent = '關閉';
+    closeBtn.addEventListener('click', () => notice.remove());
+
+    notice.append(text, clearBtn, closeBtn);
+    main.prepend(notice);
+}
+
+/**
+ * 還原後補派 input 事件，讓衍生顯示（序列長度、建議值、RT→MW）與欄位一致。
+ *
+ * 延到目前這個 task 之後執行：initFormPersistence 是 DOMContentLoaded 的第一個
+ * 呼叫，此時其他區段的事件監聽器都還沒綁定。
+ *
+ * @param {string[]} restoredIds - 實際被還原的欄位 id
+ * @returns {void}
+ */
+function dispatchDerivedUpdates(restoredIds) {
+    const targets = PERSIST_DERIVED_IDS.filter(id => restoredIds.includes(id));
+    if (targets.length === 0) return;
+
+    setTimeout(() => {
+        withAutoSaveSuppressed(() => {
+            targets.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        });
+    }, 0);
 }
 
 function restoreFormState() {
-    let state;
-    try {
-        state = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    } catch (e) { return; }
+    const state = readFormState();
     if (!state) return;
 
-    Object.entries(state).forEach(([id, value]) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (el.type === 'checkbox') {
-            el.checked = value;
-        } else {
-            el.value = value;
-        }
+    const restoredIds = [];
+    withAutoSaveSuppressed(() => {
+        Object.entries(state.values).forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (!el || !isPersistableField(el)) return;
+            if (el.type === 'checkbox') {
+                el.checked = Boolean(value);
+            } else {
+                el.value = value;
+            }
+            restoredIds.push(id);
+        });
     });
+
+    if (restoredIds.length === 0) return;
+    showRestoreNotice(state.savedAt);
+    dispatchDerivedUpdates(restoredIds);
 }
 
 function initFormPersistence() {
     restoreFormState();
 
-    // Debounced auto-save on any input change
+    // Debounced auto-save on any input change（還原期間不計入）
     let saveTimer = null;
-    document.addEventListener('input', () => {
+    const scheduleSave = () => {
+        if (suppressAutoSave) return;
         clearTimeout(saveTimer);
         saveTimer = setTimeout(saveFormState, 500);
-    });
-    document.addEventListener('change', () => {
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(saveFormState, 500);
-    });
+    };
+    document.addEventListener('input', scheduleSave);
+    document.addEventListener('change', scheduleSave);
 }
 
 // ========================

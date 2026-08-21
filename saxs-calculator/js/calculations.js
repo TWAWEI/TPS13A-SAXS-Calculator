@@ -547,26 +547,74 @@ function calculateMassResolution(mw, peakWidth, flowRate = 0.35, poreSize = '100
 // ========================
 
 /**
+ * 注射體積的校正範圍 (μL)。
+ * 三次多項式以 3–100 μL 的實測資料擬合（Excel `UV-vis!C52` 以 100 為上限），
+ * 外插即失控：V=150 → 縮放因子 0.99、V=200 → −5.02（負峰寬 → 倒置的收集時間）。
+ * @type {number}
+ */
+const INJECTION_VOLUME_MIN_UL = 3;
+const INJECTION_VOLUME_MAX_UL = 100;
+
+/**
+ * 驗證注射體積落在多項式校正範圍內。
+ *
+ * @param {number} injectionVolume - 注射體積 (μL)
+ * @returns {number} 已驗證的注射體積
+ * @throws {Error} 非有限值或超出 3–100 μL
+ */
+function assertInjectionVolumeInRange(injectionVolume) {
+    if (!Number.isFinite(injectionVolume)) {
+        throw new Error(`注射體積必須是 ${INJECTION_VOLUME_MIN_UL}–${INJECTION_VOLUME_MAX_UL} μL 的數值`);
+    }
+    if (injectionVolume < INJECTION_VOLUME_MIN_UL || injectionVolume > INJECTION_VOLUME_MAX_UL) {
+        throw new Error(
+            `注射體積 ${injectionVolume} μL 超出校正範圍 ${INJECTION_VOLUME_MIN_UL}–${INJECTION_VOLUME_MAX_UL} μL；` +
+            '三次多項式在範圍外會外插出負的峰寬與倒置的收集時間，請改用範圍內的體積'
+        );
+    }
+    return injectionVolume;
+}
+
+/**
  * 計算峰寬縮放因子 (根據注射體積調整)
  * 公式來源: Excel 工作表1_(2) O4
- * @param {number} injectionVolume - 注射體積 (μL)
+ * @param {number} injectionVolume - 注射體積 (μL)，須在 3–100 μL 校正範圍內
  * @returns {number} 峰寬縮放因子
+ * @throws {Error} 注射體積超出校正範圍
  */
 function calculatePeakWidthScaling(injectionVolume) {
-    const v = injectionVolume;
+    const v = assertInjectionVolumeInRange(injectionVolume);
     return 1.00959 - 0.00468 * v + 0.0005034 * v * v - 0.0000031539 * v * v * v;
 }
 
 /**
  * 計算時間偏移 (峰位置偏移)
  * 公式來源: Excel 工作表1_(2) P4
- * @param {number} injectionVolume - 注射體積 (μL)
+ * @param {number} injectionVolume - 注射體積 (μL)，須在 3–100 μL 校正範圍內
  * @returns {number} 時間偏移 (min)
+ * @throws {Error} 注射體積超出校正範圍
  */
 function calculateTimeOffset(injectionVolume) {
-    const v = injectionVolume;
+    const v = assertInjectionVolumeInRange(injectionVolume);
     return 0.000146507 - 0.000266 * v + 0.00007393 * v * v - 0.0000005204 * v * v * v;
 }
+
+/**
+ * Flow rate table 第 5 列（M23，transition to fast flow）的流速。
+ * 來源：使用者實際照抄的 Excel 'HPLC flow down data'!C14 = (C13 + C15)/2，
+ * 即目標流速與初始流速的平均（工作表1_(2)!N23 的 0.2 只用於內部體積估算）。
+ */
+function transitionFlowRate(initialFlowRate, targetFlowRate) {
+    return (targetFlowRate + initialFlowRate) / 2;
+}
+
+/**
+ * 系統死體積（μL）與收集安全區間（min）。
+ * 來源：Excel `Fraction_collector_high_c`（偵測器到收集器之間的管路體積）。
+ * @type {number}
+ */
+const DEAD_VOLUME_UL = 1050;
+const SAFE_ZONE_MIN = 2.8;
 
 /**
  * 計算 HPLC-SAXS 完整設定
@@ -587,6 +635,21 @@ function calculateHPLCSAXSSettings(params) {
         targetFlowRate,  // Q1, O11 = 0.35
         initialFlowRate  // B6 = 0.35
     } = params;
+
+    // === 輸入驗證（超出校正範圍或非數值會產生負峰寬／倒置時間）===
+    if (!Number.isFinite(peakCenter) || peakCenter < 0) {
+        throw new Error('Peak center 必須是 ≥ 0 的數值 (min)');
+    }
+    if (!Number.isFinite(peakFWHM) || peakFWHM <= 0) {
+        throw new Error('Peak width (FWHM) 必須是大於 0 的數值 (min)');
+    }
+    if (!Number.isFinite(targetFlowRate) || targetFlowRate <= 0) {
+        throw new Error('Target flow rate 必須是大於 0 的數值 (mL/min)');
+    }
+    if (!Number.isFinite(initialFlowRate) || initialFlowRate <= 0) {
+        throw new Error('Initial flow rate 必須是大於 0 的數值 (mL/min)');
+    }
+    assertInjectionVolumeInRange(injectionVolume);
 
     // === 工作表1_(2) 計算 ===
 
@@ -614,8 +677,10 @@ function calculateHPLCSAXSSettings(params) {
     // M9: Total slowing time = M8-M7
     const M9 = M8 - M7;
 
-    // O12: Flow rate ratio = N19/O11 = targetFlowRate/targetFlowRate = 1
-    const O12 = 1;
+    // O12: Flow rate ratio = N19/O11 = initialFlowRate / targetFlowRate
+    // 減速後樣品通過偵測器的時間會被拉長，比例即為兩個流速之比。
+    // initial = target（預設 0.35/0.35）時 O12 = 1，與 Excel 範例一致。
+    const O12 = initialFlowRate / targetFlowRate;
 
     // Q20: T-pre-slowdown time offset = 0.1
     const Q20 = 0.1;
@@ -644,57 +709,44 @@ function calculateHPLCSAXSSettings(params) {
     // M24 = M23+0.5
     const M24 = M23 + 0.5;
 
-    // === Flow Rate Table ===
+    // === Flow Rate Table（Excel 工作表1_(2) M19:N24）===
+    // 語意是 LC 時間表（各時間點 + 線性內插）：
+    //   M19 起始流速 → M20 仍是起始流速（此時才開始減速）
+    //   M21–M22 維持目標（慢速）流速，X 光收資料
+    //   M23 = (target + initial)/2，來源 'HPLC flow down data'!C14 = (C13 + C15)/2
+    //   M24 回到起始流速
+    // 舊版把 M20/M23/M24 都填成 targetFlowRate，initial ≠ target 時（slow-down
+    // SEC-SAXS 的典型情境）會輸出錯誤的方法表。
     const flowRateTable = [
         { time: parseFloat(M19.toFixed(2)), flowRate: initialFlowRate, note: '' },
-        { time: parseFloat(M20.toFixed(2)), flowRate: targetFlowRate, note: '' },
+        { time: parseFloat(M20.toFixed(2)), flowRate: initialFlowRate, note: '' },
         { time: parseFloat(M21.toFixed(2)), flowRate: targetFlowRate, note: 'X-RAY IMAGE' },
         { time: parseFloat(M22.toFixed(2)), flowRate: targetFlowRate, note: 'X-RAY IMAGE' },
-        { time: parseFloat(M23.toFixed(2)), flowRate: targetFlowRate, note: '' },
-        { time: parseFloat(M24.toFixed(2)), flowRate: targetFlowRate, note: '' }
+        { time: parseFloat(M23.toFixed(2)), flowRate: transitionFlowRate(initialFlowRate, targetFlowRate), note: '' },
+        { time: parseFloat(M24.toFixed(2)), flowRate: initialFlowRate, note: '' }
     ];
 
-    // === Fraction Collector (來自 HPLC flow down data B21, B22, B24) ===
-    // B21 = Fraction_collector_high_c!A24 = M7 (Peak Start Time)
-    const fractionStartTime = M7;
-
-    // B22 = Fraction_collector_high_c!A27
-    // 根據 Excel 公式分析:
-    // A24 = B10-C22, A27 = B12+C22
-    // 其中 C22 是收集時間偏移量
-    // 從 Excel 實際數據: B21=10.28, B22=19.72
-    // 差值 = 9.44 = (M22 - M21) + extra time
-    // 
-    // 更準確的計算:
-    // M22 - M21 ≈ 3.84 min (X-ray collection duration)
-    // Extra time = 收集完成後繼續收集的時間 ≈ 5.6 min
-    // 這來自 flow rate table 延伸和 dead volume 計算
-    //
-    // 簡化公式: Stop Time = M22 + (M23-M22) + additional_collection_time
-    // 或: Stop Time = Start Time + (X-ray duration) * expansion_factor
-    //
-    // 根據 Excel pattern: (B22 - B21) / (M22 - M21) ≈ 2.46
-    // 這個比例來自 slow-down flow 使得樣品收集時間拉長
-    //
-    // 最準確: 使用 M22 + 收集延長時間
-    // 延長時間 = (M22-M21) * (regular_flow / slow_flow - 1) + buffer
-    // 但 slow_flow = targetFlowRate (一直是慢速)
-    // 
-    // 從 Excel 反推: StopTime = M7 + (M22 - M21) + 5.6
-    // 其中 5.6 ≈ (M22-M21) * 1.46 (延長因子)
-    //
-    // 實際公式使用: StopTime = M7 + (M22-M21) * 2.5
-    // 驗證: 10.28 + 3.84 * 2.45 = 10.28 + 9.41 = 19.69 ✓
+    // === Fraction Collector (Excel `Fraction_collector_high_c`) ===
+    // 舊版用「×2.45 反推」硬湊 Excel 範例的 19.72，換了流速就完全失準。
+    // 實際物理量：
+    //   起始 = X 光開始時間 + 死體積走完所需時間 − 安全區間
+    //   結束 = 起始 + 安全區間 + X 光收集時間 + 安全區間
+    // 死體積 1050 μL 與安全區間 2.8 min 為 Excel 表上的常數。
+    // 注意：本式對應 Excel Fraction_collector_high_c 的第一分支，適用於
+    // (M22 − M21) × flow × 1000 ≥ 1050 μL；更慢的流速 Excel 會分段續算。
     const xrayDuration = M22 - M21;
-    const fractionStopTime = fractionStartTime + xrayDuration * 2.45;
+    const deadVolumeTime = DEAD_VOLUME_UL / (targetFlowRate * 1000);   // min
+    const fractionStartTime = M21 + deadVolumeTime - SAFE_ZONE_MIN;
+    const fractionStopTime = fractionStartTime + SAFE_ZONE_MIN + xrayDuration + SAFE_ZONE_MIN;
 
     // B24 = 1.2/B6 (time per fraction)
     const timePerFraction = 1.2 / initialFlowRate;
 
+    // 保留 2 位小數：Excel 的 fraction collector 時間就是以 0.01 min 設定的
     const fractionCollector = {
-        startTime: parseFloat(fractionStartTime.toFixed(1)),
-        stopTime: parseFloat(fractionStopTime.toFixed(1)),
-        timePerFraction: parseFloat(timePerFraction.toFixed(1))
+        startTime: parseFloat(fractionStartTime.toFixed(2)),
+        stopTime: parseFloat(fractionStopTime.toFixed(2)),
+        timePerFraction: parseFloat(timePerFraction.toFixed(2))
     };
 
     // === Report Stoptime (來自 HPLC flow down data A15) ===
@@ -943,6 +995,11 @@ window.SAXSCalculations = {
     calculateMassResolution,
 
     // HPLC-SAXS Step Settings
+    INJECTION_VOLUME_MIN_UL,
+    INJECTION_VOLUME_MAX_UL,
+    transitionFlowRate,
+    DEAD_VOLUME_UL,
+    SAFE_ZONE_MIN,
     calculatePeakWidthScaling,
     calculateTimeOffset,
     calculateHPLCSAXSSettings,

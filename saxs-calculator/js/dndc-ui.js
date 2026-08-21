@@ -5,12 +5,19 @@
 
 // 全域狀態：儲存已載入的色譜數據供多個頁面共用
 const DndcState = {
-    loadedData: null,   // { time, uv, ri, headers }
+    loadedData: null,   // { parsed, headers, time, uv, ri, columns }
     charts: {},
     lastHplcResult: null,
     lastHplcParams: null,
-    lastSliceResult: null
+    lastSliceResult: null,
+    // { result, xData, yData, source: 'manual' | 'astra' } — 供 CSV 匯出使用，
+    // 不再從 DOM 表格刮資料
+    lastMultiResult: null
 };
+
+// 欄位下拉的「未選擇」哨兵值。沒有這個選項時瀏覽器會自動選中第一個 option
+// （通常是 Time 欄），偵測失敗就會拿時間當 RI 訊號算出看似合理的 dn/dc。
+const NO_COLUMN = '-1';
 
 // ========================
 // 初始化
@@ -137,6 +144,244 @@ function parseManualConcentration(rawValue) {
     return Number.isNaN(parsed) ? null : parsed;
 }
 
+/**
+ * 重建欄位下拉，第一個永遠是「-- 無 --」哨兵。
+ *
+ * 沒有哨兵時，自動偵測失敗（-1）會讓瀏覽器預設選中第一個 option（Time 欄），
+ * 於是程式把時間值當成 RI／UV 訊號算出一個外觀正常但科學上錯誤的 dn/dc。
+ *
+ * @param {string} selectId - select 元素 id
+ * @param {string[]} headers - 欄位標頭
+ * @param {number} detectedIndex - 自動偵測到的索引（失敗為 -1）
+ * @returns {void}
+ */
+function populateColumnSelect(selectId, headers, detectedIndex) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+
+    sel.innerHTML = `<option value="${NO_COLUMN}">-- 無 --</option>`;
+    headers.forEach((h, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = h;
+        sel.appendChild(opt);
+    });
+    sel.value = Number.isInteger(detectedIndex) && detectedIndex >= 0
+        ? String(detectedIndex) : NO_COLUMN;
+}
+
+/**
+ * 載入完成後回報欄位偵測與資料品質問題。
+ *
+ * @param {{ok: boolean, message: string}} sync - syncSelectedColumns 的結果
+ * @param {{headers: string[], stats: object}} parsed - parseCSV 的結果
+ * @returns {void}
+ */
+function reportLoadIssues(sync, parsed) {
+    const messages = [];
+    if (!sync.ok) {
+        messages.push(sync.message);
+    }
+
+    const stats = parsed && parsed.stats;
+    if (stats && Array.isArray(stats.nonNumeric)) {
+        stats.nonNumeric.forEach((count, idx) => {
+            if (!count) return;
+            const name = (parsed.headers && parsed.headers[idx]) || `第 ${idx + 1} 欄`;
+            messages.push(`欄位「${name}」有 ${count} 個非數值／空白格（共 ${stats.rowCount} 列）`);
+        });
+    }
+
+    if (messages.length === 0) return;
+    showDndcAlerts('hplcDndcResults', sync.ok ? 'warning' : 'error', messages);
+}
+
+/**
+ * 讀取欄位下拉的索引。未選擇（哨兵 -1）、空選單或無法解析都回 -1。
+ *
+ * @param {string} selectId - select 元素 id
+ * @returns {number} 欄位索引，未選擇時為 -1
+ */
+function readColumnIndex(selectId) {
+    const el = document.getElementById(selectId);
+    if (!el) return -1;
+    const idx = parseInt(el.value, 10);
+    return Number.isInteger(idx) && idx >= 0 ? idx : -1;
+}
+
+/**
+ * 依三個欄位下拉的目前選擇，把 time / uv / ri 陣列寫回 DndcState.loadedData。
+ *
+ * 載入完成時、下拉變更時、以及每個計算入口都會呼叫，讓「自動偵測峰值」與
+ * 「Slice 分析」不再因為欄位還沒同步而誤報「請先載入數據檔案」。
+ *
+ * @returns {{ok: boolean, message: string, timeIdx: number, uvIdx: number, riIdx: number}}
+ */
+function syncSelectedColumns() {
+    const data = DndcState.loadedData;
+    const timeIdx = readColumnIndex('dndcTimeCol');
+    const uvIdx = readColumnIndex('dndcUvCol');
+    const riIdx = readColumnIndex('dndcRiCol');
+    const fail = (message) => ({ ok: false, message, timeIdx, uvIdx, riIdx });
+
+    if (!data || !data.parsed || !Array.isArray(data.parsed.data) || data.parsed.data.length === 0) {
+        return fail('請先載入數據檔案（CSV/TSV 或 ASTRA .afe7）');
+    }
+    if (timeIdx < 0 || riIdx < 0) {
+        return fail('尚未選擇 Time / RI 欄位——自動偵測失敗時請在「欄位對應」手動指定');
+    }
+    if (timeIdx === riIdx) {
+        return fail('同一欄被同時選為「時間軸」與「RI」，請重新指定欄位');
+    }
+    if (uvIdx >= 0 && uvIdx === riIdx) {
+        return fail('同一欄被同時選為「UV」與「RI」，請重新指定欄位');
+    }
+
+    const rows = data.parsed.data;
+    DndcState.loadedData = {
+        ...data,
+        time: rows.map(r => r[timeIdx]),
+        uv: uvIdx >= 0 ? rows.map(r => r[uvIdx]) : new Array(rows.length).fill(0),
+        ri: rows.map(r => r[riIdx]),
+        columns: { timeIdx, uvIdx, riIdx }
+    };
+
+    return { ok: true, message: '', timeIdx, uvIdx, riIdx };
+}
+
+/**
+ * 檢查目前選定欄位是否含非數值／空白格，回傳可顯示的警告字串。
+ *
+ * @returns {string[]} 警告訊息（沒有問題時為空陣列）
+ */
+function selectedColumnWarnings() {
+    const data = DndcState.loadedData;
+    if (!data || !data.columns) return [];
+
+    const headers = (data.parsed && data.parsed.headers) || [];
+    const time = Array.isArray(data.time) ? data.time : [];
+    const channels = [
+        { role: 'Time', idx: data.columns.timeIdx, values: data.time },
+        { role: 'UV', idx: data.columns.uvIdx, values: data.uv },
+        { role: 'RI', idx: data.columns.riIdx, values: data.ri }
+    ];
+
+    const warnings = [];
+    for (const ch of channels) {
+        if (ch.idx < 0 || !Array.isArray(ch.values)) continue;
+
+        let count = 0;
+        let tMin = Infinity;
+        let tMax = -Infinity;
+        for (let i = 0; i < ch.values.length; i++) {
+            if (Number.isFinite(ch.values[i])) continue;
+            count++;
+            const t = time[i];
+            if (Number.isFinite(t)) {
+                if (t < tMin) tMin = t;
+                if (t > tMax) tMax = t;
+            }
+        }
+        if (count === 0) continue;
+
+        const name = headers[ch.idx] || `第 ${ch.idx + 1} 欄`;
+        const range = Number.isFinite(tMin) && Number.isFinite(tMax)
+            ? `（t = ${tMin.toFixed(2)}–${tMax.toFixed(2)} min）` : '';
+        warnings.push(
+            `${ch.role} 欄「${name}」有 ${count} 個非數值／空白格${range}；` +
+            '若落在基線或峰範圍內，計算會直接中止'
+        );
+    }
+    return warnings;
+}
+
+/**
+ * 讀取並驗證 HPLC / Slice 共用的計算參數。
+ *
+ * 空欄位在 type=number 會讀成 ''，parseFloat 得到 NaN，而 NaN <= 0 與
+ * NaN >= NaN 都是 false——舊的檢查因此全部穿過，最後顯示 "NaN" 或靜默的 0。
+ * 這裡改用 FormUtils 的守門函式，一律 throw 帶欄位名稱的錯誤。
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.withManualC=true] - 是否讀取「手動濃度」欄位
+ * @returns {object} 凍結的參數物件（傳給 DndcCalculations）
+ * @throws {Error} 任一欄位無效時
+ */
+function readHplcParams({ withManualC = true } = {}) {
+    const manualC = withManualC
+        ? parseManualConcentration(document.getElementById('dndcManualC').value)
+        : null;
+
+    const params = Object.freeze({
+        peakStart: FormUtils.readFiniteField('dndcPeakStart', 'Peak start'),
+        peakEnd: FormUtils.readFiniteField('dndcPeakEnd', 'Peak end'),
+        bl1Start: FormUtils.readFiniteField('dndcBl1Start', 'Baseline 1 start'),
+        bl1End: FormUtils.readFiniteField('dndcBl1End', 'Baseline 1 end'),
+        bl2Start: FormUtils.readFiniteField('dndcBl2Start', 'Baseline 2 start'),
+        bl2End: FormUtils.readFiniteField('dndcBl2End', 'Baseline 2 end'),
+        epsilon: FormUtils.readPositiveField('dndcEpsilon', '消光係數 ε'),
+        pathLen: FormUtils.readPositiveField('dndcPathLen', '光徑長度'),
+        riFactor: FormUtils.readPositiveField('dndcRiFactor', 'RI 校正因子 (K_RI)'),
+        riDelay: FormUtils.readFiniteField('dndcRiDelay', 'RI 延遲時間（無延遲請填 0）'),
+        baselineMode: document.getElementById('dndcBaselineMode').value,
+        peakMode: document.getElementById('dndcPeakMode').value || 'area',
+        // 空白 → null（自動從 UV 計算）；有填就照實傳，讓 <= 0 的值能被驗證接到
+        manualC,
+        autoAlign: document.getElementById('dndcAutoAlign').checked,
+        decimalPlaces: 4
+    });
+
+    if (params.peakStart >= params.peakEnd) {
+        throw new Error('Peak start 必須小於 Peak end');
+    }
+    if (params.bl1Start >= params.bl1End) {
+        throw new Error('Baseline 1 start 必須小於 Baseline 1 end');
+    }
+    if (params.bl2Start >= params.bl2End) {
+        throw new Error('Baseline 2 start 必須小於 Baseline 2 end');
+    }
+    if (params.manualC !== null && !(params.manualC > 0)) {
+        throw new Error('手動濃度必須大於 0 mg/mL（留空則自動從 UV 計算）');
+    }
+    return params;
+}
+
+/**
+ * 統一的錯誤顯示：領域錯誤直接顯示訊息，非預期錯誤（TypeError 等）不把
+ * 實作細節丟給使用者，改記進 console。
+ *
+ * @param {string} containerId - 顯示容器 id
+ * @param {Error} err - 捕捉到的錯誤
+ * @param {string} prefix - 顯示前綴，例如「計算錯誤」
+ */
+function reportDndcError(containerId, err, prefix) {
+    const isDomainError = err instanceof Error && !(err instanceof TypeError) &&
+        !(err instanceof RangeError) && !(err instanceof ReferenceError);
+    if (isDomainError) {
+        showDndcAlert(containerId, 'error', `${prefix}: ${err.message}`);
+        return;
+    }
+    console.error(`[dn/dc] ${prefix}`, err);
+    showDndcAlert(containerId, 'error',
+        `${prefix}: 發生非預期的內部錯誤，請檢查輸入資料，並在瀏覽器主控台查看詳細訊息`);
+}
+
+/**
+ * 載入新檔案時清掉上一個檔案的計算結果與匯出入口。
+ *
+ * 否則使用者換檔後直接按「📥 CSV」會匯出上一個檔案的 dn/dc，
+ * 檔名與內容都看不出來源已經不同。
+ *
+ * @returns {void}
+ */
+function resetLoadedResults() {
+    DndcState.lastHplcResult = null;
+    DndcState.lastHplcParams = null;
+    DndcState.lastSliceResult = null;
+    DndcState.lastMultiResult = null;
+    ['hplcExportBtns', 'sliceExportBtns', 'multiExportBtns'].forEach(id => hideElement(id));
+}
+
 // ========================
 // HPLC dn/dc 頁面
 // ========================
@@ -148,6 +393,9 @@ function initDndcHplcSection() {
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+
+            // CSV 與 .afe7 兩條分支共用：先把上一個檔案的結果與匯出鈕收乾淨
+            resetLoadedResults();
 
             const isAfe7 = file.name.toLowerCase().endsWith('.afe7');
 
@@ -210,22 +458,20 @@ function initDndcHplcSection() {
                     const detectedIndices = [0, uvIdx, riIdx];
 
                     selects.forEach((selId, i) => {
-                        const sel = document.getElementById(selId);
-                        sel.innerHTML = '<option value="-1">-- 無 --</option>';
-                        headers.forEach((h, idx) => {
-                            const opt = document.createElement('option');
-                            opt.value = idx;
-                            opt.textContent = h;
-                            if (idx === detectedIndices[i]) opt.selected = true;
-                            sel.appendChild(opt);
-                        });
+                        populateColumnSelect(selId, headers, detectedIndices[i]);
                     });
 
-                    DndcState.loadedData = { parsed, headers };
-                    // 預設用偵測到的欄位
-                    DndcState.loadedData.time = time;
-                    DndcState.loadedData.ri = riIdx >= 0 ? data.map(r => r[riIdx]) : riCh.values;
-                    DndcState.loadedData.uv = uvIdx >= 0 ? data.map(r => r[uvIdx]) : new Array(time.length).fill(0);
+                    // 預設用偵測到的欄位（RI 欄偵測失敗時退回 RI 通道原始值）
+                    DndcState.loadedData = {
+                        parsed,
+                        headers,
+                        time,
+                        ri: riIdx >= 0 ? data.map(r => r[riIdx]) : riCh.values,
+                        uv: uvIdx >= 0 ? data.map(r => r[uvIdx]) : new Array(time.length).fill(0),
+                        columns: { timeIdx: 0, uvIdx, riIdx }
+                    };
+                    // 下拉若已選到有效欄位就以下拉為準（與 CSV 分支同一條路徑）
+                    syncSelectedColumns();
 
                     const sampleName = astraResult.sample ? astraResult.sample.name : '';
 
@@ -258,21 +504,18 @@ function initDndcHplcSection() {
                     const detectedIndices = [detected.timeCol, detected.uvCol, detected.riCol];
 
                     selects.forEach((selId, i) => {
-                        const sel = document.getElementById(selId);
-                        sel.innerHTML = '';
-                        parsed.headers.forEach((h, idx) => {
-                            const opt = document.createElement('option');
-                            opt.value = idx;
-                            opt.textContent = h;
-                            if (idx === detectedIndices[i]) opt.selected = true;
-                            sel.appendChild(opt);
-                        });
+                        populateColumnSelect(selId, parsed.headers, detectedIndices[i]);
                     });
 
                     DndcState.loadedData = { parsed, headers: parsed.headers };
+                    // 與 .afe7 分支一致：載入當下就把 time/uv/ri 準備好，
+                    // 「自動偵測峰值」與 Slice 分析不必先算過一次才能用
+                    const sync = syncSelectedColumns();
 
                     document.getElementById('dndcFileStatus').textContent =
                         `已載入: ${file.name} (${parsed.data.length} 列, ${parsed.headers.length} 欄)`;
+
+                    reportLoadIssues(sync, parsed);
 
                     // 自動繪製所有通道
                     displayAllChannelsChart(parsed);
@@ -284,17 +527,29 @@ function initDndcHplcSection() {
         });
     }
 
+    // 欄位下拉變更時同步 time/uv/ri，讓其他頁面立即拿到正確的欄位
+    ['dndcTimeCol', 'dndcUvCol', 'dndcRiCol'].forEach(selId => {
+        const sel = document.getElementById(selId);
+        if (sel) sel.addEventListener('change', () => { syncSelectedColumns(); });
+    });
+
     // Auto-detect peak button
     const autoDetectBtn = document.getElementById('autoDetectPeak');
     if (autoDetectBtn) {
         autoDetectBtn.addEventListener('click', () => {
-            if (!DndcState.loadedData || !DndcState.loadedData.ri) {
-                showDndcAlert('hplcDndcResults', 'error', '請先載入數據檔案');
+            const sync = syncSelectedColumns();
+            if (!sync.ok) {
+                showDndcAlert('hplcDndcResults', 'error', sync.message);
                 return;
             }
 
             const time = DndcState.loadedData.time;
             const ri = DndcState.loadedData.ri;
+            if (!ri.some(Number.isFinite)) {
+                showDndcAlert('hplcDndcResults', 'error',
+                    '選定的 RI 欄沒有任何數值，請改選其他欄位或檢查檔案格式');
+                return;
+            }
 
             // Find peak: locate max RI signal
             let maxVal = -Infinity;
@@ -335,69 +590,33 @@ function initDndcHplcSection() {
 
     if (calcBtn) {
         calcBtn.addEventListener('click', () => {
-            if (!DndcState.loadedData) {
-                showDndcAlert('hplcDndcResults', 'error', '請先載入數據檔案');
+            const sync = syncSelectedColumns();
+            if (!sync.ok) {
+                showDndcAlert('hplcDndcResults', 'error', sync.message);
                 return;
             }
 
-            const parsed = DndcState.loadedData.parsed;
-            const timeIdx = parseInt(document.getElementById('dndcTimeCol').value);
-            const uvIdx = parseInt(document.getElementById('dndcUvCol').value);
-            const riIdx = parseInt(document.getElementById('dndcRiCol').value);
+            const { time, uv, ri } = DndcState.loadedData;
 
-            if (timeIdx < 0 || riIdx < 0) {
-                showDndcAlert('hplcDndcResults', 'error', '請選擇 Time 和 RI 欄位');
+            let params;
+            try {
+                params = readHplcParams();
+            } catch (err) {
+                reportDndcError('hplcDndcResults', err, '輸入錯誤');
                 return;
             }
 
-            const time = parsed.data.map(r => r[timeIdx]);
-            const uv = uvIdx >= 0 ? parsed.data.map(r => r[uvIdx]) : new Array(parsed.data.length).fill(0);
-            const ri = parsed.data.map(r => r[riIdx]);
-
-            // 儲存供 slice 頁面使用
-            DndcState.loadedData.time = time;
-            DndcState.loadedData.uv = uv;
-            DndcState.loadedData.ri = ri;
-
-            const params = {
-                peakStart: parseFloat(document.getElementById('dndcPeakStart').value),
-                peakEnd: parseFloat(document.getElementById('dndcPeakEnd').value),
-                bl1Start: parseFloat(document.getElementById('dndcBl1Start').value),
-                bl1End: parseFloat(document.getElementById('dndcBl1End').value),
-                bl2Start: parseFloat(document.getElementById('dndcBl2Start').value),
-                bl2End: parseFloat(document.getElementById('dndcBl2End').value),
-                epsilon: parseFloat(document.getElementById('dndcEpsilon').value),
-                pathLen: parseFloat(document.getElementById('dndcPathLen').value),
-                riFactor: parseFloat(document.getElementById('dndcRiFactor').value),
-                riDelay: parseFloat(document.getElementById('dndcRiDelay').value) || 0,
-                baselineMode: document.getElementById('dndcBaselineMode').value,
-                peakMode: document.getElementById('dndcPeakMode').value || 'area',
-                // 空白 → null（自動從 UV 計算）；有填就照實傳，讓 <= 0 的值能被驗證接到
-                manualC: parseManualConcentration(document.getElementById('dndcManualC').value),
-                autoAlign: document.getElementById('dndcAutoAlign').checked,
-                decimalPlaces: 4
-            };
-
-            // 輸入驗證
-            if (params.manualC !== null && params.manualC <= 0) {
-                showDndcAlert('hplcDndcResults', 'error', '手動濃度必須大於 0');
-                return;
-            }
-            if (params.epsilon <= 0 || params.pathLen <= 0) {
-                showDndcAlert('hplcDndcResults', 'error', '消光係數和光徑長度必須大於 0');
-                return;
-            }
-            if (params.peakStart >= params.peakEnd) {
-                showDndcAlert('hplcDndcResults', 'error', 'Peak start 必須小於 Peak end');
-                return;
-            }
+            // 資料品質警告：與結果一起顯示，不再被 innerHTML 覆蓋
+            const warnings = selectedColumnWarnings();
             if (params.bl1End > params.peakStart || params.bl2Start < params.peakEnd) {
-                showDndcAlert('hplcDndcResults', 'warning', '注意: Baseline window 與 peak 區域重疊，可能影響結果準確性');
+                warnings.push('Baseline window 與 peak 區域重疊，基線可能被峰訊號拉高，結果準確性存疑');
             }
+
             // 檢查：無 UV 數據時必須有手動濃度
             const uvAllZero = uv.every(v => v === 0);
-            if (uvAllZero && !params.manualC) {
-                showDndcAlert('hplcDndcResults', 'error', '此檔案無 UV 通道，請在「手動濃度」欄位輸入樣品濃度 (mg/mL)');
+            if (uvAllZero && params.manualC === null) {
+                showDndcAlert('hplcDndcResults', 'error',
+                    '選定的 UV 欄全為 0（此檔案可能沒有 UV 通道），請在「手動濃度」欄位輸入樣品濃度 (mg/mL)，或改選正確的 UV 欄');
                 return;
             }
 
@@ -405,12 +624,12 @@ function initDndcHplcSection() {
                 const result = DndcCalculations.computeHplcDndc(time, uv, ri, params);
                 DndcState.lastHplcResult = result;
                 DndcState.lastHplcParams = params;
-                displayHplcDndcResults(result, params);
+                displayHplcDndcResults(result, params, warnings);
                 displayChromatogram(time, uv, ri, params);
                 const hplcExport = document.getElementById('hplcExportBtns');
                 if (hplcExport) hplcExport.classList.remove('hidden');
             } catch (err) {
-                showDndcAlert('hplcDndcResults', 'error', `計算錯誤: ${err.message}`);
+                reportDndcError('hplcDndcResults', err, '計算錯誤');
             }
         });
     }
@@ -479,7 +698,19 @@ function renderAlignmentInfo(ai) {
     return { items, alert };
 }
 
-function displayHplcDndcResults(result, params) {
+/**
+ * 把警告陣列渲染成結果區最上方的警告條。
+ *
+ * @param {string[]} warnings - 警告訊息
+ * @returns {string} HTML 片段（沒有警告時為空字串）
+ */
+function renderWarningsHtml(warnings) {
+    if (!Array.isArray(warnings) || warnings.length === 0) return '';
+    const items = warnings.map(w => `<div>⚠️ ${escapeHtmlDndc(w)}</div>`).join('');
+    return `<div class="alert alert-warning" role="status" style="margin-bottom: 1rem;">${items}</div>`;
+}
+
+function displayHplcDndcResults(result, params, warnings = []) {
     const resultsDiv = document.getElementById('hplcDndcResults');
     const alignment = renderAlignmentInfo(result.alignmentInfo);
     const alignInfo = alignment.items;
@@ -491,6 +722,7 @@ function displayHplcDndcResults(result, params) {
     const concUnit = isArea ? 'mg·min/mL' : 'mg/mL';
 
     resultsDiv.innerHTML = `
+        ${renderWarningsHtml(warnings)}
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i></div>
@@ -732,18 +964,59 @@ function initDndcMultiSection() {
 
             try {
                 const result = DndcCalculations.linearFit(concentrations, riValues);
-                displayMultiFitResults(result, concentrations, riValues);
+                displayMultiFitResults(result, concentrations, riValues, 'manual');
                 const multiExport = document.getElementById('multiExportBtns');
                 if (multiExport) multiExport.classList.remove('hidden');
             } catch (err) {
-                showDndcAlert('multiDndcResults', 'error', `擬合錯誤: ${err.message}`);
+                hideElement('multiDndcChartContainer');
+                hideElement('multiExportBtns');
+                reportDndcError('multiDndcResults', err, '擬合錯誤');
             }
         });
     }
 }
 
-function displayMultiFitResults(result, xData, yData) {
+/**
+ * 兩條擬合路徑的座標軸與單位定義。
+ * manual: 手動輸入濃度 (g/mL) vs ΔRI (RIU)
+ * astra:  注入質量 (g) vs RI 面積×流速 (RIU·mL)
+ */
+const MULTI_FIT_SOURCES = Object.freeze({
+    manual: Object.freeze({
+        methodName: '手動輸入濃度',
+        xLabel: 'Concentration (g/mL)',
+        yLabel: 'ΔRI (RIU)',
+        csvHeader: 'Concentration (g/mL),dRI (RIU)'
+    }),
+    astra: Object.freeze({
+        methodName: '質量法（ASTRA 檔案）',
+        xLabel: 'Injected mass (g)',
+        yLabel: '∫ΔRI dV (RIU·mL)',
+        csvHeader: 'Mass (g),RI area x volume (RIU*mL)'
+    })
+});
+
+/**
+ * 取得擬合來源的標籤定義。
+ *
+ * @param {string} source - 'manual' 或 'astra'
+ * @returns {object} 標籤定義（未知來源退回 manual）
+ */
+function multiFitSource(source) {
+    return MULTI_FIT_SOURCES[source] || MULTI_FIT_SOURCES.manual;
+}
+
+function displayMultiFitResults(result, xData, yData, source = 'manual') {
     const resultsDiv = document.getElementById('multiDndcResults');
+    const meta = multiFitSource(source);
+
+    // 匯出改從狀態輸出，不再從 DOM 表格刮資料（表格 id 兩條路徑不同）
+    DndcState.lastMultiResult = {
+        result,
+        xData: xData.slice(),
+        yData: yData.slice(),
+        source: MULTI_FIT_SOURCES[source] ? source : 'manual'
+    };
 
     const r2Quality = result.rSquared >= 0.999 ? '優良' :
         result.rSquared >= 0.99 ? '良好' :
@@ -775,6 +1048,10 @@ function displayMultiFitResults(result, xData, yData) {
                 <div class="result-label">資料點數</div>
                 <div class="result-value">${xData.length}</div>
             </div>
+            <div class="result-item">
+                <div class="result-label">方法</div>
+                <div class="result-value" style="font-size: 0.875rem;">${escapeHtmlDndc(meta.methodName)}</div>
+            </div>
         </div>
         <div class="alert ${r2Class} mt-md">
             擬合品質：${r2Quality} (<i>R</i>² ${result.rSquared >= 0.999 ? '≥' : result.rSquared >= 0.99 ? '≥' : '<'} ${result.rSquared >= 0.999 ? '0.999' : result.rSquared >= 0.99 ? '0.99' : '0.95'})
@@ -791,7 +1068,7 @@ function displayMultiFitResults(result, xData, yData) {
 
     DndcState.charts.multiFit = DndcCharts.createLinearFitChart(
         'multiDndcChart', xData, yData, result,
-        { xLabel: 'Concentration (g/mL)', yLabel: 'ΔRI (RIU)' }
+        { xLabel: meta.xLabel, yLabel: meta.yLabel }
     );
 }
 
@@ -803,49 +1080,60 @@ function initDndcSliceSection() {
 
     if (calcBtn) {
         calcBtn.addEventListener('click', () => {
-            if (!DndcState.loadedData || !DndcState.loadedData.time) {
-                showDndcAlert('sliceDndcResults', 'error', '請先在「HPLC dn/dc」頁面載入數據檔案');
+            const sync = syncSelectedColumns();
+            if (!sync.ok) {
+                showDndcAlert('sliceDndcResults', 'error',
+                    `${sync.message}（請先到「HPLC dn/dc」頁面載入檔案並確認欄位對應）`);
                 return;
             }
 
             const { time, uv, ri } = DndcState.loadedData;
-            const minUvFraction = parseFloat(document.getElementById('sliceMinUvFraction').value) || 0.05;
 
-            const params = {
-                peakStart: parseFloat(document.getElementById('dndcPeakStart').value),
-                peakEnd: parseFloat(document.getElementById('dndcPeakEnd').value),
-                bl1Start: parseFloat(document.getElementById('dndcBl1Start').value),
-                bl1End: parseFloat(document.getElementById('dndcBl1End').value),
-                bl2Start: parseFloat(document.getElementById('dndcBl2Start').value),
-                bl2End: parseFloat(document.getElementById('dndcBl2End').value),
-                epsilon: parseFloat(document.getElementById('dndcEpsilon').value),
-                pathLen: parseFloat(document.getElementById('dndcPathLen').value),
-                riFactor: parseFloat(document.getElementById('dndcRiFactor').value),
-                riDelay: parseFloat(document.getElementById('dndcRiDelay').value) || 0,
-                baselineMode: document.getElementById('dndcBaselineMode').value,
-                peakMode: document.getElementById('dndcPeakMode').value || 'area',
-                manualC: null,
-                autoAlign: document.getElementById('dndcAutoAlign').checked,
-                decimalPlaces: 4
-            };
+            let params;
+            let minUvFraction;
+            try {
+                // Slice 模式一律從 UV 逐點換算濃度，不吃手動濃度
+                params = readHplcParams({ withManualC: false });
+                minUvFraction = FormUtils.readFiniteField('sliceMinUvFraction', '最小 UV 閾值');
+                if (!(minUvFraction >= 0) || minUvFraction >= 1) {
+                    throw new Error('最小 UV 閾值必須介於 0 與 1 之間（例如 0.05 表示峰值的 5%）');
+                }
+            } catch (err) {
+                reportDndcError('sliceDndcResults', err, '輸入錯誤');
+                return;
+            }
 
             try {
                 const result = DndcCalculations.computeSliceDndc(time, uv, ri, params, minUvFraction);
                 DndcState.lastSliceResult = result;
-                displaySliceResults(result);
+                displaySliceResults(result, selectedColumnWarnings());
                 const sliceExport = document.getElementById('sliceExportBtns');
                 if (sliceExport) sliceExport.classList.remove('hidden');
             } catch (err) {
-                showDndcAlert('sliceDndcResults', 'error', `分析錯誤: ${err.message}`);
+                // 失敗時不要留下上一輪的擬合圖與匯出按鈕（會被誤讀成本次結果）
+                hideElement('sliceDndcChartContainer');
+                hideElement('sliceExportBtns');
+                reportDndcError('sliceDndcResults', err, '分析錯誤');
             }
         });
     }
 }
 
-function displaySliceResults(result) {
+function displaySliceResults(result, warnings = []) {
     const resultsDiv = document.getElementById('sliceDndcResults');
     const fit = result.fitResult;
-    const rSquared = fit ? fit.rSquared : 0;
+
+    // 沒有擬合結果就不要打開圖表容器（createLinearFitChart 也會擋，這是第二道）
+    if (!fit) {
+        showDndcAlert('sliceDndcResults', 'warning',
+            `有效切片數不足（${result.sliceCount} 個，至少需要 2 個），` +
+            '請檢查峰範圍是否涵蓋訊號，或降低「最小 UV 閾值」');
+        const emptyChart = document.getElementById('sliceDndcChartContainer');
+        if (emptyChart) emptyChart.classList.add('hidden');
+        return;
+    }
+
+    const rSquared = fit.rSquared;
 
     const r2Quality = rSquared >= 0.999 ? '優良' :
         rSquared >= 0.99 ? '良好' :
@@ -854,6 +1142,7 @@ function displaySliceResults(result) {
         rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
     resultsDiv.innerHTML = `
+        ${renderWarningsHtml(warnings)}
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
@@ -867,11 +1156,11 @@ function displaySliceResults(result) {
             </div>
             <div class="result-item">
                 <div class="result-label">截距</div>
-                <div class="result-value">${fit ? fit.intercept.toExponential(4) : '-'}</div>
+                <div class="result-value">${fit.intercept.toExponential(4)}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">標準誤差</div>
-                <div class="result-value">${fit ? fit.stdError.toExponential(4) : '-'}</div>
+                <div class="result-value">${fit.stdError.toExponential(4)}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">有效切片數</div>
@@ -1127,11 +1416,13 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
         try {
             const result = DndcCalculations.linearFit(masses, areas);
             // slope = dn/dc (因為 x = mass, y = RI_area_volume = dn/dc × mass)
-            displayMultiFitResults(result, masses, areas);
+            displayMultiFitResults(result, masses, areas, 'astra');
             const multiExport = document.getElementById('multiExportBtns');
             if (multiExport) multiExport.classList.remove('hidden');
         } catch (err) {
-            showDndcAlert('multiDndcResults', 'error', `擬合錯誤: ${err.message}`);
+            hideElement('multiDndcChartContainer');
+            hideElement('multiExportBtns');
+            reportDndcError('multiDndcResults', err, '擬合錯誤');
         }
     });
 }
@@ -1264,8 +1555,21 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
 // 工具函數
 // ========================
 function formatDndc(value) {
+    // NaN / Infinity 直接印出 "NaN" 會被當成有效結果抄進實驗紀錄
+    if (!Number.isFinite(value)) return '—';
     if (Math.abs(value) >= 0.001) return value.toFixed(4);
     return value.toExponential(4);
+}
+
+/**
+ * 隱藏元素（不存在時安靜略過）。
+ *
+ * @param {string} elementId - 元素 id
+ * @returns {void}
+ */
+function hideElement(elementId) {
+    const el = document.getElementById(elementId);
+    if (el) el.classList.add('hidden');
 }
 
 function escapeHtmlDndc(text) {
@@ -1277,28 +1581,66 @@ function escapeHtmlDndc(text) {
 function showDndcAlert(containerId, type, message) {
     const container = document.getElementById(containerId);
     if (container) {
-        container.innerHTML = `<div class="alert alert-${type}">${escapeHtmlDndc(message)}</div>`;
+        container.innerHTML =
+            `<div class="alert alert-${type}" role="status">${escapeHtmlDndc(message)}</div>`;
     }
+}
+
+/**
+ * 一次顯示多則訊息（例如載入後的欄位品質警告）。
+ *
+ * @param {string} containerId - 容器 id
+ * @param {string} type - alert 型別（error / warning / info / success）
+ * @param {string[]} messages - 訊息陣列
+ * @returns {void}
+ */
+function showDndcAlerts(containerId, type, messages) {
+    const container = document.getElementById(containerId);
+    if (!container || !Array.isArray(messages) || messages.length === 0) return;
+    const items = messages.map(m => `<div>${escapeHtmlDndc(m)}</div>`).join('');
+    container.innerHTML = `<div class="alert alert-${type}" role="status">${items}</div>`;
 }
 
 // ========================
 // 匯出功能
 // ========================
-function downloadCsv(filename, csvContent) {
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+/**
+ * 觸發瀏覽器下載。
+ *
+ * 連結必須先掛進 DOM 再 click（分離節點在部分瀏覽器不會觸發下載），
+ * 且 objectURL 要延後一個 tick 才 revoke，否則下載可能被取消。
+ *
+ * @param {string} href - 下載來源（blob: 或 data: URL）
+ * @param {string} filename - 檔名
+ * @param {boolean} revoke - 是否需要 revokeObjectURL
+ * @returns {void}
+ */
+function triggerDownload(href, filename, revoke) {
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = href;
     link.download = filename;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(() => {
+        link.remove();
+        if (revoke) URL.revokeObjectURL(href);
+    }, 0);
+}
+
+function downloadCsv(filename, csvContent) {
+    // BOM 讓 Excel 正確辨識 UTF-8
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    triggerDownload(URL.createObjectURL(blob), filename, true);
 }
 
 function downloadChartPng(chart, filename) {
-    if (!chart) return;
-    const link = document.createElement('a');
-    link.href = chart.toBase64Image('image/png', 1);
-    link.download = filename;
-    link.click();
+    if (!chart) {
+        showDndcAlert('hplcDndcResults', 'error', '尚未產生圖表，請先執行計算');
+        return;
+    }
+    triggerDownload(chart.toBase64Image('image/png', 1), filename, false);
 }
 
 function initChartControls() {
@@ -1319,7 +1661,11 @@ function initExportButtons() {
         exportHplcCsv.addEventListener('click', () => {
             const r = DndcState.lastHplcResult;
             const p = DndcState.lastHplcParams;
-            if (!r) return;
+            if (!r || !p) {
+                showDndcAlert('hplcDndcResults', 'error',
+                    '尚無結果可匯出，請先按「計算 dn/dc」（換檔後需重新計算）');
+                return;
+            }
 
             const lines = [
                 'Parameter,Value',
@@ -1350,22 +1696,29 @@ function initExportButtons() {
         });
     }
 
-    // Multi-injection CSV export
+    // Multi-injection CSV export（手動表格與 ASTRA 質量法共用同一份狀態）
     const exportMultiCsv = document.getElementById('exportMultiCsv');
     if (exportMultiCsv) {
         exportMultiCsv.addEventListener('click', () => {
-            const table = document.getElementById('multiDndcTable');
-            if (!table) return;
+            const stored = DndcState.lastMultiResult;
+            if (!stored || !stored.result) {
+                showDndcAlert('multiDndcResults', 'error',
+                    '尚未完成擬合，請先按「計算 dn/dc」或「ASTRA 線性擬合」再匯出');
+                return;
+            }
 
-            const rows = table.querySelectorAll('tbody tr');
-            // 手動輸入表格的濃度欄位單位為 g/mL（見 index.html 表頭）
-            const lines = ['Concentration (g/mL),RI Area,dn/dc (individual)'];
-            rows.forEach(row => {
-                const cells = row.querySelectorAll('td input, td');
-                const conc = row.querySelector('input[type="number"]:nth-of-type(1)')?.value || '';
-                const ri = row.querySelector('input[type="number"]:nth-of-type(2)')?.value || '';
-                if (conc && ri) lines.push(`${conc},${ri}`);
-            });
+            const meta = multiFitSource(stored.source);
+            const { result, xData, yData } = stored;
+            const lines = [meta.csvHeader];
+            for (let i = 0; i < xData.length; i++) {
+                lines.push(`${xData[i]},${yData[i]}`);
+            }
+            lines.push('');
+            lines.push(`Method,${meta.methodName}`);
+            lines.push(`dn/dc (slope),${result.dnDc}`);
+            lines.push(`R-squared,${result.rSquared}`);
+            lines.push(`Intercept,${result.intercept}`);
+            lines.push(`Std Error,${result.stdError}`);
             downloadCsv('multi_injection_dndc.csv', lines.join('\n'));
         });
     }
@@ -1375,7 +1728,11 @@ function initExportButtons() {
     if (exportSliceCsv) {
         exportSliceCsv.addEventListener('click', () => {
             const r = DndcState.lastSliceResult;
-            if (!r) return;
+            if (!r) {
+                showDndcAlert('sliceDndcResults', 'error',
+                    '尚無結果可匯出，請先按「Slice-by-slice 分析」（換檔後需重新分析）');
+                return;
+            }
 
             const lines = ['Time (min),Concentration (g/mL),RI (RIU),dn/dc (slice)'];
             for (let i = 0; i < r.sliceConcentrations.length; i++) {

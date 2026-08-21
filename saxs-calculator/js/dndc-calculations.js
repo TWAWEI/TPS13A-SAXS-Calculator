@@ -297,8 +297,16 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
         if (bl1Mask[i] || bl2Mask[i]) { combinedIndices.push(i); }
     }
 
-    if (combinedIndices.length === 0) {
-        throw new Error("Baseline windows are empty — no data points in the selected range.");
+    // 空視窗 = 使用者把基線範圍設在資料之外（常見於時間單位 min/sec 弄錯）。
+    // 靜默用單一視窗或回傳未校正訊號都會產生看似合理但錯誤的 dn/dc，因此直接失敗。
+    if (bl1Indices.length === 0 && bl2Indices.length === 0) {
+        throw new Error('基線視窗 BL1 與 BL2 內都沒有資料點，請確認基線時間範圍落在色譜圖的時間軸內（單位為分鐘）');
+    }
+    if (bl1Indices.length === 0) {
+        throw new Error('基線視窗 BL1 (bl1Start–bl1End) 內沒有任何資料點，請調整 Baseline 1 範圍');
+    }
+    if (bl2Indices.length === 0) {
+        throw new Error('基線視窗 BL2 (bl2Start–bl2End) 內沒有任何資料點，請調整 Baseline 2 範圍');
     }
 
     if (mode === "const") {
@@ -310,9 +318,7 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
     }
 
     // Linear baseline: fit a line through the two window centres
-    if (bl1Indices.length === 0 || bl2Indices.length === 0) {
-        throw new Error("Linear baseline requires both windows to contain data points.");
-    }
+    // （兩個視窗都非空已在上方檢查過）
 
     const meanOf = (indices, arr) => {
         let s = 0;
@@ -360,6 +366,12 @@ function measurePeak(correctedSignal, time, peakMask, mode) {
             sig.push(correctedSignal[i]);
             t.push(time[i]);
         }
+    }
+
+    // 空的 peak 遮罩會讓 height/area 得 0、spi 得 undefined，最後靜默產出
+    // dn/dc = 0 或 NaN。直接失敗，讓使用者知道範圍設錯了。
+    if (sig.length === 0) {
+        throw new Error('峰範圍 (peakStart–peakEnd) 內沒有任何資料點，請檢查時間單位與範圍');
     }
 
     // Height: maximum absolute value
@@ -692,6 +704,69 @@ function _createMask(time, start, end) {
 }
 
 /**
+ * 確認訊號在「基線 + 峰」計算視窗內沒有非有限值。
+ *
+ * CSV 常見的單位列、註解列、空白格會被 parseCSV 存成 NaN；一旦落在計算
+ * 視窗內，梯形積分與基線擬合會整條污染成 NaN，使用者只會看到 "NaN" 或
+ * 一個偏掉的數字。這裡直接失敗並指出欄位與時間區間。
+ *
+ * @param {number[]} time - Time axis
+ * @param {number[]} signal - Signal array to check
+ * @param {boolean[][]} masks - Masks whose union defines the region of interest
+ * @param {string} label - Human-readable channel name (e.g. 'UV', 'RI')
+ * @throws {Error} When any masked sample is not finite
+ */
+function _assertFiniteInWindows(time, signal, masks, label) {
+    let count = 0;
+    let tMin = Infinity;
+    let tMax = -Infinity;
+
+    for (let i = 0; i < signal.length; i++) {
+        let inWindow = false;
+        for (const mask of masks) {
+            if (mask[i]) { inWindow = true; break; }
+        }
+        if (!inWindow || Number.isFinite(signal[i])) { continue; }
+
+        count++;
+        if (Number.isFinite(time[i])) {
+            if (time[i] < tMin) { tMin = time[i]; }
+            if (time[i] > tMax) { tMax = time[i]; }
+        }
+    }
+
+    if (count === 0) { return; }
+
+    const range = Number.isFinite(tMin) && Number.isFinite(tMax)
+        ? `（t = ${tMin.toFixed(2)}–${tMax.toFixed(2)} min）` : '';
+    throw new Error(
+        `${label} 欄在基線／峰範圍內有 ${count} 個非數值或空白格${range}，` +
+        '請檢查原始檔案（單位列、註解列）或改選其他欄位'
+    );
+}
+
+/**
+ * 驗證光學／校正參數（空欄位在 UI 端會 parseFloat 成 NaN，NaN <= 0 為 false
+ * 會整路穿過舊的檢查，最後印出 "NaN"）。
+ *
+ * @param {object} params - { epsilon, pathLen, riFactor }
+ * @param {boolean} needsUv - 是否需要用 UV 換算濃度（無手動濃度時為 true）
+ * @throws {Error} 任一參數非有限或 <= 0
+ */
+function _assertOpticalParams({ epsilon, pathLen, riFactor }, needsUv) {
+    if (!Number.isFinite(riFactor) || riFactor <= 0) {
+        throw new Error('RI 校正因子 (K_RI) 必須是大於 0 的數值');
+    }
+    if (!needsUv) { return; }
+    if (!Number.isFinite(epsilon) || epsilon <= 0) {
+        throw new Error('消光係數 ε 必須是大於 0 的數值');
+    }
+    if (!Number.isFinite(pathLen) || pathLen <= 0) {
+        throw new Error('光徑長度必須是大於 0 的數值');
+    }
+}
+
+/**
  * Apply the RI detector delay by shifting the RI signal.
  *
  * Sign convention (matches the UI label): a POSITIVE riDelay means the RI
@@ -823,10 +898,17 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
         throw new Error('手動濃度不能搭配「面積」模式（RIU·min ÷ mg/mL 量綱不成立）。請改用「峰高」模式，或到多注射擬合頁面使用質量法。');
     }
 
+    _assertOpticalParams({ epsilon, pathLen, riFactor }, !hasManualC);
+
     // Build masks
     const bl1Mask = _createMask(time, bl1Start, bl1End);
     const bl2Mask = _createMask(time, bl2Start, bl2End);
     const peakMask = _createMask(time, peakStart, peakEnd);
+
+    // 非數值（NaN）在進入積分／基線擬合之前就攔下
+    const windows = [bl1Mask, bl2Mask, peakMask];
+    _assertFiniteInWindows(time, riSignal, windows, 'RI');
+    if (!hasManualC) { _assertFiniteInWindows(time, uvSignal, windows, 'UV'); }
 
     // Apply RI delay
     let riCorrected = _applyRiDelay(riSignal, time, riDelay);
@@ -904,10 +986,18 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
         autoAlign, decimalPlaces
     } = params;
 
+    // Slice 模式一律用 UV 逐點換算濃度，因此 UV 參數必須有效
+    _assertOpticalParams({ epsilon, pathLen, riFactor }, true);
+
     // Build masks
     const bl1Mask = _createMask(time, bl1Start, bl1End);
     const bl2Mask = _createMask(time, bl2Start, bl2End);
     const peakMask = _createMask(time, peakStart, peakEnd);
+
+    // 非數值（NaN）在進入積分／基線擬合之前就攔下
+    const windows = [bl1Mask, bl2Mask, peakMask];
+    _assertFiniteInWindows(time, riSignal, windows, 'RI');
+    _assertFiniteInWindows(time, uvSignal, windows, 'UV');
 
     // Apply RI delay
     let riCorrected = _applyRiDelay(riSignal, time, riDelay);
@@ -963,14 +1053,17 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
     }
 
     // Linear fit: RI vs concentration → slope = dn/dc
-    let fitResult = null;
-    let dndc = 0;
-    if (sliceConcentrations.length >= 2) {
-        fitResult = linearFit(sliceConcentrations, sliceRiValues);
-        dndc = fitResult.dnDc;
-    } else if (sliceDndcValues.length === 1) {
-        dndc = sliceDndcValues[0];
+    // 少於 2 個切片無法做迴歸；回傳單點值或 0 會讓畫面出現一個沒有統計意義
+    // 的 dn/dc（且下游繪圖會對 null fitResult 丟 TypeError），因此直接失敗。
+    if (sliceConcentrations.length < 2) {
+        throw new Error(
+            `有效切片不足 2 個（目前 ${sliceConcentrations.length} 個：UV 高於峰內最大值 ` +
+            `${(minUvFraction * 100).toFixed(0)}% 的點太少），請放寬峰範圍或檢查 UV 訊號`
+        );
     }
+
+    const fitResult = linearFit(sliceConcentrations, sliceRiValues);
+    const dndc = fitResult.dnDc;
 
     return {
         dndc,                    // mL/g (formatting is the display layer's job)
