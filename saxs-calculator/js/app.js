@@ -1722,10 +1722,14 @@ function clearAlert(containerId) {
     if (container) container.innerHTML = '';
 }
 
+/**
+ * 跳脫 HTML（單一實作在 js/form-utils.js，這裡只是既有呼叫端的薄包裝）。
+ *
+ * @param {*} text - 任意值
+ * @returns {string} 已跳脫的字串
+ */
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return FormUtils.escapeHtml(text);
 }
 
 // ========================

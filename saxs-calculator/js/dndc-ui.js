@@ -369,7 +369,7 @@ function reportDndcError(containerId, err, prefix) {
 /**
  * 載入新檔案時清掉上一個檔案的計算結果與匯出入口。
  *
- * 否則使用者換檔後直接按「📥 CSV」會匯出上一個檔案的 dn/dc，
+ * 否則使用者換檔後直接按「CSV」會匯出上一個檔案的 dn/dc，
  * 檔名與內容都看不出來源已經不同。
  *
  * @returns {void}
@@ -744,7 +744,7 @@ function displayHplcDndcResults(result, params, warnings = []) {
             </div>
             <div class="result-item">
                 <div class="result-label">Peak 模式</div>
-                <div class="result-value">${result.peakMode}</div>
+                <div class="result-value">${escapeHtmlDndc(result.peakMode)}</div>
             </div>
             ${alignInfo}
         </div>
@@ -796,7 +796,7 @@ function displayAllChannelsChart(parsed) {
         const checked = defaultVisible.has(colIdx) ? 'checked' : '';
         return `<label style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid ${color}; background: ${checked ? color.replace('0.85', '0.1') : 'transparent'};">
             <input type="checkbox" class="dndc-channel-toggle" data-col="${colIdx}" ${checked} style="margin: 0;">
-            <span style="color: ${color}; font-weight: 500;">${headers[colIdx]}</span>
+            <span style="color: ${color}; font-weight: 500;">${escapeHtmlDndc(headers[colIdx])}</span>
         </label>`;
     }).join('');
 
@@ -944,8 +944,14 @@ function initDndcMultiSection() {
                 <td>${rowCount}</td>
                 <td><input type="number" class="form-input" step="0.0001" aria-label="第 ${rowCount} 組 濃度 (g/mL)"></td>
                 <td><input type="number" class="form-input" step="0.000001" aria-label="第 ${rowCount} 組 ΔRI (RIU)"></td>
-                <td><button type="button" class="btn btn-sm btn-secondary" aria-label="刪除第 ${rowCount} 組資料" onclick="this.closest('tr').remove()">✕</button></td>
+                <td><button type="button" class="btn btn-sm btn-secondary js-remove-injection-row" aria-label="刪除第 ${rowCount} 組資料">✕</button></td>
             `;
+            // 刪除鍵改用 addEventListener：CSP 的 script-src 不含 'unsafe-inline'，
+            // 行內 onclick="" 會被瀏覽器擋掉（按了沒反應）。
+            const removeBtn = row.querySelector('.js-remove-injection-row');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => row.remove());
+            }
         });
     }
 
@@ -1379,13 +1385,17 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
     `;
 
     injections.forEach((inj, i) => {
+        // 樣品名／檔名／濃度都直接來自 .afe7（SQLite）與檔案系統，屬不受信任輸入
+        const sampleName = escapeHtmlDndc(inj.sampleName);
+        const fileName = escapeHtmlDndc(inj.fileName);
+        const concentration = escapeHtmlDndc(inj.concentration);
         tableHtml += `
             <tr>
-                <td><input type="checkbox" class="astra-row-check" data-astra-idx="${i}" aria-label="納入 ${inj.sampleName} 的擬合" checked></td>
-                <td style="font-size: 0.75rem;">${inj.fileName}</td>
-                <td>${inj.sampleName}</td>
-                <td><input type="number" class="form-input" value="${inj.concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc" aria-label="${inj.sampleName} 濃度 (g/mL)"></td>
-                <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL" aria-label="${inj.sampleName} 注射體積 (mL)"></td>
+                <td><input type="checkbox" class="astra-row-check" data-astra-idx="${i}" aria-label="納入 ${sampleName} 的擬合" checked></td>
+                <td style="font-size: 0.75rem;">${fileName}</td>
+                <td>${sampleName}</td>
+                <td><input type="number" class="form-input" value="${concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc" aria-label="${sampleName} 濃度 (g/mL)"></td>
+                <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL" aria-label="${sampleName} 注射體積 (mL)"></td>
                 <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.riAreaVolume.toExponential(2)}</td>
                 <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.kCal ? inj.kCal.toExponential(2) : '-'}</td>
             </tr>
@@ -1601,10 +1611,17 @@ function hideElement(elementId) {
     if (el) el.classList.add('hidden');
 }
 
+/**
+ * 跳脫 HTML（單一實作在 js/form-utils.js，這裡只是既有呼叫端的薄包裝）。
+ *
+ * CSV 標頭與 .afe7 內的樣品名／檔名都是不受信任輸入，塞進 innerHTML
+ * （含 aria-label="…"、value="…" 這類屬性位置）之前一律要過這裡。
+ *
+ * @param {*} text - 任意值
+ * @returns {string} 已跳脫的字串
+ */
 function escapeHtmlDndc(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return FormUtils.escapeHtml(text);
 }
 
 function showDndcAlert(containerId, type, message) {

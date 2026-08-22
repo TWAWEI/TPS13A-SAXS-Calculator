@@ -24,3 +24,7 @@ CLAUDE.md
 # Internal reference workbook — keep local only (removed from public history 2026-08-21)
 *.xlsm
 *.xlsx
+
+# Separate local-only repo with experimental data — never tracked here
+dndc calculator/
+data/

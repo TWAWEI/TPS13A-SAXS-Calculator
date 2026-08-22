@@ -272,6 +272,9 @@ function shiftArray(arr, pts) {
     return result;
 }
 
+/** 合法的基線模式。未知模式一律 throw，不靜默退回 linear。 */
+const BASELINE_MODES = Object.freeze(['const', 'linear']);
+
 /**
  * Apply baseline correction to a signal.
  *
@@ -281,8 +284,15 @@ function shiftArray(arr, pts) {
  * @param {boolean[]} bl1Mask - Boolean mask for the first baseline window
  * @param {boolean[]} bl2Mask - Boolean mask for the second baseline window
  * @returns {number[]} Baseline-corrected signal (new array)
+ * @throws {Error} mode 不是 const／linear 時
  */
 function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
+    // 打錯字或漏傳（undefined）以前會靜默走 linear 分支，算出的 dn/dc
+    // 看起來完全正常但用的不是使用者選的基線模型。
+    if (!BASELINE_MODES.includes(mode)) {
+        throw new Error(`baselineCorrect: 未知的 mode "${mode}"（需為 const 或 linear）`);
+    }
+
     const n = signal.length;
 
     // Gather indices for each window and the union
@@ -348,6 +358,9 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
 // Peak Measurement
 // ============================================================
 
+/** 合法的峰量測模式。未知模式會讓 value 變成 undefined，因此一律 throw。 */
+const PEAK_MODES = Object.freeze(['height', 'area', 'spi']);
+
 /**
  * Measure a peak using one of three modes.
  *
@@ -356,8 +369,15 @@ function baselineCorrect(time, signal, mode, bl1Mask, bl2Mask) {
  * @param {boolean[]} peakMask - Boolean mask for the peak region
  * @param {string} mode - "height", "area", or "spi" (single-point interpolation)
  * @returns {object} { value, mode, peakHeight, peakArea, spi }
+ * @throws {Error} mode 不是 height／area／spi 時
  */
 function measurePeak(correctedSignal, time, peakMask, mode) {
+    // valueMap[mode] 對未知 mode 會回 undefined，一路傳下去變成 NaN 的 dn/dc；
+    // 用陣列白名單而非物件查表，順便擋掉 "constructor" 這類原型鏈上的鍵。
+    if (!PEAK_MODES.includes(mode)) {
+        throw new Error(`measurePeak: 未知的 mode "${mode}"（需為 height、area 或 spi）`);
+    }
+
     // Extract peak region
     const sig = [];
     const t = [];

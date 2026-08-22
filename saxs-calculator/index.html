@@ -3,6 +3,15 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- Content-Security-Policy：唯一的外部來源是 jsdelivr（Chart.js 系列、pako、sql.js）
+         與 Google Fonts。放寬處說明：
+           style-src 'unsafe-inline' — index.html 有 18 個 style=""，Chart.js 也會設 inline style
+           script-src 'wasm-unsafe-eval' — sql.js 需要 WebAssembly.instantiate
+           connect-src cdn.jsdelivr.net — sql.js 用 fetch 抓 sql-wasm.wasm
+           img-src data: blob: — 圖表匯出走 canvas.toDataURL / toBase64Image
+         script-src 沒有 'unsafe-inline'：全站不得使用行內 <script> 或 onclick="" -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="TPS13A SAXS Calculator - 蛋白質溶液小角X射線散射參數計算工具">
     <title>TPS13A SAXS Calculator</title>
@@ -14,11 +23,23 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap"
         rel="stylesheet">
 
-    <!-- Chart.js + Zoom Plugin -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0" defer></script>
+    <!-- Chart.js + Zoom Plugin
+         版本鎖死 + SRI：jsdelivr 的短網址（省略版本／檔名）會隨新版變動，
+         內容一變 hash 就對不上，所以 URL 必須是「確切版本 + 完整檔名」。
+         更新版本時 hash 也要重算：
+           curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+        integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+        crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"
+        integrity="sha384-Cs3dgUx6+jDxxuqHvVH8Onpyj2LF1gKZurLDlhqzuJmUqVYMJ0THTWpxK5Z086Zm"
+        crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"
+        integrity="sha384-dwwI6ICEN/0ZQlS5owhUa/6ZzvwUPmjH45bFVCAcjgjTulbHJvlE+TGU3g1k0N3R"
+        crossorigin="anonymous" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"
+        integrity="sha384-3N9GHhCtN3CQef6tNfqgZlv7sQLYIkcChN+uaTZ7xVdzKYp/SjBNPxa92+hM7EAY"
+        crossorigin="anonymous" defer></script>
 
     <!-- Styles -->
     <link rel="stylesheet" href="css/styles.css">
@@ -238,7 +259,7 @@
                             <!-- 理論值顯示區塊 -->
                             <div class="form-group info-panel info-panel--success">
                                 <div class="info-panel-header">
-                                    <div class="info-panel-title">📊 理論預測值</div>
+                                    <div class="info-panel-title">理論預測值</div>
                                     <div class="info-panel-header-right">
                                         <span class="info-panel-header-label">MW:</span>
                                         <input type="number" id="theoreticalMWInput" class="info-panel-mw-input"
@@ -280,7 +301,7 @@
                             <!-- 偵測器距離建議區塊 -->
                             <div class="form-group info-panel info-panel--warning">
                                 <div class="info-panel-header">
-                                    <div class="info-panel-title">📡 偵測器距離建議</div>
+                                    <div class="info-panel-title">偵測器距離建議</div>
                                     <div class="info-panel-header-right">
                                         <span class="info-panel-chip info-panel-chip--predicted" id="detectorRgSource" title="Rg = 0.6906 × MW^⅓（球狀蛋白，Excel 偵測器表校正）">序列預測</span>
                                         <span class="info-panel-header-label"><i>R</i><sub>g</sub></span>
@@ -401,7 +422,7 @@
                         <div class="card-body" id="saxsResults">
                             <div class="alert alert-info">
                                 請輸入量測數據後點擊「計算 SAXS 參數」<br>
-                                <small>💡 先在「蛋白質分析」頁面輸入序列，可啟用理論值比較與 MW 驗證</small>
+                                <small>先在「蛋白質分析」頁面輸入序列，可啟用理論值比較與 MW 驗證</small>
                             </div>
                         </div>
                     </div>
@@ -1445,7 +1466,7 @@
 
                             <div style="margin-bottom: 0.5rem;">
                                 <button class="btn btn-secondary btn-sm" id="autoDetectPeak" title="根據 RI 信號自動偵測 peak 範圍並設定 baseline windows">
-                                    🔍 自動偵測 Peak
+                                    自動偵測 Peak
                                 </button>
                             </div>
 
@@ -1574,8 +1595,8 @@
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h2 class="card-title">計算結果</h2>
                             <div class="export-buttons hidden" id="hplcExportBtns">
-                                <button class="btn btn-secondary btn-sm" id="exportHplcCsv" title="匯出結果為 CSV">📥 CSV</button>
-                                <button class="btn btn-secondary btn-sm" id="exportHplcChart" title="匯出色譜圖為 PNG">🖼 圖表</button>
+                                <button class="btn btn-secondary btn-sm" id="exportHplcCsv" title="匯出結果為 CSV">CSV</button>
+                                <button class="btn btn-secondary btn-sm" id="exportHplcChart" title="匯出色譜圖為 PNG">圖表</button>
                             </div>
                         </div>
                         <div class="card-body" id="hplcDndcResults">
@@ -1701,7 +1722,7 @@
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h2 class="card-title">擬合結果</h2>
                             <div class="export-buttons hidden" id="multiExportBtns">
-                                <button class="btn btn-secondary btn-sm" id="exportMultiCsv" title="匯出擬合資料為 CSV">📥 CSV</button>
+                                <button class="btn btn-secondary btn-sm" id="exportMultiCsv" title="匯出擬合資料為 CSV">CSV</button>
                             </div>
                         </div>
                         <div class="card-body" id="multiDndcResults">
@@ -1754,7 +1775,7 @@
                         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
                             <h2 class="card-title">分析結果</h2>
                             <div class="export-buttons hidden" id="sliceExportBtns">
-                                <button class="btn btn-secondary btn-sm" id="exportSliceCsv" title="匯出切片資料為 CSV">📥 CSV</button>
+                                <button class="btn btn-secondary btn-sm" id="exportSliceCsv" title="匯出切片資料為 CSV">CSV</button>
                             </div>
                         </div>
                         <div class="card-body" id="sliceDndcResults">

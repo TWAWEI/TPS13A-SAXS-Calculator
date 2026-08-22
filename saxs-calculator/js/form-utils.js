@@ -24,6 +24,35 @@
     }
 
     /**
+     * HTML 特殊字元 → entity 對照表。
+     * 單引號用 &#39; 而非 &apos;（&apos; 在 HTML4 不保證支援）。
+     */
+    const HTML_ESCAPES = Object.freeze({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    });
+
+    /**
+     * 跳脫要塞進 innerHTML 的字串。
+     *
+     * 這是全站唯一一份實作（app.js 的 escapeHtml 與 dndc-ui.js 的 escapeHtmlDndc
+     * 都轉呼叫這裡）。舊版用 `div.textContent → div.innerHTML` 的 DOM 技巧，
+     * 那個做法**不會**跳脫 `"` 與 `'`，插進 `aria-label="…"`／`value="…"` 這類
+     * 屬性位置時可以直接跳出屬性建構事件處理器；同時它需要 document，
+     * 在 Node 測試裡不能用。改為純字串替換後兩個問題一起解決。
+     *
+     * @param {*} value - 任意值（null/undefined 視為空字串）
+     * @returns {string} 已跳脫的字串
+     */
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value).replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
+    }
+
+    /**
      * 解析必須為「有限且大於 0」的數值。
      *
      * @param {string|number} rawValue - 原始輸入
@@ -150,6 +179,7 @@
         () => (typeof window !== 'undefined' ? window.sessionStorage : null), 'sessionStorage');
 
     global.FormUtils = Object.freeze({
+        escapeHtml,
         parsePositiveNumber,
         parseFiniteNumber,
         readPositiveField,

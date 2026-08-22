@@ -9,15 +9,44 @@
 const BLOB_HEADER_SEARCH_LIMIT = 32;
 const ZLIB_MARKERS = [[0x78, 0x9c], [0x78, 0x01], [0x78, 0xda]];
 
-let _sqlJsLoaded = false;
+// 欄名來自檔案本身的 PRAGMA table_info，惡意 .afe7 可以把 SQL 片段當欄名帶進來。
+// 與 Python 版 astra_parser.py 的 _SAFE_IDENTIFIER 對齊。
+const SAFE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// 解壓上限（與 Python 版 astra_parser.py 的常數保持一致）：
+//   MAX_DB_BYTES  — gzip 解開後的 SQLite 檔案
+//   MAX_BLOB_BYTES — 單一 zlib 通道 blob
+// 沒有上限時，一個幾 MB 的 .afe7 可以解出數 GB 資料把分頁記憶體吃光（zip bomb）。
+const MAX_DB_BYTES = 256 * 1024 * 1024;
+const MAX_BLOB_BYTES = 64 * 1024 * 1024;
+
 let _SQL = null;
+// 同時拖入多個 .afe7 時，每個檔案都會呼叫 _ensureLibraries()。用布林旗標的話
+// 第一次載入還沒完成、旗標還是 false，於是重複注入 <script> 並重複 initSqlJs()。
+// 快取 Promise 讓併發呼叫共用同一次載入；失敗時清掉，下次可以重試。
+let _libsPromise = null;
 
 /**
- * Lazy load sql.js 和 pako
+ * Lazy load sql.js 和 pako（併發安全）。
+ *
+ * @returns {Promise<void>} 兩個函式庫都就緒後 resolve
  */
-async function _ensureLibraries() {
-    if (_sqlJsLoaded) return;
+function _ensureLibraries() {
+    if (!_libsPromise) {
+        _libsPromise = _loadLibraries().catch(err => {
+            _libsPromise = null;
+            throw err;
+        });
+    }
+    return _libsPromise;
+}
 
+/**
+ * 實際載入 pako 與 sql.js。只應由 _ensureLibraries() 呼叫。
+ *
+ * @returns {Promise<void>}
+ */
+async function _loadLibraries() {
     // Load pako if not present
     if (typeof pako === 'undefined') {
         await _loadScript(
@@ -34,11 +63,13 @@ async function _ensureLibraries() {
         );
     }
 
+    // sql-wasm.wasm 由 sql.js 內部用 fetch + WebAssembly.instantiate 取得，
+    // 不是 <script>／<link>，沒有 integrity 屬性可掛 → 無法加 SRI（review #106）。
+    // 能做的防護是把版本鎖死（1.10.3，與上面的 sql-wasm.js 同版）並限制
+    // CSP 的 connect-src 只允許 cdn.jsdelivr.net。
     _SQL = await initSqlJs({
         locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${file}`
     });
-
-    _sqlJsLoaded = true;
 }
 
 function _loadScript(src, integrity) {
@@ -85,6 +116,13 @@ function _decodeBlob(blob) {
     const compressed = blob.slice(zlibPos);
     const raw = pako.inflate(compressed);
 
+    // zlib 沒有可信的原始大小欄位，只能解完再檢查
+    if (raw.length > MAX_BLOB_BYTES) {
+        throw new Error(
+            `解壓後資料超過上限（${raw.length} bytes > ${MAX_BLOB_BYTES} bytes），` +
+            '此通道疑似損毀或惡意壓縮');
+    }
+
     if (raw.length % 8 !== 0) {
         throw new Error(`解壓後大小 ${raw.length} 不是 float64 (8 bytes) 的倍數`);
     }
@@ -109,6 +147,17 @@ function _tableExists(db, tableName) {
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", [tableName]
     );
     return result.length > 0 && result[0].values.length > 0;
+}
+
+/**
+ * 依 SQLite 識別字規則加雙引號（內部的 " 要重複成 ""）。
+ * 呼叫端必須先用 SAFE_IDENTIFIER 驗過；這裡是第二道防線。
+ *
+ * @param {string} name - 欄位／資料表名稱
+ * @returns {string} 已引用的識別字
+ */
+function _quoteIdent(name) {
+    return `"${String(name).replace(/"/g, '""')}"`;
 }
 
 function _queryOne(db, sql, params) {
@@ -312,13 +361,35 @@ function _readPeaks(db) {
 
         if (!startCol || !endCol) return [];
 
-        const rows = _queryAll(db, `SELECT [${startCol}], [${endCol}] FROM WPeakRange`);
+        // 欄名不是識別字就整段放棄，不要把它拼進 SQL
+        if (!SAFE_IDENTIFIER.test(startCol) || !SAFE_IDENTIFIER.test(endCol)) {
+            console.warn('[ASTRA] WPeakRange 欄名不安全，略過峰範圍:', startCol, endCol);
+            return [];
+        }
+
+        const rows = _queryAll(db,
+            `SELECT ${_quoteIdent(startCol)}, ${_quoteIdent(endCol)} FROM WPeakRange`);
         return rows
             .filter(r => r[startCol] != null && r[endCol] != null)
             .map(r => ({ startVolume: r[startCol], endVolume: r[endCol] }));
     } catch (e) {
         return [];
     }
+}
+
+/**
+ * 讀 gzip 尾端 4 bytes 的 ISIZE（原始大小 mod 2³²，little-endian）。
+ *
+ * 只是預檢，不能當保證：ISIZE 可以被偽造，>4 GiB 的內容也會 wrap around。
+ * 真正的把關是解壓後對 .length 的檢查。
+ *
+ * @param {Uint8Array} raw - 完整 gzip 位元組
+ * @returns {number|null} 宣告的原始大小，位元組不足時為 null
+ */
+function _readGzipIsize(raw) {
+    if (!raw || raw.length < 4) return null;
+    const n = raw.length;
+    return (raw[n - 4] | (raw[n - 3] << 8) | (raw[n - 2] << 16) | (raw[n - 1] << 24)) >>> 0;
 }
 
 /**
@@ -336,12 +407,28 @@ async function parseAfe7(arrayBuffer) {
         throw new Error('不是 gzip 格式（缺少 1f 8b 標記）');
     }
 
+    // 預檢：gzip 尾端 4 bytes 是 ISIZE（原始大小 mod 2³²，little-endian）。
+    // 可以被偽造，所以解壓後還要再檢查一次；這裡只是為了在配置記憶體「之前」
+    // 就擋掉明顯的 zip bomb。
+    const declaredSize = _readGzipIsize(raw);
+    if (declaredSize !== null && declaredSize > MAX_DB_BYTES) {
+        throw new Error(
+            `解壓後資料超過上限（宣告 ${declaredSize} bytes > ${MAX_DB_BYTES} bytes），` +
+            '請確認這是有效的 ASTRA .afe7 檔案');
+    }
+
     // gzip 解壓
     let dbBytes;
     try {
         dbBytes = pako.ungzip(raw);
     } catch (e) {
         throw new Error(`gzip 解壓失敗: ${e.message}`);
+    }
+
+    if (dbBytes.length > MAX_DB_BYTES) {
+        throw new Error(
+            `解壓後資料超過上限（${dbBytes.length} bytes > ${MAX_DB_BYTES} bytes），` +
+            '請確認這是有效的 ASTRA .afe7 檔案');
     }
 
     // 驗證 SQLite
