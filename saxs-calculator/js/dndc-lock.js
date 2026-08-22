@@ -39,13 +39,13 @@ function initDndcLock() {
     const clearError = () => {
         errorDiv.classList.add('hidden');
         input.removeAttribute('aria-invalid');
-        input.removeAttribute('aria-describedby');
+        input.setAttribute('aria-describedby', 'dndcPasswordHint');
     };
 
     const showError = () => {
         errorDiv.classList.remove('hidden');
         input.setAttribute('aria-invalid', 'true');
-        input.setAttribute('aria-describedby', 'dndcPasswordError');
+        input.setAttribute('aria-describedby', 'dndcPasswordError dndcPasswordHint');
         input.value = '';
         input.focus();
     };

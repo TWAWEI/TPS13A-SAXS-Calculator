@@ -128,7 +128,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.12
+                Version 4.13
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" aria-label="收合側邊欄" aria-expanded="true" aria-controls="sidebar">
                 <span id="sidebarToggleIcon" aria-hidden="true">◀</span>
@@ -1858,7 +1858,8 @@
             <h2 class="modal-title" id="dndcModalTitle">🔒 dn/dc 工具</h2>
             <p class="modal-desc" id="dndcModalDesc">請輸入密碼以解鎖</p>
             <label class="form-label" for="dndcPasswordInput">密碼</label>
-            <input type="password" id="dndcPasswordInput" class="form-input" autocomplete="current-password" style="margin-bottom: 0.75rem;">
+            <input type="password" id="dndcPasswordInput" class="form-input" autocomplete="current-password" aria-describedby="dndcPasswordHint" style="margin-bottom: 0.25rem;">
+            <p class="modal-hint" id="dndcPasswordHint">提示：dndc-光束線編號（小寫 dndc、連字號、數字加大寫英文）</p>
             <div id="dndcPasswordError" class="alert alert-error hidden" role="alert" style="margin-bottom: 0.75rem;">密碼錯誤</div>
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" id="dndcPasswordCancel">取消</button>
