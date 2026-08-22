@@ -41,16 +41,33 @@ function initDetectorSection() {
         calculateAndDisplayResults();
     }
 
+    /** 9M 行程提示：沒有有效輸入時傳 null，避免留著上一次的警告。 */
+    function renderLimitNotice(result) {
+        window.DetectorLimits.apply(
+            document.getElementById('detectorSdLimitAlert'),
+            document.getElementById('detectorSDBadge'),
+            result
+        );
+    }
+
+    const RESULT_IDS = ['detectorRgResult', 'detectorQminResult', 'detectorSDResult', 'detectorSDMeters', 'detectorMwResult'];
+
+    /** 輸入空白或 ≤ 0：顯示 "--" 並收掉提示，不靜默沿用上一次的數字（與 SAXS 頁面板一致）。 */
+    function clearResults() {
+        RESULT_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '--'; });
+        renderLimitNotice(null);
+    }
+
     function calculateAndDisplayResults() {
         let result;
 
         if (currentMode === 'mw') {
             const mw = parseFloat(targetMwInput.value);
-            if (isNaN(mw) || mw <= 0) return;
+            if (isNaN(mw) || mw <= 0) { clearResults(); return; }
             result = SAXSCalculations.calculateDetectorDistance(mw, 'mw');
         } else {
             const rg = parseFloat(targetRgInput.value);
-            if (isNaN(rg) || rg <= 0) return;
+            if (isNaN(rg) || rg <= 0) { clearResults(); return; }
             result = SAXSCalculations.calculateDetectorDistance(rg, 'rg');
         }
 
@@ -60,6 +77,7 @@ function initDetectorSection() {
         document.getElementById('detectorSDResult').textContent = result.suggestedSD.toLocaleString();
         document.getElementById('detectorSDMeters').textContent = result.suggestedSDMeters.toFixed(2);
         document.getElementById('detectorMwResult').textContent = result.mw.toLocaleString();
+        renderLimitNotice(result);
     }
 
     // Mode toggle buttons

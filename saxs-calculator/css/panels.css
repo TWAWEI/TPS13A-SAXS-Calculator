@@ -236,6 +236,14 @@
     margin: -0.25rem 0 0.5rem;
 }
 
+/* 行程警告：面板本身就是琥珀漸層，深色警告字必須自帶淺底才讀得到。
+   #fef3c7 (amber-100) 上的 #92400e = 6.4:1。 */
+.info-panel-hint--warn {
+    background: #fef3c7;
+    color: var(--color-accent-tertiary-text);
+    margin: var(--spacing-sm) 0 0;   /* 這一則掛在數值格線「之下」，不沿用 hint 的負上邊距 */
+}
+
 .info-panel-formula--row {
     display: flex;
     justify-content: space-between;

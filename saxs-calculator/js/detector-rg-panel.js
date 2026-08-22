@@ -55,6 +55,8 @@
             if (els.sd) els.sd.textContent = '--';
             if (els.qrange) els.qrange.textContent = '--';
             if (els.hint) { els.hint.textContent = '請輸入大於 0 的 Rg (Å)'; els.hint.hidden = false; }
+            // 沒有有效 Rg 就沒有行程可判斷，別留著上一次的警告
+            window.DetectorLimits.apply(els.sdLimitHint, els.sdBadge, null);
             return;
         }
         if (els.hint) els.hint.hidden = true;
@@ -62,6 +64,8 @@
         if (els.qmin) els.qmin.textContent = r.qmin.toFixed(4);
         if (els.sd) els.sd.textContent = r.suggestedSD.toLocaleString('en-US');
         if (els.qrange) els.qrange.textContent = `${r.qmin.toFixed(3)}-0.4`;
+        // 建議值超出 9M 行程時補上警告與徽章（值本身不夾）
+        window.DetectorLimits.apply(els.sdLimitHint, els.sdBadge, r);
     }
 
     function renderLinks() {
@@ -138,6 +142,8 @@
         els.sd = $('suggestedSDDisplay');
         els.qrange = $('suggestedQrangeDisplay');
         els.hint = $('detectorRgHint');
+        els.sdLimitHint = $('detectorSdLimitHint');
+        els.sdBadge = $('suggestedSDBadge');
         els.resetLink = $('detectorRgReset');
         els.measuredLink = $('detectorRgUseMeasured');
         if (!els.input) return;

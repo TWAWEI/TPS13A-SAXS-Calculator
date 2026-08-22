@@ -895,6 +895,11 @@ function compareRg(measured, predicted) {
     return { percent: (ratio - 1) * 100, ratio };
 }
 
+// Eiger 9M 偵測器實際行程（mm）— 2026-08-22 TPS 13A 光束線確認。
+// 注意：Excel 線性模型的 BSA 錨點 1900 mm 本身就低於下限，所以「建議值低於行程」是常態。
+const DETECTOR_SD_MIN_MM = 2200;
+const DETECTOR_SD_MAX_MM = 10000;
+
 /**
  * 計算 SAXS 偵測器建議距離
  * 根據蛋白質 MW 或 Rg 計算最佳的樣本到偵測器距離 (Sample-Detector distance)
@@ -951,15 +956,37 @@ function calculateDetectorDistance(mwOrRg, inputType = 'mw') {
     // 建議偵測器距離: SD = 67.857 × Rg
     const suggestedSD = SD_COEFF * rg;
 
+    // 顯示精度先定案，行程判斷與夾限後的 qmin 都用這組值，畫面與提示才不會互相打架
+    const rgRounded = parseFloat(rg.toFixed(2));
+    const qminRounded = parseFloat(qmin.toFixed(6));
+    const sdRounded = parseFloat(suggestedSD.toFixed(0));
+
+    // 9M 行程夾限：建議值本身不夾（照 Excel 模型顯示），只補「夾到極限後實際可達的 qmin」。
+    // qmin ∝ 1/SD ⇒ 距離被迫縮短時 qmin 變大（Guinier 區變窄），變長時 qmin 變小。
+    const sdStatus = sdRounded < DETECTOR_SD_MIN_MM ? 'below'
+        : sdRounded > DETECTOR_SD_MAX_MM ? 'above'
+            : 'ok';
+    const sdLimit = sdStatus === 'below' ? DETECTOR_SD_MIN_MM
+        : sdStatus === 'above' ? DETECTOR_SD_MAX_MM
+            : null;
+    const qminAtLimit = sdLimit === null ? null
+        : parseFloat((qminRounded * sdRounded / sdLimit).toFixed(6));
+    const qRgAtLimit = qminAtLimit === null ? null
+        : parseFloat((qminAtLimit * rgRounded).toFixed(3));
+
     return {
         mw: parseFloat(mw.toFixed(0)),
-        rg: parseFloat(rg.toFixed(2)),
-        qmin: parseFloat(qmin.toFixed(6)),
-        suggestedSD: parseFloat(suggestedSD.toFixed(0)),
+        rg: rgRounded,
+        qmin: qminRounded,
+        suggestedSD: sdRounded,
         suggestedSDMeters: parseFloat((suggestedSD / 1000).toFixed(2)),
         referenceProtein: 'BSA monomer',
         referenceRg: BSA_RG,
-        referenceSD: BSA_SD
+        referenceSD: BSA_SD,
+        sdStatus,        // 'ok' | 'below' | 'above'
+        sdLimit,         // 被夾到的極限 (mm)，ok 時為 null
+        qminAtLimit,     // 夾到極限時可達的 qmin (Å⁻¹)，ok 時為 null
+        qRgAtLimit       // qminAtLimit × Rg（BSA 基準 0.224），ok 時為 null
     };
 }
 
@@ -992,6 +1019,8 @@ window.SAXSCalculations = {
     calculateTheoreticalDmax,
     calculateAllTheoreticalParams,
     calculateDetectorDistance,
+    DETECTOR_SD_MIN_MM,
+    DETECTOR_SD_MAX_MM,
     compareRg,
 
     // 離心參數

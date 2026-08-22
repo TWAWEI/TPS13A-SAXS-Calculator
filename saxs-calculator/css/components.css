@@ -503,3 +503,31 @@
     color: var(--color-accent-danger-text);   /* 5.9:1 on the tint; #dc2626 was 4.38:1 */
 }
 
+/* .alert 設了 display:flex，會蓋掉瀏覽器預設的 [hidden]{display:none} —— 不補這條，
+   帶 hidden 屬性的警告會一直露出來。 */
+.alert[hidden] {
+    display: none;
+}
+
+/* ===== Inline Badges（數值旁的狀態標籤） ===== */
+.info-panel-badge {
+    display: inline-block;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    margin-left: 6px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* 同上：display 會蓋掉 [hidden] 的預設值 */
+.info-panel-badge[hidden] {
+    display: none;
+}
+
+.info-panel-badge--warn {
+    background: #fef3c7;                        /* amber-100 */
+    color: var(--color-accent-tertiary-text);   /* #92400e — 6.4:1 */
+}
+
