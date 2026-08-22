@@ -1,0 +1,342 @@
+/* =============================================
+   TPS13A SAXS Calculator — Stat & Info Panels
+   數值卡、漸層卡、理論值／偵測器建議面板、Rg 來源 chip、結果卡
+   ============================================= */
+
+/* ===== Stat Cards ===== */
+.stat-card {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* .stat-icon removed in v4.8: 6697dd9 emptied the emoji but left four 40x40
+   colour blocks (40px + 17px gap) squeezing the monospace .stat-value. */
+
+.stat-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 0.125rem;
+}
+
+.stat-value {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1.2;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-unit {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+    margin-left: 0.25rem;
+    font-family: var(--font-body);
+}
+
+.stat-sub {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 0.125rem;
+}
+
+/* ===== Gradient Stat Cards ===== */
+.gradient-stat {
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.gradient-stat .stat-label {
+    color: var(--color-text-on-accent-muted);
+}
+
+.gradient-stat .stat-value {
+    color: var(--color-text-on-accent);
+}
+
+.gradient-stat .stat-sub {
+    color: var(--color-text-on-accent-muted);
+}
+
+.gradient-stat--purple {
+    background: linear-gradient(135deg, #A85555 0%, #8F4646 100%);
+}
+
+.gradient-stat--pink {
+    background: linear-gradient(135deg, #9A5252 0%, #7E4040 100%);
+}
+
+/* ===== Info Panels (Theory / Detector Suggestion) ===== */
+.info-panel {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin-top: var(--spacing-sm);
+}
+
+.info-panel--success {
+    background: linear-gradient(135deg, #A85555 0%, #8F4646 100%);
+}
+
+.info-panel--warning {
+    background: linear-gradient(135deg, #b45309 0%, #92400e 100%);
+}
+
+.info-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-sm);
+}
+
+.info-panel-title {
+    color: var(--color-text-on-accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.info-panel-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.info-panel-header-label {
+    color: var(--color-text-on-accent-muted);
+    font-size: 0.75rem;
+}
+
+.info-panel-mw-input {
+    width: 80px;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-on-accent);
+    text-align: right;
+}
+
+.info-panel-mw-input:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 1px;
+    border-color: #ffffff;
+}
+
+.info-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-sm);
+}
+
+.info-panel-item {
+    background: rgba(0, 0, 0, 0.15);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    text-align: center;
+}
+
+.info-panel-item--highlight {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.info-panel-label {
+    color: var(--color-text-on-accent-dim);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.info-panel-label--highlight {
+    color: var(--color-text-on-accent);
+}
+
+.info-panel-value {
+    color: var(--color-text-on-accent);
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.info-panel-value--sm {
+    font-size: 0.85rem;
+}
+
+.info-panel-unit {
+    color: var(--color-text-on-accent-faint);
+    font-size: 0.75rem;
+}
+
+.info-panel-formula {
+    color: var(--color-text-on-accent-faint);
+    font-size: 0.75rem;
+    margin-top: var(--spacing-sm);
+    line-height: 1.4;
+}
+
+.info-panel-source {
+    color: var(--color-text-on-accent-muted);
+    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+}
+
+/* ===== Detector-distance panel: Rg source chip / inline input / links ===== */
+.info-panel-chip {
+    display: inline-block;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: var(--color-text-on-accent);
+    white-space: nowrap;
+}
+
+.info-panel-chip--manual {
+    background: #ffffff;
+    border-color: #ffffff;
+    color: #92400e;
+}
+
+.info-panel-chip--measured {
+    background: var(--color-text-primary);
+    border-color: var(--color-text-primary);
+    color: #ffffff;
+}
+
+.info-panel-mw-input--rg {
+    width: 64px;
+    text-align: right;
+}
+
+.info-panel-hint {
+    font-size: 0.6875rem;
+    color: var(--color-text-on-accent);
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: var(--radius-sm);
+    padding: 0.2rem 0.5rem;
+    margin: -0.25rem 0 0.5rem;
+}
+
+.info-panel-formula--row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+
+.info-panel-links {
+    display: inline-flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.info-panel-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-text-on-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.info-panel-link:hover {
+    text-decoration-thickness: 2px;
+}
+
+.info-panel-link:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* ===== Result Cards (Detector Section) ===== */
+.result-card {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    text-align: center;
+}
+
+.result-card--primary {
+    background: linear-gradient(135deg, #A85555 0%, #8F4646 100%);
+}
+
+.result-card--success {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+}
+
+.result-card--pink {
+    background: linear-gradient(135deg, #9A5252 0%, #7E4040 100%);
+}
+
+.result-card--warning {
+    background: var(--color-accent-tertiary-dark);
+}
+
+/* #b45309 leaves no headroom: .92 white is 4.49:1 and .85 white is 4.08:1 */
+.result-card--warning .result-card-label,
+.result-card--warning .result-card-unit {
+    color: var(--color-text-on-accent);
+}
+
+.result-card-label {
+    color: var(--color-text-on-accent-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin-bottom: var(--spacing-xs);
+}
+
+.result-card-value {
+    color: var(--color-text-on-accent);
+    font-size: 1.375rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.result-card-unit {
+    color: var(--color-text-on-accent-dim);
+    font-size: 0.6875rem;
+    margin-top: 0.125rem;
+}
+
+.result-card--lg {
+    padding: var(--spacing-lg);
+    margin-top: var(--spacing-md);
+}
+
+.result-card--lg .result-card-label {
+    font-size: 0.75rem;
+}
+
+.result-card--lg .result-card-value {
+    font-size: 1.75rem;
+}
+
+.result-card--lg .result-card-unit {
+    font-size: 0.75rem;
+}
+

@@ -21,6 +21,10 @@ const { Dndc, FormUtils } = require('./load.js');
 const ROOT = path.join(__dirname, '..');
 const readSrc = name => fs.readFileSync(path.join(ROOT, name), 'utf8');
 
+// 動態列舉：拆檔後再新增 js 檔也會自動納入這些靜態掃描
+const JS_FILES = fs.readdirSync(path.join(ROOT, 'js'))
+    .filter(f => f.endsWith('.js')).sort().map(f => `js/${f}`);
+
 // ---------------------------------------------------------------- [51/68] escapeHtml
 test('[51] escapeHtml: 五個 HTML 特殊字元全部跳脫（含 " 與 \'）', () => {
     assert.equal(FormUtils.escapeHtml('<'), '&lt;');
@@ -64,16 +68,17 @@ test('[51] escapeHtml: 乾淨字串原樣回傳（不影響正常欄位名顯示
     assert.equal(FormUtils.escapeHtml('dRI (RIU)'), 'dRI (RIU)');
 });
 
-test('[51] escapeHtml 只有一份實作：app.js / dndc-ui.js 不得再自建 div.innerHTML', () => {
-    for (const file of ['js/app.js', 'js/dndc-ui.js']) {
+test('[51] escapeHtml 只有一份實作：任一 js/*.js 不得再自建 div.innerHTML', () => {
+    for (const file of JS_FILES) {
         const src = readSrc(file);
         assert.ok(!/textContent\s*=\s*\w+;\s*\n\s*return\s+\w+\.innerHTML/.test(src),
             `${file} 仍有自己的 textContent→innerHTML 跳脫實作`);
     }
-    // 兩個舊名稱都必須轉呼叫 FormUtils.escapeHtml
-    assert.match(readSrc('js/app.js'),
+    // 兩個舊名稱都必須轉呼叫 FormUtils.escapeHtml（拆檔後不再綁定在哪一個檔）
+    const allJs = JS_FILES.map(readSrc).join('\n');
+    assert.match(allJs,
         /function escapeHtml\(text\) \{\s*return FormUtils\.escapeHtml\(text\);/);
-    assert.match(readSrc('js/dndc-ui.js'),
+    assert.match(allJs,
         /function escapeHtmlDndc\(text\) \{\s*return FormUtils\.escapeHtml\(text\);/);
 });
 
@@ -168,9 +173,7 @@ test('[107] index.html：CSP meta 存在且 script-src 不含 unsafe-inline/eval
 });
 
 test('[107] 全站不得有行內事件處理器（CSP 會靜默擋掉，按了沒反應）', () => {
-    const files = ['index.html', 'js/app.js', 'js/dndc-ui.js', 'js/charts.js',
-        'js/dndc-charts.js', 'js/detector-rg-panel.js', 'js/a11y-utils.js',
-        'js/dndc-astra-parser.js', 'js/dndc-file-parser.js', 'js/form-utils.js'];
+    const files = ['index.html', ...JS_FILES];
     const inlineHandler = /<[a-z][^>]*\son(?:click|change|input|submit|load|error|focus|blur|keydown|keyup|mouseover|mouseout)\s*=/i;
 
     for (const file of files) {

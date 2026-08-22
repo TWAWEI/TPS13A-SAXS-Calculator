@@ -1,0 +1,505 @@
+/* =============================================
+   TPS13A SAXS Calculator — Components
+   mode toggle、表單、按鈕、tabs、表格、圖表容器、序列顯示、loading、alert
+   ============================================= */
+
+/* ===== Mode Toggle ===== */
+.mode-toggle {
+    display: flex;
+    gap: 1px;
+    margin-bottom: var(--spacing-md);
+    background: var(--color-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.mode-toggle .btn {
+    flex: 1;
+    padding: var(--spacing-sm);
+    font-size: 0.8125rem;
+    border-radius: 0;
+}
+
+.mode-toggle .btn.active {
+    background: var(--color-accent-primary);
+    color: var(--color-text-on-accent);
+    border: none;
+}
+
+.mode-toggle .btn:not(.active) {
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    border: none;
+}
+
+/* ===== Form Elements ===== */
+.form-group {
+    margin-bottom: var(--spacing-lg);
+}
+
+.form-group--compact {
+    margin-bottom: 0.75rem;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs);
+    letter-spacing: 0.01em;
+}
+
+.form-label--sm {
+    font-size: 0.6875rem;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--color-accent-primary);
+    box-shadow: 0 0 0 3px rgba(168, 85, 85, 0.15);
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+    color: var(--color-text-muted);
+}
+
+.form-textarea {
+    min-height: 120px;
+    resize: vertical;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+}
+
+.form-input-group {
+    display: flex;
+    gap: 0;
+}
+
+.form-input-group .form-input {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+
+.form-input--inline {
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: 1px dashed var(--color-border);
+    border-radius: 0;
+    padding: 0.125rem 0.25rem;
+    font-size: inherit;
+    font-family: inherit;
+    color: inherit;
+    width: auto;
+    min-width: 6rem;
+}
+
+.form-input--inline:focus-visible {
+    border: 1px solid var(--color-accent-primary);
+    border-radius: var(--radius-sm);
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 1px;
+}
+
+.input-unit {
+    display: flex;
+    align-items: center;
+    padding: 0 0.75rem;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-left: none;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    min-width: 52px;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+/* ===== Buttons ===== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: 0.625rem var(--spacing-lg);
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-body), var(--font-en);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-fast), box-shadow var(--transition-fast);
+    letter-spacing: 0.01em;
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 2px;
+}
+
+.btn-primary {
+    background: var(--color-accent-primary);
+    color: var(--color-text-on-accent);
+}
+
+.btn-primary:hover {
+    background: var(--color-accent-primary-light);
+}
+
+.btn-secondary {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+    background: var(--color-bg-hover);
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+}
+
+.btn-success {
+    background: var(--color-accent-secondary);
+    color: var(--color-text-on-accent);
+}
+
+.btn-icon {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: var(--radius-md);
+}
+
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+}
+
+.btn-lg {
+    padding: 0.75rem var(--spacing-xl);
+    font-size: 0.875rem;
+}
+
+/* Minimum comfortable target for the primary controls. .btn-sm / .copy-btn /
+   .btn-icon stay compact on purpose (they sit inside table rows and cards) but
+   still clear the 24px WCAG 2.2 AA floor. */
+.btn:not(.btn-sm):not(.btn-icon),
+.nav-item {
+    min-height: 2.5rem;
+}
+
+.btn-full {
+    width: 100%;
+}
+
+/* ===== Tabs ===== */
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: var(--spacing-lg);
+}
+
+.tabs--inline {
+    margin: 0;
+    border-bottom: none;
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    gap: 2px;
+}
+
+.tab {
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tabs--inline .tab {
+    border-bottom: none;
+    border-radius: var(--radius-sm);
+    flex: 1;
+    text-align: center;
+}
+
+.tab:hover {
+    color: var(--color-text-primary);
+}
+
+.tab:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: -2px;
+}
+
+.tab.active {
+    color: var(--color-accent-primary);
+    border-bottom-color: var(--color-accent-primary);
+}
+
+.tabs--inline .tab.active {
+    background: var(--color-bg-secondary);
+    color: var(--color-accent-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* ===== Tables ===== */
+/* Flow-rate switch points: the rows a scientist actually has to act on.
+   Replaces inline styles that referenced the undefined --color-primary(-rgb). */
+.flow-rate-row--note {
+    background: rgba(168, 85, 85, 0.1);
+}
+
+.flow-rate-row--note td {
+    font-weight: 600;
+}
+
+.flow-rate-row--note td:last-child {
+    color: var(--color-accent-primary-deep);
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+}
+
+/* tabindex="0" makes the overflow area reachable (Safari has no built-in
+   scroll-container focus); it needs a matching focus ring. */
+.table-wrapper:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 2px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.table th,
+.table td {
+    padding: 0.625rem var(--spacing-md);
+    text-align: left;
+    border-bottom: 1px solid var(--color-border-light);
+}
+
+.table th {
+    background: var(--color-bg-tertiary);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+}
+
+.table td.text-right,
+.table th.text-right {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.table td.text-center {
+    text-align: center;
+}
+
+.table tbody tr:hover {
+    background: var(--color-bg-hover);
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table-section-header td {
+    background: var(--color-bg-tertiary);
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: var(--color-text-primary);
+}
+
+/* ===== Charts ===== */
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+.chart-container-lg {
+    height: 400px;
+}
+
+/* ===== Result Display ===== */
+.result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-sm);
+}
+
+.result-item {
+    background: var(--color-bg-tertiary);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    border-left: 2px solid var(--color-accent-primary);
+}
+
+.result-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    letter-spacing: 0.02em;
+    margin-bottom: 0.125rem;
+}
+
+.result-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ===== Sequence Display ===== */
+.sequence-display {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 2;
+    background: var(--color-bg-tertiary);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    word-break: break-all;
+    letter-spacing: 0.5px;
+}
+
+/* ===== Sequence Meta Row ===== */
+.sequence-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--spacing-sm);
+}
+
+/* ===== Copy Button ===== */
+.copy-wrapper {
+    position: relative;
+}
+
+.copy-btn {
+    position: absolute;
+    top: var(--spacing-sm);
+    right: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-size: 0.6875rem;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.copy-btn:hover {
+    color: var(--color-accent-primary);
+    border-color: var(--color-accent-primary);
+}
+
+.copy-btn:focus-visible {
+    outline: 2px solid var(--color-accent-primary);
+    outline-offset: 2px;
+}
+
+.copy-btn.copied {
+    color: var(--color-accent-secondary);
+    border-color: var(--color-accent-secondary);
+}
+
+/* ===== Loading State ===== */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xl);
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ===== Alerts ===== */
+.alert {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.alert--compact {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 0.75rem;
+}
+
+.alert-info {
+    background: rgba(168, 85, 85, 0.06);
+    border: 1px solid rgba(168, 85, 85, 0.25);
+    color: var(--color-accent-primary-deep);
+}
+
+.alert-success {
+    background: rgba(124, 188, 150, 0.1);
+    border: 1px solid rgba(93, 166, 157, 0.25);
+    color: #2a7a5a;
+}
+
+.alert-warning {
+    background: rgba(180, 83, 9, 0.06);
+    border: 1px solid rgba(180, 83, 9, 0.15);
+    color: var(--color-accent-tertiary-text);
+}
+
+.alert-error {
+    background: rgba(196, 43, 28, 0.06);
+    border: 1px solid rgba(196, 43, 28, 0.15);
+    color: var(--color-accent-danger-text);   /* 5.9:1 on the tint; #dc2626 was 4.38:1 */
+}
+

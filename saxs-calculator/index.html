@@ -41,8 +41,12 @@
         integrity="sha384-3N9GHhCtN3CQef6tNfqgZlv7sQLYIkcChN+uaTZ7xVdzKYp/SjBNPxa92+hM7EAY"
         crossorigin="anonymous" defer></script>
 
-    <!-- Styles -->
-    <link rel="stylesheet" href="css/styles.css">
+    <!-- Styles — 載入順序即 cascade 順序，不可調換（後面的檔案刻意覆寫前面的） -->
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/panels.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/sections.css">
 </head>
 
 <body>
@@ -1794,7 +1798,13 @@
         </main>
     </div>
 
-    <!-- Scripts -->
+    <!-- Scripts — classic <script>，全部共用同一個全域作用域。
+         順序規則：(1) 被別人在「載入期」取值的檔要排在前面（例：app.js 頂層的
+         const safeStorage = FormUtils.safeLocal 需要 form-utils.js 已執行）；
+         (2) app.js 永遠最後——它只有 DOMContentLoaded 啟動點。
+         tests/structure.test.js 會盯著這兩條與「跨檔重複宣告」。 -->
+
+    <!-- 共用工具與純計算模組（無 DOM 相依） -->
     <script src="js/form-utils.js"></script>
     <script src="js/a11y-utils.js"></script>
     <script src="js/protein.js"></script>
@@ -1805,7 +1815,30 @@
     <script src="js/dndc-file-parser.js"></script>
     <script src="js/dndc-astra-parser.js"></script>
     <script src="js/dndc-charts.js"></script>
+
+    <!-- dn/dc 分頁 UI：dndc-ui.js（共用狀態）必須在各頁面之前 -->
     <script src="js/dndc-ui.js"></script>
+    <script src="js/dndc-theory-ui.js"></script>
+    <script src="js/dndc-hplc-ui.js"></script>
+    <script src="js/dndc-hplc-results.js"></script>
+    <script src="js/dndc-multi-ui.js"></script>
+    <script src="js/dndc-slice-ui.js"></script>
+    <script src="js/dndc-astra-ui.js"></script>
+    <script src="js/dndc-export.js"></script>
+
+    <!-- 主計算機 UI -->
+    <script src="js/alerts.js"></script>
+    <script src="js/dndc-lock.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/section-protein.js"></script>
+    <script src="js/section-saxs.js"></script>
+    <script src="js/section-hplc.js"></script>
+    <script src="js/section-sample.js"></script>
+    <script src="js/section-mw.js"></script>
+    <script src="js/section-centrifuge.js"></script>
+    <script src="js/section-detector.js"></script>
+    <script src="js/section-iucr.js"></script>
+    <script src="js/form-persistence.js"></script>
     <script src="js/app.js"></script>
 
     <!-- dn/dc Password Modal -->
