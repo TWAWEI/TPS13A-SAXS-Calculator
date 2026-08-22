@@ -15,11 +15,13 @@ require(path.join(JS, 'calculations.js'));
 require(path.join(JS, 'protein.js'));
 require(path.join(JS, 'dndc-calculations.js'));
 require(path.join(JS, 'dndc-file-parser.js'));
+require(path.join(JS, 'dndc-astra-parser.js'));
 
 module.exports = {
     SAXS: window.SAXSCalculations,
     Protein: window.ProteinAnalysis,
     Dndc: window.DndcCalculations,
     FileParser: window.DndcFileParser,
+    AstraParser: window.DndcAstraParser,
     FormUtils: window.FormUtils,
 };

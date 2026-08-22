@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Dndc, FormUtils } = require('./load.js');
+const { Dndc, FormUtils, AstraParser } = require('./load.js');
 
 const ROOT = path.join(__dirname, '..');
 const readSrc = name => fs.readFileSync(path.join(ROOT, name), 'utf8');
@@ -191,4 +191,36 @@ test('[107] 全站不得有行內事件處理器（CSP 會靜默擋掉，按了�
             assert.ok(/\bsrc=/.test(openTag), `${file} 有行內 <script> 區塊: ${openTag}`);
         }
     }
+});
+
+
+// ---------------------------------------------------------------------------
+// [101]/[102]/[100] dndc-astra-parser 安全邏輯（review H1：原本零測試覆蓋）
+// ---------------------------------------------------------------------------
+const { SAFE_IDENTIFIER, _quoteIdent, _readGzipIsize, MAX_DB_BYTES, MAX_BLOB_BYTES } = AstraParser._internal;
+
+test('[101] SAFE_IDENTIFIER 只放行合法 SQLite 識別字', () => {
+    for (const ok of ['m_dStartVolume', '_x', 'Col9']) assert.ok(SAFE_IDENTIFIER.test(ok), ok);
+    for (const bad of ['rangeStart"]; DROP TABLE x; --', '9abc', 'a b', 'a-b', '', 'x;']) {
+        assert.ok(!SAFE_IDENTIFIER.test(bad), JSON.stringify(bad));
+    }
+});
+
+test('[101] _quoteIdent 以雙引號引用並把內部 " 變成 ""', () => {
+    assert.equal(_quoteIdent('m_dStart'), '"m_dStart"');
+    assert.equal(_quoteIdent('a"b'), '"a""b"');
+    assert.equal(_quoteIdent('x"; DROP TABLE y; --'), '"x""; DROP TABLE y; --"');
+});
+
+test('[102] _readGzipIsize 讀尾端 4 bytes little-endian，太短回 null', () => {
+    assert.equal(_readGzipIsize(new Uint8Array([1, 2, 3])), null);
+    assert.equal(_readGzipIsize(null), null);
+    assert.equal(_readGzipIsize(new Uint8Array([0x1f, 0x8b, 0, 0, 0x00, 0x00, 0x00, 0x10])), 0x10000000);
+    assert.equal(_readGzipIsize(new Uint8Array([0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff])), 0xffffffff);
+});
+
+test('[102] 解壓上限常數與 Python astra_parser.py 一致', () => {
+    assert.equal(MAX_DB_BYTES, 256 * 1024 * 1024);
+    assert.equal(MAX_BLOB_BYTES, 64 * 1024 * 1024);
+    assert.match(readSrc('js/dndc-astra-parser.js'), /declared(Size)?\s*>\s*MAX_DB_BYTES/, '預檢必須是「嚴格大於」——剛好 256 MiB 的合法檔要能通過');
 });

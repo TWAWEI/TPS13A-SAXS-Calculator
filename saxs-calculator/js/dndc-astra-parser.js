@@ -483,5 +483,7 @@ async function parseAfe7File(file) {
 
 window.DndcAstraParser = Object.freeze({
     parseAfe7,
-    parseAfe7File
+    parseAfe7File,
+    // 僅供 tests/ 鎖定安全邏輯，不是公開 API
+    _internal: Object.freeze({ SAFE_IDENTIFIER, _quoteIdent, _readGzipIsize, MAX_DB_BYTES, MAX_BLOB_BYTES })
 });

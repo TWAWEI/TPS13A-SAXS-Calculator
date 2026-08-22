@@ -15,7 +15,7 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 - **Secondary accents:** Emerald (#10b981) fills / #047857 text, Amber #f59e0b fills only — amber **text** is #92400e, amber panels #b45309 → #92400e; Red (#dc2626) for errors
 - **Text:** Deep warm slate, never pure black — primary #1a1a2e, secondary #3d3d5c, muted #5a5a78; sidebar nav is pure white at 0.9375rem (≈16px) with a 3px white inset bar on the active item
 - **Typography:** Inter + Noto Sans TC for UI text (Google Fonts), JetBrains Mono with `tabular-nums` for scientific values and sequences; `html { font-size: 17px }`
-- **Icons:** No decorative icon system (scientific emoji removed in 6697dd9). A few functional glyphs remain in index.html/app.js (🔒/🔓 lock, 📥 export ×3, ☰ menu, 📊 📡 💡 🔍 🖼 section markers) — don't add new ones; removing the remaining section markers is an open cleanup item
+- **Icons:** No decorative icon system (scientific emoji removed in 6697dd9; section markers and export-button emoji removed in batch 3, 2026-08-22). Only state/semantic glyphs remain: 🔒/🔓 lock state, ☰ menu, ⚠️/✓ in result text — don't add new ones
 - **Visual effects:** Flat cards with 1px borders (#d4d8dc) and 3/6/8px radii; coral-tinted shadows (rgba(168,85,85,…)); fast transitions (120/200ms ease-out); `backdrop-filter: blur(4px)` only on the modal overlay — no glassmorphism on cards, no hover lifts
 - **Layout:** Fixed 240px sidebar (collapsible to 56px, state persisted), 4px spacing scale
 - **Contrast rule:** every text/background pair ≥ 4.5:1 (UI components ≥ 3:1). Never put white text on a tint lighter than #A85555; never use #f59e0b / #10b981 / #F04E4E as text
@@ -49,6 +49,11 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 - 修改 saxs-calculator 後，必須在瀏覽器開啟 index.html 確認無 console error
 - 修改 dndc calculator 後，必須執行 `cd "dndc calculator" && .venv_mac/bin/python -m pytest -q`（py3.9 venv；基準 2026-08-21：194 passed / 27 xfailed / 0 failed）。xfail 是以 `xfail(strict=True)` 鎖定的已知 bug——修好一個會變成 XPASS 失敗，此時移除該測試的 xfail 標記，不要改期望值
 - 不要說「應該可以」或「看起來沒問題」，要跑過才算
+
+### 安全（saxs-calculator，2026-08-22 起）
+- index.html 有 `<meta http-equiv="Content-Security-Policy">`：新增任何 CDN 來源、行內 `onclick`/`<script>`、外部 fetch 都會被擋——改用 `addEventListener`，外部來源要同時加進 CSP 對應指令
+- CDN `<script>` 一律 exact-version 完整檔名 + `integrity="sha384-…"` + `crossorigin="anonymous"`（hash：`curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A`）
+- 任何來自 CSV／.afe7／使用者輸入的字串進 `innerHTML` 前必須過 `FormUtils.escapeHtml`（唯一實作，勿再複製）；SQLite 欄名只接受 `SAFE_IDENTIFIER` 白名單
 
 ### 檔案讀取
 - 超過 500 行的檔案，分段讀取（offset + limit）
