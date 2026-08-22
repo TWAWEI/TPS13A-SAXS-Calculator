@@ -206,9 +206,79 @@ function readHplcParams({ withManualC = true } = {}) {
 }
 
 // ========================
+// #dndcEpsilon 的來源標示
+// ========================
+
+/**
+ * 來源 chip 的文字。
+ *
+ * 為什麼沒有「還原」這個來源：form-persistence 還原時只是把字串寫回 value，
+ * 既不派 input 事件，也沒有記錄這個值當初從哪來。用「等於預設 0.667 就是預設值」
+ * 去猜，會在使用者剛好量到 0.667 時誤標成「序列估計」。
+ * 因此還原後一律不顯示 chip——只有「序列分析帶入」或「使用者手動輸入」才會出現。
+ */
+const EPSILON_SOURCE_LABEL = Object.freeze({ predicted: '序列估計', manual: '手動' });
+
+/**
+ * 顯示 #dndcEpsilon 旁的來源 chip。
+ *
+ * @param {'predicted'|'manual'} source - 來源
+ * @param {string} title - hover 說明（含實際數字與文獻值）
+ * @returns {void}
+ */
+function setDndcEpsilonSource(source, title) {
+    const chip = document.getElementById('dndcEpsilonSource');
+    if (!chip) return;
+    chip.textContent = EPSILON_SOURCE_LABEL[source];
+    chip.className = `info-panel-chip info-panel-chip--${source}`;
+    chip.title = title;
+    chip.hidden = false;
+}
+
+/**
+ * 把蛋白質分析頁算出的 ε_mass 帶進 #dndcEpsilon。
+ *
+ * 使用者手動改過就不覆蓋——序列估計（BSA 0.646）與文獻實測（0.667）本來就有差，
+ * 使用者刻意填實測值後又被下一次序列分析蓋掉，是會直接影響濃度的資料破壞。
+ * 寫值時直接設 .value、不派 input 事件，才不會被自己的監聽器標成「手動」。
+ *
+ * @param {number} mlPerMgCm - 質量消光係數 (mL·mg⁻¹·cm⁻¹)
+ * @returns {void}
+ */
+function applySequenceEpsilon(mlPerMgCm) {
+    const input = document.getElementById('dndcEpsilon');
+    if (!input) return;
+    if (!Number.isFinite(mlPerMgCm) || mlPerMgCm <= 0) return;
+    if (input.dataset.userEdited === '1') return;
+
+    const shown = mlPerMgCm.toFixed(3);
+    input.value = shown;
+    setDndcEpsilonSource('predicted',
+        `由蛋白質分析頁序列算出（ε/MW = ${shown}）；BSA 文獻實測 0.667`);
+}
+
+/**
+ * 綁定 #dndcEpsilon 的手動編輯偵測。
+ *
+ * @returns {void}
+ */
+function initDndcEpsilonSource() {
+    const input = document.getElementById('dndcEpsilon');
+    if (!input) return;
+
+    input.addEventListener('input', () => {
+        input.dataset.userEdited = '1';
+        setDndcEpsilonSource('manual',
+            '使用者手動輸入的消光係數；之後的序列分析不會再覆蓋這個值');
+    });
+}
+
+// ========================
 // HPLC dn/dc 頁面
 // ========================
 function initDndcHplcSection() {
+    initDndcEpsilonSource();
+
     const fileInput = document.getElementById('dndcFileInput');
     const calcBtn = document.getElementById('calculateHplcDndc');
 

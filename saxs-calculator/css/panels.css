@@ -222,6 +222,29 @@
     color: #ffffff;
 }
 
+/* display:inline-block 蓋掉了瀏覽器預設的 [hidden]{display:none}——
+   不補這條，帶 hidden 屬性的 chip 會一直露出來（同 .alert / .info-panel-badge）。 */
+.info-panel-chip[hidden] {
+    display: none;
+}
+
+/* 表單標籤旁的來源 chip（HPLC dn/dc 頁的 ε）。
+   面板版是「白字 + 半透明白底」，靠珊瑚漸層當背景才看得見；
+   白色卡片上要換成淺底深字，否則整顆 chip 消失。 */
+.form-label .info-panel-chip {
+    vertical-align: middle;
+    margin-left: 6px;
+    background: rgba(168, 85, 85, 0.1);
+    border-color: rgba(168, 85, 85, 0.3);
+    color: var(--color-accent-purple);           /* #A83737 — 5.3:1 於 chip 底色 */
+}
+
+.form-label .info-panel-chip--manual {
+    background: #fef3c7;                         /* amber-100 */
+    border-color: #fde68a;
+    color: var(--color-accent-tertiary-text);    /* #92400e — 6.4:1 */
+}
+
 .info-panel-mw-input--rg {
     width: 64px;
     text-align: right;

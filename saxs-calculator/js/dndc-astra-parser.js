@@ -248,6 +248,38 @@ function _readExperimentInfo(db) {
 }
 
 /**
+ * ASTRA 專案裡有沒有設定 Generic UV 儀器。
+ *
+ * 「有設定儀器」與「有 UV 時間序列」是兩件事：使用者的 BSA 檔兩者分家
+ * （設定在、資料不在），只看其中一個會給出誤導的訊息。
+ *
+ * @param {object} db - sql.js Database
+ * @returns {boolean} 有設定為 true
+ */
+function _readUvConfigured(db) {
+    if (!_tableExists(db, 'WGenericUVInstrumentProfile')) return false;
+    try {
+        // 資料表名稱是程式內的字面常數，不是來自檔案內容
+        const row = _queryOne(db, 'SELECT count(*) AS n FROM WGenericUVInstrumentProfile');
+        return Boolean(row && Number(row.n) > 0);
+    } catch (e) {
+        // UV 只是附註資訊；資料表壞掉不該讓整個檔案解析失敗（RI 才是主資料）
+        console.warn('[ASTRA] 讀取 UV 儀器設定失敗，視為未設定:', e.message);
+        return false;
+    }
+}
+
+/**
+ * 通道清單裡有沒有 UV 儀器的時間序列。
+ *
+ * @param {Array<{instrument: string}>} allChannels - _readAllChannels 的結果
+ * @returns {boolean} 有 UV 通道為 true
+ */
+function _hasUvChannel(allChannels) {
+    return (allChannels || []).some(ch => /uv/i.test(String((ch && ch.instrument) || '')));
+}
+
+/**
  * 讀取所有可用通道的摘要資訊（不解碼 blob，僅列出）
  */
 function _readAllChannels(db) {
@@ -464,7 +496,10 @@ async function parseAfe7(arrayBuffer) {
             allChannels,
             channelData,
             riChannel,
-            peaks
+            peaks,
+            // UV 現況：設定與資料分開回報，UI 才能說清楚「為什麼沒有 UV」
+            uvConfigured: _readUvConfigured(db),
+            hasUvChannel: _hasUvChannel(allChannels)
         };
     } finally {
         db.close();

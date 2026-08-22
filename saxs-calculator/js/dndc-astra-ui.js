@@ -1,7 +1,148 @@
 /**
  * TPS13A SAXS Calculator - dn/dc ASTRA UI
- * ASTRA .afe7 頁面：檔案解析、積分範圍與色譜圖疊加。
+ * ASTRA .afe7 頁面：檔案解析、UV 現況摘要、積分範圍與色譜圖疊加。
  */
+
+// ========================
+// .afe7 的 UV 現況摘要（純文字組字，可在 Node 測）
+// ========================
+
+/**
+ * 有設定 UV 儀器卻沒有 UV 時間序列時的說明。
+ *
+ * 使用者的 BSA 檔就是這種：ASTRA 專案裡掛了 Generic UV，但實際只錄了 RI。
+ * 這不是壞檔，也不影響本頁的 ASTRA-style 擬合（只用 RI 面積 vs 注射質量），
+ * 所以文案必須同時講「缺什麼」與「不影響什麼」，否則使用者會以為要重做實驗。
+ */
+const ASTRA_UV_MISSING_TEXT =
+    '⚠️ 此檔未含 UV 數據（ASTRA 有設定 Generic UV 儀器，但沒有 UV 時間序列）'
+    + '——ASTRA-style 擬合不需要 UV；若要走 UV+RI 請從 ChemStation 匯出 CSV';
+
+/** 連 UV 儀器都沒設定：一句話講完就好。 */
+const ASTRA_UV_ABSENT_TEXT = '此檔未設定 UV 儀器，無 UV 數據';
+
+/**
+ * ASTRA 單位的消光係數顯示格式：整數不補小數點，非整數留一位。
+ *
+ * @param {number} value - mL·g⁻¹·cm⁻¹
+ * @returns {string} 顯示字串
+ */
+function formatAstraUvExtinction(value) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+/**
+ * 找出解析結果裡的 UV 通道（instrument 名稱含 UV）。
+ *
+ * @param {object} parsed - parseAfe7 的回傳值
+ * @returns {object|null} 通道摘要，沒有時為 null
+ */
+function findAstraUvChannel(parsed) {
+    const channels = (parsed && parsed.allChannels) || [];
+    return channels.find(ch => /uv/i.test(String((ch && ch.instrument) || ''))) || null;
+}
+
+/**
+ * 單一 .afe7 的 UV 現況摘要文字。
+ *
+ * 檔案內的消光係數是 ASTRA 單位（mL·g⁻¹cm⁻¹，BSA 存 667），而 HPLC dn/dc 頁
+ * 要填的是 mL·mg⁻¹cm⁻¹（0.667）——差 1000 倍，所以一律兩個單位一起講。
+ *
+ * @param {object|null} parsed - parseAfe7 的回傳值
+ * @returns {string[]} 摘要行；沒有解析結果時為空陣列
+ */
+function describeAstraUv(parsed) {
+    if (!parsed) return [];
+
+    const lines = [];
+    const uvExtinction = Number((parsed.sample && parsed.sample.uvExtinction));
+    if (Number.isFinite(uvExtinction) && uvExtinction > 0) {
+        lines.push(
+            `檔案內 UV 消光係數：${formatAstraUvExtinction(uvExtinction)} mL·g⁻¹·cm⁻¹`
+            + `（= ${(uvExtinction / 1000).toFixed(3)} mL·mg⁻¹·cm⁻¹）`
+        );
+    }
+
+    const uvChannel = findAstraUvChannel(parsed);
+    if (uvChannel || parsed.hasUvChannel === true) {
+        const label = (uvChannel && (uvChannel.label || uvChannel.instrument)) || '未命名通道';
+        lines.push(`UV 通道：${label}`);
+    } else if (parsed.uvConfigured) {
+        lines.push(ASTRA_UV_MISSING_TEXT);
+    } else {
+        lines.push(ASTRA_UV_ABSENT_TEXT);
+    }
+
+    return lines;
+}
+
+/**
+ * 多檔摘要：訊息相同的檔案合併成一組，避免同一句話重複 8 次。
+ *
+ * @param {Array<object>} parsedFiles - 每個元素是 parseAfe7 結果 + fileName
+ * @returns {Array<{heading: string|null, fileNames: string[], lines: string[]}>}
+ *          heading 為 null 代表不需要標題（單檔）
+ */
+function summarizeAstraUvFiles(parsedFiles) {
+    const files = Array.isArray(parsedFiles) ? parsedFiles : [];
+    if (files.length === 0) return [];
+
+    const groups = [];
+    const byKey = new Map();
+    for (const pf of files) {
+        const lines = describeAstraUv(pf);
+        // 用 JSON 當分組鍵：訊息裡本來就有全形括號與破折號，隨手挑的分隔字元不夠安全
+        const key = JSON.stringify(lines);
+        const fileName = (pf && pf.fileName) || '（未命名檔案）';
+        if (byKey.has(key)) {
+            const existing = byKey.get(key);
+            byKey.set(key, { ...existing, fileNames: [...existing.fileNames, fileName] });
+        } else {
+            byKey.set(key, { lines, fileNames: [fileName] });
+            groups.push(key);
+        }
+    }
+
+    const ordered = groups.map(key => byKey.get(key));
+    const allSame = ordered.length === 1;
+    return ordered.map(g => ({
+        ...g,
+        heading: allSame
+            ? (files.length > 1 ? `（${files.length} 個檔案相同）` : null)
+            : g.fileNames.join('、')
+    }));
+}
+
+/**
+ * 把 UV 摘要畫進 #astraFileSummary。沒有內容時整塊隱藏。
+ *
+ * 檔名與通道名稱都來自 .afe7／檔案系統，屬不受信任輸入，一律過 escapeHtmlDndc。
+ *
+ * @param {Array<object>} parsedFiles - 解析結果（含 fileName）
+ * @returns {void}
+ */
+function renderAstraFileSummary(parsedFiles) {
+    const el = document.getElementById('astraFileSummary');
+    if (!el) return;
+
+    const groups = summarizeAstraUvFiles(parsedFiles);
+    if (groups.length === 0) {
+        el.innerHTML = '';
+        el.hidden = true;
+        return;
+    }
+
+    // .alert 是 display:flex（橫排），多行要包一層區塊元素才會由上往下堆疊
+    const blocks = groups.map(g => {
+        const heading = g.heading
+            ? `<div><strong>${escapeHtmlDndc(g.heading)}</strong></div>` : '';
+        const lines = g.lines.map(line => `<div>${escapeHtmlDndc(line)}</div>`).join('');
+        return `<div>${heading}${lines}</div>`;
+    }).join('');
+
+    el.innerHTML = `<div>${blocks}</div>`;
+    el.hidden = false;
+}
 
 // ========================
 // ASTRA .afe7 解析
@@ -23,6 +164,7 @@ function initAstraSection() {
         const statusEl = document.getElementById('astraParseStatus');
         statusEl.textContent = '正在載入 sql.js 和解析檔案...';
         document.getElementById('astraParseResults').innerHTML = '';
+        renderAstraFileSummary([]);   // 收掉上一批檔案的摘要
 
         const parsedFiles = [];
 
@@ -38,6 +180,9 @@ function initAstraSection() {
 
             statusEl.textContent = `成功解析 ${parsedFiles.length} 個檔案，請在下方調整積分範圍`;
 
+            // 檔案裡的 UV 現況（消光係數／有無 UV 通道）
+            renderAstraFileSummary(parsedFiles);
+
             // 顯示色譜圖和積分範圍控制
             const chartCard = document.getElementById('astraChromatogramCard');
             chartCard.classList.remove('hidden');
@@ -48,6 +193,7 @@ function initAstraSection() {
 
         } catch (err) {
             statusEl.textContent = `解析失敗: ${err.message}`;
+            renderAstraFileSummary([]);
         }
     });
 
@@ -376,3 +522,11 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
         }
     });
 }
+
+// 純文案函式對外（tests/ 在 Node 端直接測，不需要 DOM）
+window.DndcAstraUi = Object.freeze({
+    describeAstraUv,
+    summarizeAstraUvFiles,
+    ASTRA_UV_MISSING_TEXT,
+    ASTRA_UV_ABSENT_TEXT,
+});

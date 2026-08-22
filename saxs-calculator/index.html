@@ -128,7 +128,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.11
+                Version 4.12
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" aria-label="收合側邊欄" aria-expanded="true" aria-controls="sidebar">
                 <span id="sidebarToggleIcon" aria-hidden="true">◀</span>
@@ -1536,7 +1536,7 @@
 
                             <div class="grid grid-2">
                                 <div class="form-group form-group--compact">
-                                    <label class="form-label form-label--sm" for="dndcEpsilon">消光係數 <i>ε</i></label>
+                                    <label class="form-label form-label--sm" for="dndcEpsilon">消光係數 <i>ε</i><span class="info-panel-chip info-panel-chip--predicted" id="dndcEpsilonSource" hidden>序列估計</span></label>
                                     <div class="form-input-group">
                                         <input type="number" class="form-input" id="dndcEpsilon" value="0.667" step="0.001" min="0.000001" required title="質量消光係數 (mass extinction coefficient)。BSA@280nm ≈ 0.667 mL/(mg·cm)。可從 ProtParam 或蛋白質分析頁面取得">
                                         <span class="input-unit">mL/(mg·cm)</span>
@@ -1648,6 +1648,7 @@
                             載入並顯示色譜圖
                         </button>
                         <div id="astraParseStatus" class="stat-sub mt-sm"></div>
+                        <div id="astraFileSummary" class="alert alert-info mt-md" role="status" hidden></div>
 
                         <!-- 色譜圖（載入後顯示） -->
                         <div id="astraChromatogramCard" class="mt-lg hidden">

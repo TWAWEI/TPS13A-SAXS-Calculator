@@ -202,6 +202,33 @@ function calculateEpsilonCm2g(extinctionData, mw) {
 }
 
 /**
+ * 質量消光係數：把 ε [M⁻¹cm⁻¹] 換成濃度單位可直接用的兩種寫法。
+ *
+ *   ε_mass [mL·mg⁻¹·cm⁻¹] = ε / MW[Da]   ← 就是 A280 (0.1%)，HPLC dn/dc 頁的輸入
+ *   ASTRA  [mL·g⁻¹·cm⁻¹]  = ε_mass × 1000 ← .afe7 的 m_dUVExtinctionCoefficient
+ *
+ * 兩者只差 1000 倍，混用就是 1000 倍的濃度誤差，所以一次回傳兩個值，
+ * 呼叫端不必自己乘除。回傳的是未四捨五入的原始數字，格式化交給顯示層。
+ *
+ * @param {{epsilon: number}} extinctionData - calculateExtinctionCoeff 的結果
+ * @param {number} mw - 分子量 (Da)
+ * @returns {{mlPerMgCm: number, mlPerGCm: number}} 兩種單位的質量消光係數
+ * @throws {Error} ε 或 MW 無效時（寧可中止，也不要讓 NaN/Infinity 流進 dn/dc 計算）
+ */
+function calculateMassExtinction(extinctionData, mw) {
+    const epsilon = extinctionData && extinctionData.epsilon;
+    if (!Number.isFinite(epsilon) || epsilon < 0) {
+        throw new Error('消光係數 ε 無效：需要 ≥ 0 的數值 (M⁻¹cm⁻¹)');
+    }
+    if (!Number.isFinite(mw) || mw <= 0) {
+        throw new Error('分子量無效：需要大於 0 的數值 (Da)');
+    }
+
+    const mlPerMgCm = epsilon / mw;
+    return { mlPerMgCm, mlPerGCm: mlPerMgCm * 1000 };
+}
+
+/**
  * 完整蛋白質分析
  * @param {string} sequence - 蛋白質序列
  * @returns {object} 完整分析結果
@@ -226,7 +253,8 @@ function analyzeProtein(sequence) {
     const vbar = calculatePartialSpecificVolume(parsed.composition);
     const dndc = calculateDnDc(mw);
     const epsilonCm2g = calculateEpsilonCm2g(extinction, mw);
-    
+    const massExtinction = calculateMassExtinction(extinction, mw);
+
     return {
         error: false,
         sequence: parsed.sequence,
@@ -238,6 +266,8 @@ function analyzeProtein(sequence) {
         electronCount: electrons,
         extinction: extinction,
         epsilonCm2g: epsilonCm2g,
+        // ε_mass（mL·mg⁻¹cm⁻¹）與 ASTRA 單位（mL·g⁻¹cm⁻¹）；後者與 epsilonCm2g 同值
+        massExtinction: massExtinction,
         partialSpecificVolume: vbar,
         dndc: dndc,
         // 用於 IUCr 表格
@@ -259,6 +289,7 @@ window.ProteinAnalysis = {
     calculatePartialSpecificVolume,
     calculateDnDc,
     calculateEpsilonCm2g,
+    calculateMassExtinction,
     analyzeProtein,
     AMINO_ACIDS
 };

@@ -68,6 +68,11 @@ function initProteinSection() {
                 result.extinction,
                 result.molecularWeight
             );
+            // ε 變了，兩個質量單位也要跟著重算，否則三格數字會互相矛盾
+            result.massExtinction = ProteinAnalysis.calculateMassExtinction(
+                result.extinction,
+                result.molecularWeight
+            );
         }
 
         // Store in global state
@@ -141,7 +146,7 @@ function displayProteinResults(result, name) {
             <div class="result-item">
                 <div class="result-label"><i>v̄</i> = <i>V</i><sub>dry</sub>/<i>M</i></div>
                 <div class="result-value">${result.partialSpecificVolume.toFixed(4)} <span style="font-size: 0.75rem;">cm³/g</span></div>
-                <div style="font-size: 0.7rem; color: var(--color-text-muted); margin-top: 0.25rem;">晶體殘基體積推得，SAXS 對比用；非熱力學偏比容</div>
+                <div class="result-note">晶體殘基體積推得，SAXS 對比用；非熱力學偏比容</div>
             </div>
             <div class="result-item">
                 <div class="result-label">dn/dc</div>
@@ -157,8 +162,14 @@ function displayProteinResults(result, name) {
                 <div class="result-value">${result.extinction.epsilon.toLocaleString()}</div>
             </div>
             <div class="result-item">
-                <div class="result-label"><i>ε</i> (cm² g⁻¹)</div>
-                <div class="result-value">${result.epsilonCm2g.toFixed(2)}</div>
+                <div class="result-label"><i>ε</i><sub>mass</sub> (mL·mg⁻¹·cm⁻¹)</div>
+                <div class="result-value">${result.massExtinction.mlPerMgCm.toFixed(3)}</div>
+                <div class="result-note">= A280 (0.1%)，HPLC dn/dc 頁用</div>
+            </div>
+            <div class="result-item">
+                <div class="result-label">ASTRA 單位 (mL·g⁻¹·cm⁻¹)</div>
+                <div class="result-value">${result.massExtinction.mlPerGCm.toFixed(1)}</div>
+                <div class="result-note">.afe7 的 UV 消光係數欄位</div>
             </div>
             <div class="result-item">
                 <div class="result-label">Trp (W)</div>
@@ -176,6 +187,10 @@ function displayProteinResults(result, name) {
                 <div class="result-label">二硫鍵數</div>
                 <div class="result-value">${result.extinction.nDisulfide}</div>
             </div>
+        </div>
+
+        <div class="formula-note">
+            <i>ε</i><sub>mass</sub> = <i>ε</i> / MW（Pace 1995 序列估計；BSA 文獻實測 0.667）
         </div>
     `;
 
@@ -283,4 +298,10 @@ function updateFormsWithProteinData(result) {
     // Update MW Resolution form
     const mwResolutionInput = document.getElementById('mwInput');
     if (mwResolutionInput) mwResolutionInput.value = result.molecularWeight.toFixed(2);
+
+    // HPLC dn/dc 頁的質量消光係數（mL·mg⁻¹cm⁻¹）。
+    // 由 dndc-hplc-ui.js 決定要不要覆蓋——使用者手動改過的值不動。
+    if (result.massExtinction && typeof applySequenceEpsilon === 'function') {
+        applySequenceEpsilon(result.massExtinction.mlPerMgCm);
+    }
 }

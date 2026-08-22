@@ -388,6 +388,14 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* 數值下方的一行說明（單位別名、適用場合）。#5a5a78 on #eef0f2 = 5.8:1 */
+.result-note {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+    margin-top: 0.25rem;
+}
+
 /* ===== Sequence Display ===== */
 .sequence-display {
     font-family: var(--font-mono);
