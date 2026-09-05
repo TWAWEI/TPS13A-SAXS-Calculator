@@ -46,7 +46,7 @@
 | 檔案輸入 | `lipoBypassFile` | bypass .dat |
 | 數值 | `lipoQMin` / `lipoQMax` | q 視窗，預設 0.1 / 0.15 Å⁻¹，step 0.005 |
 | 按鈕 | `lipoComputeDilution` | 「計算稀釋因子」，`.btn.btn-primary` |
-| 結果容器 | `lipoDilutionResults` | `role="status"`；顯示因子、SD、視窗內點數、最小平方參考值、排除點數 |
+| 結果容器 | `lipoDilutionResults` | 不放靜態 role（由 `showAlert`／`A11y.focusResults` 動態管理，全站一致）；顯示因子、SD、視窗內點數、最小平方參考值、排除點數 |
 | 數值輸入 | `lipoDilutionFactor` | 目前採用的稀釋因子；計算後自動填入，可手動改 |
 | 來源 chip | `lipoDilutionChip` | `.info-panel-chip` 放在 `lipoDilutionFactor` 的 `.form-label` 內（白卡上只有這個位置對比足夠，`panels.css:234`）；「SAXS 計算」用基底樣式、「手動」加 `--manual`；沿用 `detector-rg-panel.js` 的來源管理模式 |
 | 畫布 | `lipoDilutionChart` | log-log 疊圖 |
@@ -66,7 +66,7 @@
 | 檔案輸入 | `lipoPureFile` | 純 DOX 光譜，選填 |
 | 數值 | `lipoFitMin` / `lipoFitMax` | 純 DOX 縮放擬合的波長範圍，預設 450 / 550 nm |
 | 按鈕 | `lipoComputeSpectra` | 「扣背景」 |
-| 結果容器 | `lipoSpectraResults` | `role="status"` |
+| 結果容器 | `lipoSpectraResults` | 不放靜態 role（同上） |
 | 畫布 | `lipoSpectraChart` | 含藥、空白、扣背景三條線；三個讀值波長畫垂直註解線 |
 | 畫布 | `lipoFitChart` | 只在有純 DOX 時顯示：含藥實測 vs（空白 + k×純 DOX）模型 vs 殘差 |
 | 數值 ×3 | `lipoWl1` / `lipoWl2` / `lipoWl3` | 讀值波長，預設 494 / 495 / 496 nm |
@@ -90,7 +90,7 @@
 | 數值 | `lipoPathLength` | 光徑，預設 0.2 cm（SAXS 毛細管厚度） |
 | 唯讀顯示 | `lipoFactorEcho` | 回顯目前稀釋因子與來源 |
 | 按鈕 | `lipoComputeDl` | 「計算 D/L」 |
-| 結果容器 | `lipoDlResults` | `role="status"` |
+| 結果容器 | `lipoDlResults` | 不放靜態 role（同上） |
 
 結果區顯示：[DOX] (mM) ± SD、實際脂質濃度 (mM)、**D/L ± 誤差**（主值，`.stat-card` 大字）、誤差拆解兩行「UV 三波長貢獻 x%」「稀釋因子貢獻 y%」，以及一行小字「Excel 原式（僅 UV）：D/L ± z」。
 
@@ -107,7 +107,7 @@
 
 持久化：以 `FormUtils.safeLocal` 存 JSON 到 key `tps13a.liposome.results`，上限 200 列，超過時拒絕加入並提示。載入頁面時還原。所有字串進 innerHTML 前過 `FormUtils.escapeHtml`。
 
-CSV：UTF-8 BOM（`downloadCsv` 已處理），檔名 `liposome-DL-YYYYMMDD.csv`，數值不四捨五入，欄名與表格一致，另加 ε、光徑、q 視窗、讀值波長四個中繼欄位讓結果可重現。**字串欄位一律 RFC 4180 引號**（樣品名可能含逗號或引號）：包在雙引號裡，內部雙引號寫成兩個；現有的 dn/dc 匯出沒做這件事，這裡要自己寫一個 `csvCell()`。
+CSV：UTF-8 BOM（`downloadCsv` 已處理），檔名 `liposome-DL-YYYYMMDD.csv`，數值不四捨五入，欄名與表格一致，另加 ε、光徑、q 視窗、讀值波長四個中繼欄位讓結果可重現。**字串欄位依 RFC 4180 引號**（含逗號、引號、換行時才加引號；樣品名可能含逗號或引號）：包在雙引號裡，內部雙引號寫成兩個；欄名用英文並多三個中繼欄（Factor SD、Absorbances、Absorbance source），與表格中文欄名不逐字對應；現有的 dn/dc 匯出沒做這件事，這裡要自己寫一個 `csvCell()`。
 
 ### 3.5 錯誤與狀態
 
@@ -200,7 +200,7 @@ Q、R 是 Excel 的完整快取值（openpyxl `data_only=True` 讀出，2026-09-
 
 ## 5. 檔案解析
 
-新檔 `js/liposome-file-parsers.js`，掛 `window.LiposomeFileParsers = Object.freeze({ parseSaxsDat, parseUvSpectrum, LIMITS })`。兩個解析器共用一個內部 `numericRows(text, minCols)`：逐行 trim，跳過空行與 `#` 開頭行，以 `/[\s,;]+/` 切欄，前 `minCols` 欄必須是有限數，否則整行跳過並計數（這樣 PRIMUS/ATSAS 的文字標頭、儀器匯出的欄名列都自然被略過）。
+新檔 `js/liposome-file-parsers.js`，掛 `window.LiposomeFileParsers = Object.freeze({ parseSaxsDat, parseUvSpectrum, LIMITS })`。兩個解析器共用一個內部 `numericRows(text, minCols)`：逐行 trim，跳過空行與 `#` 開頭行，以 `/[\s,;]+/` 切欄並忽略行首／行尾多餘分隔符造成的空欄（`Number('') === 0` 的陷阱），前 `minCols` 欄必須是有限數，否則整行跳過並計數（這樣 PRIMUS/ATSAS 的文字標頭、儀器匯出的欄名列都自然被略過）。換行接受 LF、CRLF 與單獨 CR；小數點必須是 `.`。
 
 - `parseSaxsDat(text)` → `{ q, i, err | null, skipped, sorted }`。至少 2 欄（`numericRows(text, 2)` 只驗前兩欄）；**只有當每一個被接受的列都有有限的第 3 欄時**才回 `err` 陣列，否則 `err: null`。0 有效列 → throw「找不到數值列」。`sorted` 永遠是布林：q 非嚴格遞增 → 依 q 穩定排序後回傳並設 `sorted: true`（本地 bypass 檔開頭就有一列亂序的 q = 0）；有重複 q → throw。
 - `parseUvSpectrum(text)` → `{ wavelength, absorbance, skipped, sorted }`。2 欄。波長非嚴格遞增（含部分儀器 850→190 的遞減匯出）→ 依波長穩定排序並設 `sorted: true`，與 `parseSaxsDat` 同一套；重複波長 → throw。內插函式需要嚴格遞增，這裡是唯一的保證點。
@@ -238,14 +238,14 @@ state = {
 - 檔案輸入不持久化（`form-persistence.js` 已跳過 `type=file`）；q 視窗、擬合範圍、讀值波長、ε、光徑、脂質濃度、樣品名由現有機制自動存檔。
 - **chip 管理的四個欄位 `lipoDilutionFactor`、`lipoAbs1`、`lipoAbs2`、`lipoAbs3` 加進 `form-persistence.js` 的 `PERSIST_SKIP_IDS`**，不持久化——沿用 `detectorRgInput` 的先例。理由：重新整理後 SD 與來源都不存在，還原數值只會做出一個沒有來源的因子。載入頁面時兩個 chip 都 `hidden`，`lipoFactorEcho` 顯示「尚未設定稀釋因子」。
 - `results` 在每次變動後寫 localStorage；讀取失敗（損壞 JSON）→ 視為空表並 `console.warn`，不擋頁面。
-- 檔案大於 800 行時拆成 `section-liposome.js`（面板 1–3）與 `liposome-results-table.js`（結果表）；預估各 300–400 行，先以單檔實作，超標再拆。
+- 實作時結果表從一開始就獨立成 `liposome-results-table.js`（CSV 組字串是純函式，獨立成 IIFE 才能在 Node 測）；`section-liposome.js` 用 IIFE 掛 `window.LiposomeSection = { init }`，`app.js` 以 `window.LiposomeSection?.init()` 呼叫。樣品名在「加入結果表」當下讀取（它是標籤不是參數；科學一致性由 `INVALIDATING_IDS` 保證）。列 id 用 `crypto.randomUUID()`（`remove(id)` 會刪掉所有同 id 列）。
 
 ## 8. index.html 與樣式
 
 - 側欄：在 `data-section="detector"` 之後插入 `<button class="nav-item" data-section="liposome" data-short="載藥" data-title="脂質體 DOX 載藥">`。
 - 新 `<section class="section" id="section-liposome" aria-labelledby="liposome-title">`，h2 說明六步驟精簡版，三個 `.card` 面板加結果表。
 - `<script>` 順序：`liposome-calculations.js` → `liposome-file-parsers.js` → `liposome-charts.js` 放在「共用工具與純計算模組（無 DOM 相依）」群組尾端，即 `dndc-charts.js` 之後；`section-liposome.js` 放在 `section-iucr.js` 之後；`app.js` 仍最後。`tests/structure.test.js` 只檢查引用完整、無重複、`app.js` 最後、`form-utils.js` 在 `app.js` 前；它**不會**檢查 `liposome-*.js` 在 `section-liposome.js` 之前，這個順序靠 `tests/load.js` 先 require 純模組來把關，實作時要人工核對 index.html 的順序。
-- 樣式：優先重用；新規則（例如誤差拆解的小字列）加在 `css/sections.css`，不新增 css 檔。
+- 樣式：優先重用；實作時在 `css/components.css` 補了 `.btn[hidden]`（`.btn` 的 `display:inline-flex` 會蓋掉 `[hidden]`，與既有 `.alert[hidden]` 同理）、`.btn:disabled` 外觀、`.table caption` 對齊；不新增 css 檔。數字欄位的 `min`/`step` 要讓預設值落在格點上（HTML 以 `min` 為 step 基準），計算填入的欄位用 `step="any"`。
 - 版本字串改為 `Version 4.14`。
 
 ## 9. 測試與驗證

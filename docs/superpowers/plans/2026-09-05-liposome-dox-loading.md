@@ -1710,6 +1710,8 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
 
 ### Task 10: index.html 標記、側欄、dialog、持久化例外、版本
 
+> 2026-09-05 實作後補記：品質審查要求的修正（`3419ca2`）已同步進下面的標記——`min`/`step` 改成讓預設值落在格點上、計算填入的欄位 `step="any"`、兩個 `aria-describedby`；另在 `css/components.css` 加了 `.btn[hidden]`、`.btn:disabled`、`.table caption` 三條規則（本 task 原文說不改 CSS，該說法作廢）。
+
 這個 task 只動標記與兩行 JS，不含面板邏輯（Task 11）。做完頁面會多一個分頁，按鈕還沒反應是預期的。
 
 **Files:**
@@ -1759,14 +1761,14 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
                                     <div class="form-group">
                                         <label class="form-label" for="lipoQMin">q 下限</label>
                                         <div class="form-input-group">
-                                            <input type="number" class="form-input" id="lipoQMin" value="0.1" min="0.001" max="2" step="0.005">
+                                            <input type="number" class="form-input" id="lipoQMin" value="0.1" min="0.005" max="2" step="0.005">
                                             <span class="input-unit">Å⁻¹</span>
                                         </div>
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label" for="lipoQMax">q 上限</label>
                                         <div class="form-input-group">
-                                            <input type="number" class="form-input" id="lipoQMax" value="0.15" min="0.001" max="2" step="0.005">
+                                            <input type="number" class="form-input" id="lipoQMax" value="0.15" min="0.005" max="2" step="0.005">
                                             <span class="input-unit">Å⁻¹</span>
                                         </div>
                                     </div>
@@ -1774,7 +1776,7 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
                                 <button type="button" class="btn btn-primary btn-lg btn-full" id="lipoComputeDilution" disabled>計算稀釋因子</button>
                                 <div class="form-group mt-md">
                                     <label class="form-label" for="lipoDilutionFactor">目前採用的稀釋因子 <span class="info-panel-chip" id="lipoDilutionChip" hidden>手動</span></label>
-                                    <input type="number" class="form-input" id="lipoDilutionFactor" placeholder="計算後自動填入，或手動輸入 PRIMUS 的 I Scale" min="0" step="0.0001">
+                                    <input type="number" class="form-input" id="lipoDilutionFactor" placeholder="計算後自動填入，或手動輸入 PRIMUS 的 I Scale" min="0.0001" step="any" aria-describedby="lipoFactorEcho">
                                     <div class="stat-sub" id="lipoFactorEcho">尚未設定稀釋因子</div>
                                 </div>
                             </div>
@@ -1854,15 +1856,15 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
                                 <div class="grid grid-3">
                                     <div class="form-group">
                                         <label class="form-label" for="lipoAbs1">A(波長 1)</label>
-                                        <input type="number" class="form-input" id="lipoAbs1" step="0.00001" placeholder="扣背景後自動填入">
+                                        <input type="number" class="form-input" id="lipoAbs1" step="any" placeholder="扣背景後自動填入">
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label" for="lipoAbs2">A(主波長) <span class="info-panel-chip" id="lipoAbsChip" hidden>手動</span></label>
-                                        <input type="number" class="form-input" id="lipoAbs2" step="0.00001" placeholder="扣背景後自動填入">
+                                        <input type="number" class="form-input" id="lipoAbs2" step="any" aria-describedby="lipoAbsSummary" placeholder="扣背景後自動填入">
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label" for="lipoAbs3">A(波長 3)</label>
-                                        <input type="number" class="form-input" id="lipoAbs3" step="0.00001" placeholder="扣背景後自動填入">
+                                        <input type="number" class="form-input" id="lipoAbs3" step="any" placeholder="扣背景後自動填入">
                                     </div>
                                 </div>
                                 <div class="stat-sub" id="lipoAbsSummary"></div>
@@ -1897,7 +1899,7 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
                                 <div class="form-group">
                                     <label class="form-label" for="lipoLipidConc">脂質原始濃度</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="lipoLipidConc" min="0" step="0.01" placeholder="例如 11.7">
+                                        <input type="number" class="form-input" id="lipoLipidConc" min="0.01" step="0.01" placeholder="例如 11.7">
                                         <span class="input-unit">mM</span>
                                     </div>
                                 </div>
@@ -1905,7 +1907,7 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
                                     <div class="form-group">
                                         <label class="form-label" for="lipoEpsilon">ε (DOX)</label>
                                         <div class="form-input-group">
-                                            <input type="number" class="form-input" id="lipoEpsilon" value="9250" min="1" step="10">
+                                            <input type="number" class="form-input" id="lipoEpsilon" value="9250" min="10" step="10">
                                             <span class="input-unit">L·mol⁻¹·cm⁻¹</span>
                                         </div>
                                         <div class="stat-sub">495 nm，Lee et al., Int. J. Nanomed. 20 (2025) 6357–6378</div>
@@ -1913,7 +1915,7 @@ git commit -m "feat(liposome): results table with localStorage persistence and R
                                     <div class="form-group">
                                         <label class="form-label" for="lipoPathLength">光徑</label>
                                         <div class="form-input-group">
-                                            <input type="number" class="form-input" id="lipoPathLength" value="0.2" min="0.001" step="0.01">
+                                            <input type="number" class="form-input" id="lipoPathLength" value="0.2" min="0.01" step="0.01">
                                             <span class="input-unit">cm</span>
                                         </div>
                                         <div class="stat-sub">SAXS 毛細管厚度</div>
