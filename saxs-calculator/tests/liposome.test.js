@@ -10,7 +10,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Liposome } = require('./load.js');
+const { Liposome, LiposomeParsers } = require('./load.js');
 
 const approx = (actual, expected, tol, msg) =>
     assert.ok(Math.abs(actual - expected) <= tol,
@@ -304,4 +304,68 @@ test('[lipo] 稀釋因子：solution 側非正值也會被排除並計數（不�
     assert.equal(r.excluded.nonPositive, 2);
     assert.equal(r.n, 49);
     approx(r.factor, 0.45, 1e-9, 'factor after solution-side exclusion');
+});
+
+// ---------------------------------------------------------------- 檔案解析
+const PRIMUS_DAT = [
+    'Sample description: BSA merged',
+    'Sample:   c= 1.000 mg/ml  Code: ',
+    ' q(A-1)  I(q)  error',
+    '',
+    '# comment line',
+    ' 1.0000E-02  1.5659E+00  3.7940E-02',
+    ' 1.1000E-02  1.6071E+00  8.5800E-03',
+    ' 1.2000E-02  1.5007E+00  5.7700E-03',
+    '',
+].join('\n');
+
+test('[lipo-parse] parseSaxsDat 跳過文字標頭／空行／# 註解，保留 err 欄，計數 skipped', () => {
+    const r = LiposomeParsers.parseSaxsDat(PRIMUS_DAT);
+    assert.deepEqual(r.q, [0.01, 0.011, 0.012]);
+    assert.deepEqual(r.i, [1.5659, 1.6071, 1.5007]);
+    assert.deepEqual(r.err, [0.03794, 0.00858, 0.00577]);
+    assert.equal(r.skipped, 3, '三行文字標頭；空行與 # 行不算 skipped');
+    assert.equal(r.sorted, false);
+    assert.ok(Object.isFrozen(r));
+});
+
+test('[lipo-parse] parseSaxsDat 接受逗號／tab／分號分隔；兩欄檔 err 為 null；缺第三欄的列讓 err 為 null', () => {
+    assert.deepEqual(LiposomeParsers.parseSaxsDat('0.1,2,0.5\n0.2,1,0.4').err, [0.5, 0.4]);
+    assert.deepEqual(LiposomeParsers.parseSaxsDat('0.1\t2\t0.5\r\n0.2\t1\t0.4').q, [0.1, 0.2]);
+    assert.deepEqual(LiposomeParsers.parseSaxsDat('0.1;2\n0.2;1').i, [2, 1]);
+    assert.equal(LiposomeParsers.parseSaxsDat('0.1 2\n0.2 1').err, null);
+    assert.equal(LiposomeParsers.parseSaxsDat('0.1 2 0.5\n0.2 1').err, null, '有一列缺 err 就整個 null');
+});
+
+test('[lipo-parse] parseSaxsDat 亂序 q 穩定排序並設 sorted=true；重複 q throw；無數值列 throw', () => {
+    const r = LiposomeParsers.parseSaxsDat('0.00045597 -0.00377 0\n0 0 0\n0.0057 1.5659 0.03794');
+    assert.deepEqual(r.q, [0, 0.00045597, 0.0057]);
+    assert.deepEqual(r.i, [0, -0.00377, 1.5659]);
+    assert.equal(r.sorted, true);
+    assert.throws(() => LiposomeParsers.parseSaxsDat('0.1 1\n0.1 2'), /q 有重複值 0.1/);
+    assert.throws(() => LiposomeParsers.parseSaxsDat('q I err\nhello world'), /找不到數值列/);
+    assert.throws(() => LiposomeParsers.parseSaxsDat(''), /找不到數值列/);
+    assert.throws(() => LiposomeParsers.parseSaxsDat(null), /不是文字/);
+});
+
+test('[lipo-parse] parseUvSpectrum 兩欄、標頭列跳過、遞減匯出被排序、重複波長 throw', () => {
+    const r = LiposomeParsers.parseUvSpectrum('wavelength [nm],abs.\n190,-3.635\n190.5,-4.531\n191,-5.041');
+    assert.deepEqual(r.wavelength, [190, 190.5, 191]);
+    assert.deepEqual(r.absorbance, [-3.635, -4.531, -5.041]);
+    assert.equal(r.skipped, 1);
+    assert.equal(r.sorted, false);
+
+    const desc = LiposomeParsers.parseUvSpectrum('850 0.02\n849.5 0.028\n849 0.03');
+    assert.deepEqual(desc.wavelength, [849, 849.5, 850]);
+    assert.deepEqual(desc.absorbance, [0.03, 0.028, 0.02]);
+    assert.equal(desc.sorted, true);
+
+    assert.throws(() => LiposomeParsers.parseUvSpectrum('500 1\n500 2'), /波長 有重複值 500/);
+});
+
+test('[lipo-parse] LIMITS：點數超過 MAX_POINTS throw；MAX_BYTES 為 5 MB', () => {
+    assert.equal(LiposomeParsers.LIMITS.MAX_BYTES, 5 * 1024 * 1024);
+    assert.equal(LiposomeParsers.LIMITS.MAX_POINTS, 100000);
+    const big = Array.from({ length: 100001 }, (_, k) => `${k} 1`).join('\n');
+    assert.throws(() => LiposomeParsers.parseSaxsDat(big), /超過上限 100000/);
 });
