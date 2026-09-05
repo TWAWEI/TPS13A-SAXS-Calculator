@@ -223,14 +223,15 @@ Q、R 是 Excel 的完整快取值（openpyxl `data_only=True` 讀出，2026-09-
 狀態物件單一來源，每次更新都產生新物件（不就地修改）：
 
 ```js
+// 實作版（2026-09-05）：結果列不在這裡，由 LiposomeResultsTable 自己持有；lsqScale 只渲染不存
 state = {
-  dilution: { factor, sd, n, lsqScale, source: 'saxs' | 'manual' | null },
-  spectra:  { loaded, blank, pure, subtracted, fit } | null,
+  dilution: { factor, sd, n, qMin, qMax, source: 'saxs' | 'manual' | null },   // qMin/qMax 於計算時擷取，手動為 null
+  spectra:  { loaded, blank, subtracted, fit } | null,
   absorbance: { values: [a, b, c], sd, source: 'spectrum' | 'manual' | null },
-  dl: computeDrugToLipid 的回傳 | null,
-  results: [ { id, sampleName, factor, factorSource, aPrimary, primaryWavelengthNm,
-               doxConcMM, lipidActualMM, dl, dlSd, addedAt, meta } ]
+  dl: computeDrugToLipid 的回傳 + params 快照 | null,
 }
+// 結果列（LiposomeResultsTable）：{ id, sampleName, factor, factorSource, aPrimary, primaryWavelengthNm,
+//   doxConcMM, lipidActualMM, dl, dlSd, addedAt, meta }
 ```
 
 - **輸入框是真值，state 是鏡像**：`lipoDilutionFactor` 與 `lipoAbs1–3` 每次 `input` 事件都把值同步回 `state.dilution.factor` / `state.absorbance.values`（並依 §3.1/§3.2 規則更新 source 與 sd）；`lipoFactorEcho`、結果列、`computeDrugToLipid` 的參數全部從 state 取。
