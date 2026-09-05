@@ -179,6 +179,22 @@
     color: var(--color-accent-primary);
 }
 
+/* disabled：暫時無法操作（例如檔案尚未載入）——壓淡並取消 hover 變化 */
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.btn-primary:disabled:hover {
+    background: var(--color-accent-primary);
+}
+
+.btn-secondary:disabled:hover {
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+}
+
 .btn-success {
     background: var(--color-accent-secondary);
     color: var(--color-text-on-accent);
@@ -320,6 +336,11 @@
     color: var(--color-text-muted);
     font-size: 0.6875rem;
     letter-spacing: 0.06em;
+}
+
+.table caption {
+    text-align: left;
+    padding: 0.5rem var(--spacing-md);
 }
 
 .table td.text-right,
@@ -514,6 +535,11 @@
 /* .alert 設了 display:flex，會蓋掉瀏覽器預設的 [hidden]{display:none} —— 不補這條，
    帶 hidden 屬性的警告會一直露出來。 */
 .alert[hidden] {
+    display: none;
+}
+
+/* 同上：.btn 的 display:inline-flex 會蓋掉 [hidden] 的預設值 */
+.btn[hidden] {
     display: none;
 }
 

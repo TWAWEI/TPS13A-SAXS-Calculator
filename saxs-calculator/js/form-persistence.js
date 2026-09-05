@@ -12,7 +12,7 @@ const STORAGE_KEY = 'tps13a-form-state';
 const PERSIST_SKIP_TYPES = Object.freeze(['file', 'password']);
 const PERSIST_SKIP_IDS = Object.freeze([
     'dndcPasswordInput', 'detectorRgInput',
-    // 脂質體頁的 chip 管理欄位：重新整理後沒有 SD 與來源，還原數值只會做出沒有來源的因子
+    // 脂質體頁的 chip／SD 管理欄位：重新整理後沒有 SD 與來源，還原數值只會做出沒有來源的因子
     'lipoDilutionFactor', 'lipoAbs1', 'lipoAbs2', 'lipoAbs3',
 ]);
 
