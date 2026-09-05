@@ -288,6 +288,60 @@
         });
     }
 
+    /**
+     * D/L 與誤差（Excel DL 工作表 F/J/K/O/Q/R 欄 + 因子離散）。
+     *
+     * @param {{absorbances:number[], primaryIndex?:number, primaryWavelengthNm?:number,
+     *          epsilon:number, pathCm:number, lipidMolar:number, factor:number, factorSd?:number}} params
+     * @returns {{aPrimary:number, sdA:number, doxConc:number, doxSd:number, lipidActual:number,
+     *            dl:number, dlSd:number, dlSdExcel:number, relA:number, relF:number}}
+     */
+    function computeDrugToLipid(params) {
+        const p = params || {};
+        const primaryIndex = p.primaryIndex ?? DEFAULTS.PRIMARY_INDEX;
+        const primaryWavelengthNm = p.primaryWavelengthNm ?? DEFAULTS.PRIMARY_WAVELENGTH_NM;
+        const factorSd = p.factorSd ?? 0;
+
+        if (!Array.isArray(p.absorbances) || p.absorbances.length !== 3) {
+            throw new Error('需要三個吸光度（494 / 495 / 496 nm 或自訂的三個波長）');
+        }
+        p.absorbances.forEach((a, k) => assertFinite(a, `吸光度 #${k + 1}`));
+        if (!(primaryIndex >= 0 && primaryIndex < 3)) throw new Error('primaryIndex 必須是 0、1 或 2');
+
+        const aPrimary = p.absorbances[primaryIndex];
+        if (!(aPrimary > 0)) {
+            throw new Error(`主波長 ${primaryWavelengthNm} nm 的吸光度非正（${aPrimary}）`);
+        }
+        assertPositive(p.epsilon, 'ε');
+        assertPositive(p.pathCm, '光徑');
+        assertPositive(p.lipidMolar, '脂質原始濃度');
+        assertPositive(p.factor, '稀釋因子');
+        assertFinite(factorSd, '稀釋因子離散度');
+        if (factorSd < 0) throw new Error(`稀釋因子離散度不可為負（目前：${factorSd}）`);
+
+        const sdA = sampleStd(p.absorbances);                 // Excel F
+        const denom = p.epsilon * p.pathCm;
+        const doxConc = aPrimary / denom;                      // Excel J
+        const doxSd = sdA / denom;                             // Excel K
+        const lipidActual = p.lipidMolar * p.factor;           // Excel O
+        const dl = doxConc / lipidActual;                      // Excel Q
+        const relA = sdA / aPrimary;
+        const relF = factorSd / p.factor;
+
+        return Object.freeze({
+            aPrimary,
+            sdA,
+            doxConc,
+            doxSd,
+            lipidActual,
+            dl,
+            dlSd: dl * Math.sqrt(relA * relA + relF * relF),
+            dlSdExcel: dl * relA,                              // Excel R
+            relA,
+            relF,
+        });
+    }
+
     global.LiposomeCalculations = Object.freeze({
         DEFAULTS,
         interpolateLinear,
@@ -296,5 +350,6 @@
         subtractSpectra,
         absorbanceAt,
         fitPureDoxScale,
+        computeDrugToLipid,
     });
 })(typeof window !== 'undefined' ? window : globalThis);

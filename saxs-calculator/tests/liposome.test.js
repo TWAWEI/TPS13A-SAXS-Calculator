@@ -190,3 +190,63 @@ test('[lipo] fitPureDoxScale 預設擬合範圍 450–550；範圍點數不足�
     assert.throws(() => Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure, { fitMin: 550, fitMax: 450 }),
         /上限必須大於下限/);
 });
+
+// ---------------------------------------------------------------- D/L（Excel DL 工作表）
+// 欄位：A494, A495, A496, M（脂質原始濃度 M）, N（稀釋因子）, Q（D/L）, R（Excel 誤差，僅 UV）
+// Q、R 是 openpyxl data_only 讀出的完整快取值（2026-09-05），ε = 9250、l = 0.2。
+const EXCEL_DL_ROWS = [
+    ['DOX-18',      0.90287, 0.91973, 0.94266, 0.0117, 0.454, 0.09359376319728743,  0.002032396638192102],
+    ['DOX-20',      0.74644, 1.05761, 0.89623, 0.0108, 0.526, 0.10063390386584302,  0.01480767552474392],
+    ['DOX-22',      0.07752, 0.0764,  0.08737, 0.011,  0.556, 0.006752337687589486, 0.0005334920222687899],
+    ['Chol-DOX-18', 0.69825, 0.8085,  0.69407, 0.01,   0.54,  0.08093093093093093,  0.006495815219697592],
+    ['Chol-DOX-20', 0.86094, 0.74027, 0.96326, 0.0105, 0.556, 0.06854161458478004,  0.01033496895850612],
+    ['Chol-DOX-22', 0.80352, 0.75896, 0.79255, 0.01,   0.417, 0.0983809708989565,   0.0030095498767000206],
+];
+
+test('[lipo] computeDrugToLipid 重現 Excel DL 頁六列的 Q 與 R（factorSd = 0 時 dlSd = dlSdExcel）', () => {
+    for (const [name, a494, a495, a496, lipidM, factor, Q, R] of EXCEL_DL_ROWS) {
+        const r = Liposome.computeDrugToLipid({
+            absorbances: [a494, a495, a496],
+            primaryIndex: 1,
+            primaryWavelengthNm: 495,
+            epsilon: 9250,
+            pathCm: 0.2,
+            lipidMolar: lipidM,
+            factor,
+            factorSd: 0,
+        });
+        relApprox(r.dl, Q, 1e-9, `${name} Q`);
+        relApprox(r.dlSdExcel, R, 1e-9, `${name} R`);
+        relApprox(r.dlSd, R, 1e-9, `${name} dlSd（factorSd=0 時等於 Excel）`);
+        assert.equal(r.aPrimary, a495);
+        relApprox(r.doxConc, a495 / (9250 * 0.2), 1e-12, `${name} J`);
+        relApprox(r.lipidActual, lipidM * factor, 1e-12, `${name} O`);
+        assert.equal(r.relF, 0);
+        assert.ok(Object.isFrozen(r));
+    }
+});
+
+test('[lipo] computeDrugToLipid 納入稀釋因子離散：dlSd = dl·√(relA² + relF²)', () => {
+    const base = { absorbances: [0.90287, 0.91973, 0.94266], epsilon: 9250, pathCm: 0.2, lipidMolar: 0.0117, factor: 0.454 };
+    const r = Liposome.computeDrugToLipid({ ...base, factorSd: 0.0129 });
+    const relA = 0.019972016256085294 / 0.91973;
+    const relF = 0.0129 / 0.454;
+    relApprox(r.relA, relA, 1e-12, 'relA');
+    relApprox(r.relF, relF, 1e-12, 'relF');
+    relApprox(r.dlSd, r.dl * Math.sqrt(relA * relA + relF * relF), 1e-12, 'dlSd');
+    assert.ok(r.dlSd > r.dlSdExcel, '加了因子離散後誤差只會變大');
+});
+
+test('[lipo] computeDrugToLipid 預設 primaryIndex 1 / 495 nm；主波長吸光度非正、參數非正、吸光度數量錯 throw', () => {
+    const ok = { absorbances: [0.1, 0.2, 0.3], epsilon: 9250, pathCm: 0.2, lipidMolar: 0.01, factor: 0.5 };
+    assert.equal(Liposome.computeDrugToLipid(ok).aPrimary, 0.2);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, absorbances: [0.1, 0, 0.3] }), /主波長 495 nm 的吸光度非正/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, absorbances: [0.1, -0.2, 0.3], primaryWavelengthNm: 500 }), /主波長 500 nm/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, absorbances: [0.1, 0.2] }), /三個吸光度/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, absorbances: [0.1, NaN, 0.3] }), /吸光度 #2/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, lipidMolar: 0 }), /脂質原始濃度 必須大於 0/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, factor: -1 }), /稀釋因子 必須大於 0/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, epsilon: 0 }), /ε 必須大於 0/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, pathCm: 0 }), /光徑 必須大於 0/);
+    assert.throws(() => Liposome.computeDrugToLipid({ ...ok, factorSd: -0.1 }), /離散度不可為負/);
+});
