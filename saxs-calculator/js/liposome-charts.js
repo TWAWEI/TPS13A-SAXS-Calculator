@@ -36,18 +36,22 @@
         const canvas = typeof document !== 'undefined' ? document.getElementById(canvasId) : null;
         if (!canvas || typeof global.Chart !== 'function') return null;
         const old = charts.get(canvasId);
-        if (old) old.destroy();
+        if (old) {
+            old.destroy();
+            charts.delete(canvasId);
+        }
         const chart = new global.Chart(canvas, config);
         charts.set(canvasId, chart);
         return chart;
     }
 
     function axis(title, extra = {}) {
+        const { grid, ...rest } = extra;
         return {
             title: { display: true, text: title, color: LIPO_CHART_COLORS.text, font: { family: FONT, size: 11 } },
             ticks: { color: LIPO_CHART_COLORS.text, font: { family: MONO, size: 10 } },
-            grid: { color: LIPO_CHART_COLORS.grid },
-            ...extra,
+            grid: { color: LIPO_CHART_COLORS.grid, ...(grid || {}) },
+            ...rest,
         };
     }
 
@@ -102,6 +106,7 @@
      * @param {{solution:{q:number[],i:number[]}, bypass:{q:number[],i:number[]}, factor:number, qMin:number, qMax:number}} p
      */
     function renderDilutionChart(canvasId, p) {
+        if (!(Number.isFinite(p.factor) && p.factor > 0)) throw new Error('稀釋因子必須是正數');
         const sol = positivePoints(p.solution.q, p.solution.i);
         const byp = positivePoints(p.bypass.q, p.bypass.i);
         const scaled = byp.py.map(y => y / p.factor);

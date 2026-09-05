@@ -413,3 +413,19 @@ test('[lipo-table] rowsToCsv：標頭 + 每列 + 中繼欄位，不四捨五入'
     assert.equal(lines[1],
         '"DOX-18, batch ""A""",0.454,manual,0,0.91973,495,0.4971513513513514,5.3118,0.09359376319728743,0.002032396638192102,2026-09-05T08:00:00.000Z,9250,0.2,0.1,0.15,494|495|496,0.90287|0.91973|0.94266,manual');
 });
+
+test('[lipo-table] rowsToCsv 空表只回標頭；缺 meta 的列與 Infinity 都變空欄', () => {
+    const header = LiposomeTable.rowsToCsv([]);
+    assert.equal(header.split('\n').length, 1);
+    const line = LiposomeTable.rowsToCsv([{ id: 'x', sampleName: 'S', factor: Infinity, dl: 0.1, dlSd: 0.01 }]).split('\n')[1];
+    assert.equal(line, 'S,,,,,,,,0.1,0.01,,,,,,,,');
+});
+
+test('[lipo-table] isRow 只接受 id 字串、有限 dl、有限主波長、字串樣品名', () => {
+    const good = { id: 'a', dl: 0.1, primaryWavelengthNm: 495, sampleName: 'S' };
+    assert.equal(LiposomeTable.isRow(good), true);
+    assert.equal(LiposomeTable.isRow({ ...good, primaryWavelengthNm: '495' }), false);
+    assert.equal(LiposomeTable.isRow({ ...good, sampleName: 5 }), false);
+    assert.equal(LiposomeTable.isRow({ ...good, dl: NaN }), false);
+    assert.equal(LiposomeTable.isRow(null), false);
+});

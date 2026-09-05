@@ -7,6 +7,9 @@
  *
  * 頂層不碰 DOM，Node 可 require 測 csvCell / rowsToCsv。
  * 依賴（呼叫時才取用）：FormUtils.safeLocal、FormUtils.escapeHtml、showAlert、clearAlert、downloadCsv。
+ *
+ * CSV 不做公式注入防護（`=`/`+`/`-`/`@` 開頭不加前綴）——匯出的是使用者自己的樣品名到自己的 Excel，
+ * 加前綴反而毀掉像 `-DOX` 的合法名稱。
  */
 (function attachLiposomeResultsTable(global) {
     'use strict';
@@ -24,6 +27,7 @@
 
     let rows = Object.freeze([]);
     let primaryWavelengthNm = 495;
+    let initialised = false;
     const els = {};
 
     // ------------------------------------------------------------ CSV（純函式）
@@ -52,7 +56,8 @@
 
     // ------------------------------------------------------------ 持久化
     function isRow(r) {
-        return !!r && typeof r === 'object' && typeof r.id === 'string' && Number.isFinite(r.dl);
+        return !!r && typeof r === 'object' && typeof r.id === 'string' && Number.isFinite(r.dl)
+            && Number.isFinite(r.primaryWavelengthNm) && typeof r.sampleName === 'string';
     }
 
     function loadRows() {
@@ -69,8 +74,9 @@
 
     function setRows(next) {
         rows = Object.freeze(next);
-        global.FormUtils.safeLocal.set(RESULTS_KEY, JSON.stringify(rows));
+        const saved = global.FormUtils.safeLocal.set(RESULTS_KEY, JSON.stringify(rows));
         render();
+        if (!saved) global.showAlert('lipoResultsAlert', 'warning', '結果已顯示但無法寫入瀏覽器儲存空間，重新整理後會消失，請先匯出 CSV');
     }
 
     // ------------------------------------------------------------ 渲染
@@ -79,9 +85,10 @@
     }
 
     function absCell(r) {
+        const esc = global.FormUtils.escapeHtml;
         const same = r.primaryWavelengthNm === primaryWavelengthNm;
-        const title = same ? '' : ` title="讀值波長 ${r.primaryWavelengthNm} nm"`;
-        const tag = same ? '' : ` <small>(${r.primaryWavelengthNm})</small>`;
+        const title = same ? '' : ` title="讀值波長 ${esc(r.primaryWavelengthNm)} nm"`;
+        const tag = same ? '' : ` <small>(${esc(r.primaryWavelengthNm)})</small>`;
         return `<td class="text-right"${title}>${fmt(r.aPrimary, 5)}${tag}</td>`;
     }
 
@@ -92,7 +99,7 @@
         return `<tr>
             <td>${esc(r.sampleName)}</td>
             <td class="text-right">${fmt(r.factor, 4)}</td>
-            <td>${esc(SOURCE_LABEL[r.factorSource] || r.factorSource)}</td>
+            <td>${esc(Object.hasOwn(SOURCE_LABEL, r.factorSource) ? SOURCE_LABEL[r.factorSource] : r.factorSource)}</td>
             ${absCell(r)}
             <td class="text-right">${fmt(r.doxConcMM, 4)}</td>
             <td class="text-right">${fmt(r.lipidActualMM, 4)}</td>
@@ -122,8 +129,8 @@
             global.showAlert('lipoResultsAlert', 'error', `結果表已達 ${MAX_ROWS} 列上限，請先匯出 CSV 再清空`);
             return false;
         }
-        setRows([...rows, row]);
         global.clearAlert('lipoResultsAlert');
+        setRows([...rows, row]);
         return true;
     }
 
@@ -153,23 +160,28 @@
         if (!dialog || !els.clearBtn) return;
         const supportsDialog = typeof dialog.showModal === 'function';
         els.clearBtn.addEventListener('click', () => {
+            if (!supportsDialog) {
+                global.showAlert('lipoResultsAlert', 'error', '此瀏覽器不支援確認視窗，請逐列刪除');
+                return;
+            }
             // returnValue 會跨次保留：確認清空一次後，下次用 Escape 關閉也會帶著 'confirm' 觸發 close。
             // 每次開啟前清掉，否則會無聲清空整張表。
             dialog.returnValue = '';
-            if (supportsDialog) dialog.showModal(); else dialog.setAttribute('open', '');
+            dialog.showModal();
         });
         dialog.addEventListener('close', () => {
-            if (dialog.returnValue === 'confirm') clear();
-            // 清空後 clearBtn 已被 render() 停用，焦點移不過去；改落在空狀態文字
-            const target = rows.length === 0 ? els.empty : els.clearBtn;
-            if (target) { target.setAttribute('tabindex', '-1'); target.focus(); }
+            if (dialog.returnValue !== 'confirm') return;   // 取消／Escape：原生 dialog 會自己把焦點還給觸發鈕
+            clear();
+            // clearBtn 已被 render() 停用，焦點落在空狀態文字
+            if (els.empty) { els.empty.setAttribute('tabindex', '-1'); els.empty.focus(); }
         });
         els.dialogCancel?.addEventListener('click', () => {
-            if (supportsDialog) dialog.close('cancel'); else dialog.removeAttribute('open');
+            dialog.close('cancel');
         });
     }
 
     function init() {
+        if (initialised) return;
         const $ = id => document.getElementById(id);
         els.body = $('lipoResultsBody');
         els.wrapper = $('lipoResultsWrapper');
@@ -191,6 +203,7 @@
         });
         els.exportBtn?.addEventListener('click', exportCsv);
         bindClearDialog();
+        initialised = true;
     }
 
     global.LiposomeResultsTable = Object.freeze({
@@ -198,6 +211,7 @@
         MAX_ROWS,
         csvCell,
         rowsToCsv,
+        isRow,
         init,
         add,
         remove,
