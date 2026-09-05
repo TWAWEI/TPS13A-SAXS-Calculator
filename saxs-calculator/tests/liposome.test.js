@@ -166,3 +166,27 @@ test('[lipo] absorbanceAt 在 1 nm 與 0.5 nm 格點上讀 494/495/496 都對到
     const sub = Liposome.subtractSpectra(syntheticSpectra(0.8).loaded, syntheticSpectra(0.8).blank);
     assert.throws(() => Liposome.absorbanceAt(sub, [494, 495, 650]), /650 nm 超出光譜範圍 400–600 nm/);
 });
+
+// ---------------------------------------------------------------- 純 DOX 縮放擬合
+test('[lipo] fitPureDoxScale 在合成資料上回復 k = 0.8、殘差 0；model 覆蓋整段重疊', () => {
+    const s = syntheticSpectra(0.8);
+    const r = Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure, { fitMin: 450, fitMax: 550 });
+    approx(r.k, 0.8, 1e-9, 'k');
+    assert.ok(r.rms < 1e-9, `rms ${r.rms}`);
+    assert.equal(r.n, 101, '450…550 步進 1');
+    assert.equal(r.model.wavelength.length, 201, 'model 涵蓋 400…600 整段');
+    r.model.absorbance.forEach((m, j) => approx(m, s.loaded.absorbance[j], 1e-9, `model λ=${r.model.wavelength[j]}`));
+    r.residual.absorbance.forEach((d) => assert.ok(Math.abs(d) < 1e-9));
+    assert.ok(Object.isFrozen(r));
+});
+
+test('[lipo] fitPureDoxScale 預設擬合範圍 450–550；範圍點數不足或純 DOX 全零 throw', () => {
+    const s = syntheticSpectra(0.8);
+    approx(Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure).k, 0.8, 1e-9, '預設範圍');
+    assert.throws(() => Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure, { fitMin: 500, fitMax: 505 }),
+        /只有 6 點/);
+    const zero = { wavelength: s.pure.wavelength, absorbance: s.pure.absorbance.map(() => 0) };
+    assert.throws(() => Liposome.fitPureDoxScale(s.loaded, s.blank, zero), /全為 0/);
+    assert.throws(() => Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure, { fitMin: 550, fitMax: 450 }),
+        /上限必須大於下限/);
+});

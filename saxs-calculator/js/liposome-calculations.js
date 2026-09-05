@@ -222,6 +222,72 @@
         });
     }
 
+    /**
+     * 純 DOX 縮放擬合：在 fitMin–fitMax 內求最小平方 k，使 blank + k·pure ≈ loaded。
+     * k = Σ[(L−B)·P] / Σ(P²)。model 與 residual 覆蓋三條光譜的整段重疊範圍。
+     *
+     * @returns {{k:number, rms:number, n:number,
+     *            model:{wavelength:number[], absorbance:number[]},
+     *            residual:{wavelength:number[], absorbance:number[]}}}
+     */
+    function fitPureDoxScale(loaded, blank, pure, options = {}) {
+        const fitMin = options.fitMin ?? DEFAULTS.FIT_MIN_NM;
+        const fitMax = options.fitMax ?? DEFAULTS.FIT_MAX_NM;
+        assertCurve(loaded, 'wavelength', 'absorbance', '含藥光譜');
+        assertCurve(blank, 'wavelength', 'absorbance', '空白光譜');
+        assertCurve(pure, 'wavelength', 'absorbance', '純 DOX 光譜');
+        assertFinite(fitMin, '擬合下限');
+        assertFinite(fitMax, '擬合上限');
+        if (!(fitMax > fitMin)) throw new Error(`擬合範圍上限必須大於下限（目前 ${fitMin}–${fitMax}）`);
+
+        const bw = blank.wavelength;
+        const pw = pure.wavelength;
+        const lo = Math.max(bw[0], pw[0]);
+        const hi = Math.min(bw[bw.length - 1], pw[pw.length - 1]);
+
+        const wavelength = [];
+        const L = [];
+        const B = [];
+        const P = [];
+        loaded.wavelength.forEach((w, k) => {
+            if (!inRange(w, lo, hi)) return;
+            wavelength.push(w);
+            L.push(loaded.absorbance[k]);
+            B.push(interpolateLinear(bw, blank.absorbance, w));
+            P.push(interpolateLinear(pw, pure.absorbance, w));
+        });
+
+        let num = 0;
+        let den = 0;
+        let n = 0;
+        wavelength.forEach((w, j) => {
+            if (!inRange(w, fitMin, fitMax)) return;
+            num += (L[j] - B[j]) * P[j];
+            den += P[j] * P[j];
+            n += 1;
+        });
+        if (n < DEFAULTS.MIN_FIT_POINTS) {
+            throw new Error(`擬合範圍 ${fitMin}–${fitMax} nm 內只有 ${n} 點，至少需要 ${DEFAULTS.MIN_FIT_POINTS} 點`);
+        }
+        if (!(den > 0)) throw new Error('純 DOX 光譜在擬合範圍內全為 0，無法縮放');
+
+        const k = num / den;
+        const model = B.map((b, j) => b + k * P[j]);
+        const residual = L.map((l, j) => l - model[j]);
+        let ss = 0;
+        wavelength.forEach((w, j) => {
+            if (inRange(w, fitMin, fitMax)) ss += residual[j] * residual[j];
+        });
+
+        return Object.freeze({
+            k,
+            rms: Math.sqrt(ss / n),
+            n,
+            model: Object.freeze({ wavelength: Object.freeze(wavelength), absorbance: Object.freeze(model) }),
+            residual: Object.freeze({ wavelength: Object.freeze(wavelength), absorbance: Object.freeze(residual) }),
+        });
+    }
+
     global.LiposomeCalculations = Object.freeze({
         DEFAULTS,
         interpolateLinear,
@@ -229,5 +295,6 @@
         computeDilutionFactor,
         subtractSpectra,
         absorbanceAt,
+        fitPureDoxScale,
     });
 })(typeof window !== 'undefined' ? window : globalThis);
