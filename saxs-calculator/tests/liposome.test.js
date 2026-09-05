@@ -10,7 +10,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Liposome, LiposomeParsers } = require('./load.js');
+const { Liposome, LiposomeParsers, LiposomeTable } = require('./load.js');
 
 const approx = (actual, expected, tol, msg) =>
     assert.ok(Math.abs(actual - expected) <= tol,
@@ -384,4 +384,32 @@ test('[lipo-parse] BOM、CRLF 尾端空白、Infinity／1e400 都在邊界處理
     assert.equal(r.skipped, 2);
     assert.equal(LiposomeParsers.parseSaxsDat('0.1 1 Infinity\n0.2 2 0.4').err, null);
     assert.deepEqual(LiposomeParsers.parseSaxsDat('0.1 1\r0.2 2\r0.3 3').q, [0.1, 0.2, 0.3]);
+});
+
+// ---------------------------------------------------------------- 結果表 CSV
+test('[lipo-table] csvCell：數字原樣、字串含逗號／引號／換行時 RFC 4180 引號', () => {
+    assert.equal(LiposomeTable.csvCell(0.09359376319728743), '0.09359376319728743');
+    assert.equal(LiposomeTable.csvCell(NaN), '');
+    assert.equal(LiposomeTable.csvCell(null), '');
+    assert.equal(LiposomeTable.csvCell('DOX-18'), 'DOX-18');
+    assert.equal(LiposomeTable.csvCell('a,b'), '"a,b"');
+    assert.equal(LiposomeTable.csvCell('say "hi"'), '"say ""hi"""');
+    assert.equal(LiposomeTable.csvCell('two\nlines'), '"two\nlines"');
+});
+
+test('[lipo-table] rowsToCsv：標頭 + 每列 + 中繼欄位，不四捨五入', () => {
+    const row = {
+        id: 'x1', sampleName: 'DOX-18, batch "A"', factor: 0.454, factorSource: 'manual',
+        aPrimary: 0.91973, primaryWavelengthNm: 495,
+        doxConcMM: 0.4971513513513514, lipidActualMM: 5.3118,
+        dl: 0.09359376319728743, dlSd: 0.002032396638192102, addedAt: '2026-09-05T08:00:00.000Z',
+        meta: { epsilon: 9250, pathCm: 0.2, qMin: 0.1, qMax: 0.15, wavelengths: [494, 495, 496], absorbances: [0.90287, 0.91973, 0.94266], factorSd: 0, absSource: 'manual' },
+    };
+    const csv = LiposomeTable.rowsToCsv([row]);
+    const lines = csv.split('\n');
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0],
+        'Sample,Dilution factor,Factor source,Factor SD,A(primary),Primary wavelength (nm),DOX conc (mM),Lipid actual (mM),D/L,D/L error,Added at,Epsilon (L/mol/cm),Path (cm),q min,q max,Wavelengths (nm),Absorbances,Absorbance source');
+    assert.equal(lines[1],
+        '"DOX-18, batch ""A""",0.454,manual,0,0.91973,495,0.4971513513513514,5.3118,0.09359376319728743,0.002032396638192102,2026-09-05T08:00:00.000Z,9250,0.2,0.1,0.15,494|495|496,0.90287|0.91973|0.94266,manual');
 });

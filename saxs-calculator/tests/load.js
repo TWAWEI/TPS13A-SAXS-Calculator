@@ -21,6 +21,7 @@ require(path.join(JS, 'dndc-astra-parser.js'));
 require(path.join(JS, 'dndc-astra-ui.js'));
 require(path.join(JS, 'liposome-calculations.js'));
 require(path.join(JS, 'liposome-file-parsers.js'));
+require(path.join(JS, 'liposome-results-table.js'));   // 頂層無 DOM 存取；只用 rowsToCsv / csvCell
 
 module.exports = {
     SAXS: window.SAXSCalculations,
@@ -33,4 +34,5 @@ module.exports = {
     FormUtils: window.FormUtils,
     Liposome: window.LiposomeCalculations,
     LiposomeParsers: window.LiposomeFileParsers,
+    LiposomeTable: window.LiposomeResultsTable,
 };
