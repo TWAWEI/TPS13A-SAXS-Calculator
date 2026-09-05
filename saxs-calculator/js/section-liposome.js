@@ -11,6 +11,7 @@
  *   - 成功：渲染函式自組 HTML（含警告列），再 A11y.focusResults
  *   - 面板 2 的更新是原子的：扣背景、擬合、讀值三者都成功後才動 state 與畫面（Task 11b）
  *   - D/L 快照的 q 視窗取自 state.dilution（稀釋因子計算當下），手動因子時為 null
+ *   - state 與其巢狀物件都 Object.freeze；每次更新產生新物件
  *
  * 依賴：LiposomeCalculations、LiposomeFileParsers、LiposomeCharts、LiposomeResultsTable、
  *       DndcFileParser.readFile、FormUtils、A11y、showAlert、downloadChartPng。
@@ -23,6 +24,8 @@
     const Charts = () => global.LiposomeCharts;
     const Table = () => global.LiposomeResultsTable;
     const esc = (v) => global.FormUtils.escapeHtml(v);
+    /** 主波長在三個讀值波長中的索引（Excel J 欄只用 495 nm）。 */
+    const primary = () => Calc().DEFAULTS.PRIMARY_INDEX;
 
     const INVALIDATING_IDS = Object.freeze([
         'lipoDilutionFactor', 'lipoAbs1', 'lipoAbs2', 'lipoAbs3',
@@ -34,14 +37,21 @@
     /** 三個波長吸光度的樣本標準差不只是雜訊，也含吸收帶在 ±1 nm 的斜率（科學審查措辭）。 */
     const SPREAD_LABEL = '三點譜線離散（含譜帶斜率）';
 
+    /** 樣品名長度上限：以輸入框的 maxlength 為準，沒有就用這個值。 */
+    const SAMPLE_NAME_MAX_FALLBACK = 60;
+
+    const BYTES_PER_MB = 1048576;
+
     const initialState = () => Object.freeze({
-        dilution: Object.freeze({ factor: null, sd: 0, n: 0, lsqScale: null, source: null, qMin: null, qMax: null }),
+        dilution: Object.freeze({ factor: null, sd: 0, n: 0, source: null, qMin: null, qMax: null }),
         spectra: null,
         absorbance: Object.freeze({ values: Object.freeze([null, null, null]), sd: 0, source: null }),
         dl: null,
     });
 
     let state = initialState();
+    let initialised = false;
+    let untitledCount = 0;
     const els = {};
 
     function setState(patch) {
@@ -49,6 +59,8 @@
     }
 
     const $ = (id) => document.getElementById(id);
+    const wlEls = () => [els.wl1, els.wl2, els.wl3];
+    const absEls = () => [els.abs1, els.abs2, els.abs3];
 
     // ------------------------------------------------------------ 共用小工具
     function setChip(chip, source) {
@@ -76,22 +88,35 @@
         return texts.map(warningRow).join('');
     }
 
+    /**
+     * 一格結果。label / value / unit 全部經 escapeHtml——value 目前都是數字格式化後的字串，
+     * 逸出等於沒動；這樣日後放進任何字串也不會變成 HTML。
+     */
     function resultItem(label, value, unit = '') {
-        return `<div class="result-item"><div class="result-label">${esc(label)}</div><div class="result-value">${value}${unit ? ` <span class="stat-unit">${esc(unit)}</span>` : ''}</div></div>`;
+        return `<div class="result-item"><div class="result-label">${esc(label)}</div><div class="result-value">${esc(String(value))}${unit ? ` <span class="stat-unit">${esc(unit)}</span>` : ''}</div></div>`;
     }
 
     function pct(rel) {
         return `${(rel * 100).toFixed(2)}%`;
     }
 
-    /** 讀檔（含大小上限），回 Promise<string>。 */
+    /** 中文句子裡的拉丁詞前後補半形空格；純中文標籤不補。 */
+    function padLatin(label) {
+        return /^[\x20-\x7e]+$/.test(label) ? ` ${label} ` : label;
+    }
+
+    /** 讀檔（含大小上限），回 Promise<string>；讀取失敗的訊息帶上檔案標籤。 */
     function readChecked(input, label) {
+        const shown = padLatin(label);
         const file = input && input.files && input.files[0];
-        if (!file) throw new Error(`請先選擇${label}檔案`);
-        if (file.size > Parsers().LIMITS.MAX_BYTES) {
-            throw new Error(`${label}檔案 ${(file.size / 1048576).toFixed(1)} MB 超過上限 5 MB`);
+        if (!file) throw new Error(`請先選擇${shown}檔案`);
+        const maxBytes = Parsers().LIMITS.MAX_BYTES;
+        if (file.size > maxBytes) {
+            throw new Error(`${shown.trimStart()}檔案 ${(file.size / BYTES_PER_MB).toFixed(1)} MB 超過上限 ${(maxBytes / BYTES_PER_MB).toFixed(0)} MB`);
         }
-        return global.DndcFileParser.readFile(file);
+        return global.DndcFileParser.readFile(file).catch((err) => {
+            throw new Error(`無法讀取${shown}檔案：${err.message}`);
+        });
     }
 
     function syncButtons() {
@@ -149,10 +174,11 @@
     }
 
     async function onComputeDilution() {
+        els.computeDilution.disabled = true;   // 讀檔期間擋重複點擊；finally 的 syncButtons 恢復
         try {
             const [solText, bypText] = await Promise.all([
-                readChecked(els.solutionFile, ' solution cell '),
-                readChecked(els.bypassFile, ' bypass '),
+                readChecked(els.solutionFile, 'solution cell'),
+                readChecked(els.bypassFile, 'bypass'),
             ]);
             const solution = Parsers().parseSaxsDat(solText);
             const bypass = Parsers().parseSaxsDat(bypText);
@@ -160,7 +186,7 @@
             const qMax = global.FormUtils.readPositiveField('lipoQMax', 'q 上限');
             const r = Calc().computeDilutionFactor(solution, bypass, { qMin, qMax });
 
-            setState({ dilution: { factor: r.factor, sd: r.sd, n: r.n, lsqScale: r.lsqScale, source: 'saxs', qMin, qMax } });
+            setState({ dilution: Object.freeze({ factor: r.factor, sd: r.sd, n: r.n, source: 'saxs', qMin, qMax }) });
             invalidateDl();
             els.factor.value = r.factor.toPrecision(6);
             setChip(els.factorChip, 'saxs');
@@ -169,22 +195,23 @@
             Charts().renderDilutionChart('lipoDilutionChart', { solution, bypass, factor: r.factor, qMin, qMax });
             global.A11y.describeChart('lipoDilutionChart',
                 `log-log 疊圖：solution cell、bypass、bypass 除以 ${r.factor.toPrecision(4)}；q 視窗 ${qMin}–${qMax}`);
-            syncButtons();
         } catch (err) {
             global.showAlert('lipoDilutionResults', 'error', err.message);
+        } finally {
+            syncButtons();
         }
     }
 
     function onFactorInput() {
         const v = parseFloat(els.factor.value);
-        setState({ dilution: { ...state.dilution, factor: Number.isFinite(v) ? v : null, sd: 0, n: 0, source: 'manual', qMin: null, qMax: null } });
+        setState({ dilution: Object.freeze({ ...state.dilution, factor: Number.isFinite(v) ? v : null, sd: 0, n: 0, source: 'manual', qMin: null, qMax: null }) });
         setChip(els.factorChip, 'manual');
         syncFactorEcho();
     }
 
     // ------------------------------------------------------------ 面板 2：光譜
     function currentWavelengths() {
-        return [els.wl1, els.wl2, els.wl3].map((el, k) =>
+        return wlEls().map((el, k) =>
             global.FormUtils.parsePositiveNumber(el.value, `讀值波長 ${k + 1}`));
     }
 
@@ -198,15 +225,14 @@
             : `${label}：三個吸光度都填好才能算 D/L`;
     }
 
-    /** 五位小數四捨五入（與輸入框顯示一致），SD 用四捨五入後的值算（與 Excel 一致）。純函式。 */
+    /** 五位小數四捨五入（與輸入框顯示一致），SD 用四捨五入後的值算（與 Excel 一致）。 */
     function roundedAbsorbances(raw) {
-        const shown = Object.freeze(raw.map(v => Number(v.toFixed(5))));
-        return Object.freeze({ shown, sd: Calc().sampleStd(shown) });
+        return Calc().roundAbsorbances(raw);
     }
 
     /** 把已寫進 state 的光譜讀值反映到輸入框、chip 與摘要（只碰 DOM）。 */
     function applyAbsorbances(shown) {
-        [els.abs1, els.abs2, els.abs3].forEach((el, k) => { el.value = shown[k].toFixed(5); });
+        absEls().forEach((el, k) => { el.value = shown[k].toFixed(5); });
         setChip(els.absChip, 'spectrum');
         updateAbsSummary();
     }
@@ -228,7 +254,7 @@
             <div class="stat-card">
                 <div class="stat-content">
                     <div class="stat-label">扣背景後 A(主波長)</div>
-                    <div class="stat-value">${a.values[1].toFixed(5)} <span class="stat-unit">± ${a.sd.toPrecision(2)}</span></div>
+                    <div class="stat-value">${a.values[primary()].toFixed(5)} <span class="stat-unit">± ${a.sd.toPrecision(2)}</span></div>
                     <div class="stat-sub">± 為${SPREAD_LABEL}；重疊 ${subtracted.wavelength.length} 點${dropped}</div>
                 </div>
             </div>
@@ -245,10 +271,11 @@
         const { loaded, blank, subtracted } = spectra;
         Charts().renderSpectraChart('lipoSpectraChart', { loaded, blank, subtracted, wavelengths: wls });
         global.A11y.describeChart('lipoSpectraChart',
-            `含藥、空白與扣背景光譜；主波長 ${wls[1]} nm 吸光度 ${state.absorbance.values[1]}`);
+            `含藥、空白與扣背景光譜；主波長 ${wls[primary()]} nm 吸光度 ${state.absorbance.values[primary()]}`);
     }
 
     async function onComputeSpectra() {
+        els.computeSpectra.disabled = true;   // 讀檔期間擋重複點擊；finally 的 syncButtons 恢復
         try {
             const [loadedText, blankText] = await Promise.all([
                 readChecked(els.loadedFile, '含藥光譜'),
@@ -280,14 +307,16 @@
                 Charts().renderFitChart('lipoFitChart', { loaded, model: fit.model, residual: fit.residual });
                 global.A11y.describeChart('lipoFitChart', `含藥實測與空白加 ${fit.k.toPrecision(3)} 倍純 DOX 的模型，殘差 RMS ${fit.rms.toPrecision(2)}`);
             }
-            syncButtons();
         } catch (err) {
             global.showAlert('lipoSpectraResults', 'error', err.message);
+        } finally {
+            syncButtons();
         }
     }
 
     function onWavelengthInput(event) {
-        if (event.target === els.wl2) Table().setPrimaryWavelength(parseFloat(els.wl2.value));
+        const primaryEl = wlEls()[primary()];
+        if (event.target === primaryEl) Table().setPrimaryWavelength(parseFloat(primaryEl.value));
         if (!state.spectra) return;
         try {
             const wls = currentWavelengths();
@@ -304,9 +333,12 @@
     }
 
     function onAbsInput() {
-        const values = [els.abs1, els.abs2, els.abs3].map(el => parseFloat(el.value));
+        const values = Object.freeze(absEls().map((el) => {
+            const v = parseFloat(el.value);
+            return Number.isFinite(v) ? v : null;
+        }));
         const complete = values.every(Number.isFinite);
-        setState({ absorbance: { values: Object.freeze(values), sd: complete ? Calc().sampleStd(values) : 0, source: 'manual' } });
+        setState({ absorbance: Object.freeze({ values, sd: complete ? Calc().sampleStd(values) : 0, source: 'manual' }) });
         setChip(els.absChip, 'manual');
         updateAbsSummary();
     }
@@ -316,7 +348,7 @@
         const d = Calc().DEFAULTS;
         const texts = [];
         if (snap.flags.epsilonWavelengthMismatch) {
-            texts.push(`主波長 ${snap.params.wavelengths[1]} nm 與 ε 的量測波長 ${d.EPSILON_REF_NM} nm 不同，請改用對應波長的 ε`);
+            texts.push(`主波長 ${snap.params.wavelengths[primary()]} nm 與 ε 的量測波長 ${d.EPSILON_REF_NM} nm 不同，請改用對應波長的 ε`);
         }
         if (snap.flags.absorbanceAboveLinear) {
             texts.push(`A(主波長) > ${d.A_MAX_LINEAR} 超出線性範圍，請稀釋後重測或縮短光程`);
@@ -342,7 +374,7 @@
             <div class="result-grid mt-sm">
                 ${resultItem('[DOX]', (snap.doxConc * 1000).toPrecision(4), `± ${(snap.doxSd * 1000).toPrecision(2)} mM`)}
                 ${resultItem('脂質實際濃度', (snap.lipidActual * 1000).toPrecision(4), 'mM')}
-                ${resultItem(`A(${p.wavelengths[1]} nm)`, snap.aPrimary.toFixed(5), `SD ${snap.sdA.toPrecision(2)}`)}
+                ${resultItem(`A(${p.wavelengths[primary()]} nm)`, snap.aPrimary.toFixed(5), `SD ${snap.sdA.toPrecision(2)}`)}
                 ${resultItem('稀釋因子', p.factor.toPrecision(4), SOURCE_LABEL[p.factorSource])}
             </div>
             ${dlWarnings(snap)}`;
@@ -351,7 +383,7 @@
 
     function onComputeDl() {
         try {
-            const absorbances = [els.abs1, els.abs2, els.abs3].map((el, k) =>
+            const absorbances = absEls().map((el, k) =>
                 global.FormUtils.parseFiniteNumber(el.value, `吸光度 ${k + 1}`));
             const wavelengths = currentWavelengths();
             const epsilon = global.FormUtils.readPositiveField('lipoEpsilon', 'ε');
@@ -363,7 +395,7 @@
             const absSource = state.absorbance.source || 'manual';
 
             const r = Calc().computeDrugToLipid({
-                absorbances, primaryIndex: 1, primaryWavelengthNm: wavelengths[1],
+                absorbances, primaryIndex: primary(), primaryWavelengthNm: wavelengths[primary()],
                 epsilon, pathCm, lipidMolar: lipidMM / 1000, factor, factorSd,
             });
             // q 視窗是稀釋因子計算當下的參數；手動因子時為 null
@@ -384,12 +416,18 @@
         }
     }
 
+    /** 未命名樣品的預設名：以「現有列數 + 1」為起點，但計數器只增不減，刪列後不會撞名。 */
+    function nextUntitledName() {
+        untitledCount = Math.max(untitledCount, Table().getRows().length) + 1;
+        return `樣品 ${untitledCount}`;
+    }
+
     function onAddResult() {
         const snap = state.dl;
         if (!snap) return;
         const p = snap.params;
-        const existing = Table().getRows().length;
-        const name = (els.sampleName.value || '').trim().slice(0, 60) || `樣品 ${existing + 1}`;
+        const maxLen = els.sampleName.maxLength > 0 ? els.sampleName.maxLength : SAMPLE_NAME_MAX_FALLBACK;
+        const name = (els.sampleName.value || '').trim().slice(0, maxLen) || nextUntitledName();
         const row = {
             id: (global.crypto && typeof global.crypto.randomUUID === 'function')
                 ? global.crypto.randomUUID()
@@ -398,7 +436,7 @@
             factor: p.factor,
             factorSource: p.factorSource,
             aPrimary: snap.aPrimary,
-            primaryWavelengthNm: p.wavelengths[1],
+            primaryWavelengthNm: p.wavelengths[primary()],
             doxConcMM: snap.doxConc * 1000,
             lipidActualMM: snap.lipidActual * 1000,
             dl: snap.dl,
@@ -410,7 +448,11 @@
                 factorSd: p.factorSd, absSource: p.absSource,
             },
         };
-        if (Table().add(row)) setAddEnabled(false);
+        try {
+            if (Table().add(row)) setAddEnabled(false);
+        } catch (err) {
+            global.showAlert('lipoResultsAlert', 'error', err.message);
+        }
     }
 
     // ------------------------------------------------------------ init
@@ -424,47 +466,55 @@
         els.computeDl.addEventListener('click', onComputeDl);
         els.addResult.addEventListener('click', onAddResult);
         els.factor.addEventListener('input', onFactorInput);
-        [els.wl1, els.wl2, els.wl3].forEach(el => el.addEventListener('input', onWavelengthInput));
-        [els.abs1, els.abs2, els.abs3].forEach(el => el.addEventListener('input', onAbsInput));
+        wlEls().forEach(el => el.addEventListener('input', onWavelengthInput));
+        absEls().forEach(el => el.addEventListener('input', onAbsInput));
         INVALIDATING_IDS.forEach(id => $(id)?.addEventListener('input', invalidateDl));
 
-        els.dilutionPng?.addEventListener('click', () => {
+        els.dilutionPng.addEventListener('click', () => {
             const chart = Charts().getChart('lipoDilutionChart');
             if (chart) global.downloadChartPng(chart, 'liposome-dilution.png');
         });
-        els.spectraPng?.addEventListener('click', () => {
+        els.spectraPng.addEventListener('click', () => {
             const chart = Charts().getChart('lipoSpectraChart');
             if (chart) global.downloadChartPng(chart, 'liposome-spectra.png');
         });
-        els.fitPng?.addEventListener('click', () => {
+        els.fitPng.addEventListener('click', () => {
             const chart = Charts().getChart('lipoFitChart');
             if (chart) global.downloadChartPng(chart, 'liposome-fit.png');
         });
     }
 
+    const ELEMENT_IDS = Object.freeze({
+        solutionFile: 'lipoSolutionFile', bypassFile: 'lipoBypassFile', qMin: 'lipoQMin', qMax: 'lipoQMax',
+        computeDilution: 'lipoComputeDilution', dilutionResults: 'lipoDilutionResults',
+        factor: 'lipoDilutionFactor', factorChip: 'lipoDilutionChip', factorEcho: 'lipoFactorEcho', dilutionPng: 'lipoDilutionPng',
+        loadedFile: 'lipoLoadedFile', blankFile: 'lipoBlankFile', pureFile: 'lipoPureFile',
+        computeSpectra: 'lipoComputeSpectra', spectraResults: 'lipoSpectraResults', fitChartWrap: 'lipoFitChartWrap', spectraPng: 'lipoSpectraPng', fitPng: 'lipoFitPng',
+        wl1: 'lipoWl1', wl2: 'lipoWl2', wl3: 'lipoWl3', abs1: 'lipoAbs1', abs2: 'lipoAbs2', abs3: 'lipoAbs3',
+        absChip: 'lipoAbsChip', absSummary: 'lipoAbsSummary',
+        sampleName: 'lipoSampleName', computeDl: 'lipoComputeDl', dlResults: 'lipoDlResults', addResult: 'lipoAddResult',
+    });
+
     function init() {
-        const ids = {
-            solutionFile: 'lipoSolutionFile', bypassFile: 'lipoBypassFile', qMin: 'lipoQMin', qMax: 'lipoQMax',
-            computeDilution: 'lipoComputeDilution', dilutionResults: 'lipoDilutionResults',
-            factor: 'lipoDilutionFactor', factorChip: 'lipoDilutionChip', factorEcho: 'lipoFactorEcho', dilutionPng: 'lipoDilutionPng',
-            loadedFile: 'lipoLoadedFile', blankFile: 'lipoBlankFile', pureFile: 'lipoPureFile',
-            computeSpectra: 'lipoComputeSpectra', spectraResults: 'lipoSpectraResults', fitChartWrap: 'lipoFitChartWrap', spectraPng: 'lipoSpectraPng', fitPng: 'lipoFitPng',
-            wl1: 'lipoWl1', wl2: 'lipoWl2', wl3: 'lipoWl3', abs1: 'lipoAbs1', abs2: 'lipoAbs2', abs3: 'lipoAbs3',
-            absChip: 'lipoAbsChip', absSummary: 'lipoAbsSummary',
-            sampleName: 'lipoSampleName', computeDl: 'lipoComputeDl', dlResults: 'lipoDlResults', addResult: 'lipoAddResult',
-        };
-        Object.entries(ids).forEach(([key, id]) => { els[key] = $(id); });
-        if (!els.computeDilution) return;   // 頁面沒有這個分頁（例如測試環境）
+        if (initialised) return;
+        const missing = Object.values(ELEMENT_IDS).filter(id => !$(id));
+        if (missing.length) {
+            // 不 throw：init 在 DOMContentLoaded 裡，throw 會連帶擋掉後面的 initDndcLock()
+            console.error(`[liposome] 缺少元素：${missing.join(', ')}`);
+            return;
+        }
+        Object.entries(ELEMENT_IDS).forEach(([key, id]) => { els[key] = $(id); });
 
         state = initialState();
         Table().init();
-        Table().setPrimaryWavelength(parseFloat(els.wl2.value));
+        Table().setPrimaryWavelength(parseFloat(wlEls()[primary()].value));
         setChip(els.factorChip, null);
         setChip(els.absChip, null);
         syncFactorEcho();
         syncButtons();
         setAddEnabled(false);
         bind();
+        initialised = true;
     }
 
     global.LiposomeSection = Object.freeze({ init, getState: () => state });

@@ -471,3 +471,11 @@ test('[lipo-flags] fitPureDoxScale 回傳 flags.negativeScale', () => {
     // 含藥／空白互換 → k 為負
     assert.equal(Liposome.fitPureDoxScale(s.blank, s.loaded, s.pure).flags.negativeScale, true);
 });
+
+test('[lipo] roundAbsorbances 先四捨五入再算 SD，與 Excel 一致', () => {
+    const r = Liposome.roundAbsorbances([0.081234567, 0.0798765, 0.0812]);
+    assert.deepEqual([...r.shown], [0.08123, 0.07988, 0.0812]);
+    assert.equal(r.sd, Liposome.sampleStd([0.08123, 0.07988, 0.0812]));
+    assert.ok(Object.isFrozen(r) && Object.isFrozen(r.shown));
+    assert.throws(() => Liposome.roundAbsorbances([0.1, NaN, 0.2]), /有限數/);
+});

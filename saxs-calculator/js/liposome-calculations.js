@@ -235,6 +235,25 @@
     }
 
     /**
+     * 讀值四捨五入到 decimals 位（與輸入框顯示一致），SD 用四捨五入後的值計算——與 Excel 一致，
+     * 因為 DL 工作表裡的三個吸光度本來就是抄進去的五位小數。
+     *
+     * @param {number[]} raw - 內插得到的吸光度
+     * @param {number} [decimals=5]
+     * @returns {{shown:number[], sd:number}} 兩層都 frozen
+     */
+    function roundAbsorbances(raw, decimals = 5) {
+        if (!Array.isArray(raw) || raw.length === 0 || !raw.every(Number.isFinite)) {
+            throw new Error('吸光度必須是有限數陣列');
+        }
+        if (!(Number.isInteger(decimals) && decimals >= 0 && decimals <= 20)) {
+            throw new Error('小數位數必須是 0–20 的整數');
+        }
+        const shown = Object.freeze(raw.map(v => Number(v.toFixed(decimals))));
+        return Object.freeze({ shown, sd: sampleStd(shown) });
+    }
+
+    /**
      * 純 DOX 縮放擬合：在 fitMin–fitMax 內求最小平方 k，使 blank + k·pure ≈ loaded。
      * k = Σ[(L−B)·P] / Σ(P²)。rms 只在擬合窗內計算；model 與 residual 則覆蓋三條光譜的整段重疊範圍。
      *
@@ -371,6 +390,7 @@
         computeDilutionFactor,
         subtractSpectra,
         absorbanceAt,
+        roundAbsorbances,
         fitPureDoxScale,
         computeDrugToLipid,
     });
