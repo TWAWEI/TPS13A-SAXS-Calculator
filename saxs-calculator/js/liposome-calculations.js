@@ -87,9 +87,94 @@
         return ys[lo] + t * (ys[hi] - ys[lo]);
     }
 
+    function isStrictlyIncreasing(xs) {
+        for (let k = 1; k < xs.length; k++) {
+            if (!(xs[k] > xs[k - 1])) return false;
+        }
+        return true;
+    }
+
+    /**
+     * 檢查 {xKey: number[], yKey: number[]} 形狀的曲線。
+     */
+    function assertCurve(curve, xKey, yKey, label) {
+        if (!curve || !Array.isArray(curve[xKey]) || !Array.isArray(curve[yKey])) {
+            throw new Error(`${label} 缺少 ${xKey} / ${yKey} 陣列`);
+        }
+        if (curve[xKey].length !== curve[yKey].length) {
+            throw new Error(`${label} 的 ${xKey} 與 ${yKey} 長度不一致`);
+        }
+        if (curve[xKey].length < 2) throw new Error(`${label} 至少需要 2 個點`);
+        if (!isStrictlyIncreasing(curve[xKey])) throw new Error(`${label} 的 ${xKey} 必須嚴格遞增`);
+    }
+
+    function inRange(x, lo, hi) {
+        return x >= lo && x <= hi;
+    }
+
+    /**
+     * 稀釋因子：q 視窗內 I_bypass / I_solution 的逐點比值平均（Excel dilution 頁），
+     * bypass 先線性內插到 solution 的 q 格點。另回最小平方縮放（PRIMUS I Scale 等價式）供對照。
+     *
+     * @param {{q:number[], i:number[]}} solution - solution cell 曲線（q 嚴格遞增）
+     * @param {{q:number[], i:number[]}} bypass - bypass 曲線
+     * @param {{qMin?:number, qMax?:number}} [options]
+     * @returns {{factor:number, sd:number, n:number, lsqScale:number,
+     *            excluded:{outOfRange:number, nonPositive:number}, ratios:number[], q:number[]}}
+     */
+    function computeDilutionFactor(solution, bypass, options = {}) {
+        const qMin = options.qMin ?? DEFAULTS.Q_MIN;
+        const qMax = options.qMax ?? DEFAULTS.Q_MAX;
+        assertCurve(solution, 'q', 'i', 'solution cell 曲線');
+        assertCurve(bypass, 'q', 'i', 'bypass 曲線');
+        assertFinite(qMin, 'q 下限');
+        assertFinite(qMax, 'q 上限');
+        if (!(qMax > qMin)) throw new Error(`q 視窗上限必須大於下限（目前 ${qMin}–${qMax}）`);
+
+        const bq = bypass.q;
+        const bi = bypass.i;
+        const bLo = bq[0];
+        const bHi = bq[bq.length - 1];
+        let outOfRange = 0;
+        let nonPositive = 0;
+        const q = [];
+        const iSol = [];
+        const iByp = [];
+
+        solution.q.forEach((qk, k) => {
+            if (!inRange(qk, qMin, qMax)) return;
+            if (!inRange(qk, bLo, bHi)) { outOfRange += 1; return; }
+            const s = solution.i[k];
+            const b = interpolateLinear(bq, bi, qk);
+            if (!(s > 0) || !(b > 0)) { nonPositive += 1; return; }
+            q.push(qk);
+            iSol.push(s);
+            iByp.push(b);
+        });
+
+        if (q.length < DEFAULTS.MIN_WINDOW_POINTS) {
+            throw new Error(`q 視窗 ${qMin}–${qMax} Å⁻¹ 內只有 ${q.length} 個有效點，至少需要 ${DEFAULTS.MIN_WINDOW_POINTS} 個`);
+        }
+
+        const ratios = iSol.map((s, k) => iByp[k] / s);
+        const num = iSol.reduce((acc, s, k) => acc + s * iByp[k], 0);
+        const den = iSol.reduce((acc, s) => acc + s * s, 0);
+
+        return Object.freeze({
+            factor: mean(ratios),
+            sd: sampleStd(ratios),
+            n: ratios.length,
+            lsqScale: num / den,
+            excluded: Object.freeze({ outOfRange, nonPositive }),
+            ratios: Object.freeze(ratios),
+            q: Object.freeze(q),
+        });
+    }
+
     global.LiposomeCalculations = Object.freeze({
         DEFAULTS,
         interpolateLinear,
         sampleStd,
+        computeDilutionFactor,
     });
 })(typeof window !== 'undefined' ? window : globalThis);

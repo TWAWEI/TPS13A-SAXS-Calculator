@@ -49,3 +49,68 @@ test('[lipo] DEFAULTS 與規格一致', () => {
     assert.deepEqual([...d.WAVELENGTHS_NM], [494, 495, 496]);
     assert.ok(Object.isFrozen(d));
 });
+
+// ---------------------------------------------------------------- 稀釋因子
+/** Guinier 型合成曲線 I(q) = 10·exp(−(30q)²/3)，q 0.005…0.3 步進 0.001。 */
+function guinierCurve(scale, qOffset) {
+    const q = [];
+    const i = [];
+    for (let k = 0; k <= 295; k++) {
+        // toFixed 避免 0.005 + 95×0.001 變成 0.09999999999999999 而掉出 q ≥ 0.1 的視窗
+        const qk = Number((0.005 + k * 0.001 + qOffset).toFixed(6));
+        q.push(qk);
+        i.push(scale * 10 * Math.exp(-((30 * qk) ** 2) / 3));
+    }
+    return { q, i };
+}
+
+test('[lipo] 稀釋因子 (a) 同格點：平均、最小平方都回 0.45，SD 為 0', () => {
+    const solution = guinierCurve(1, 0);
+    const bypass = guinierCurve(0.45, 0);
+    const r = Liposome.computeDilutionFactor(solution, bypass, { qMin: 0.1, qMax: 0.15 });
+    approx(r.factor, 0.45, 1e-9, 'factor');
+    approx(r.lsqScale, 0.45, 1e-9, 'lsqScale');
+    assert.ok(r.sd < 1e-9, `sd ${r.sd}`);
+    assert.equal(r.n, 51, '0.100…0.150 步進 0.001 = 51 點');
+    assert.deepEqual(r.excluded, { outOfRange: 0, nonPositive: 0 });
+    assert.ok(Object.isFrozen(r));
+});
+
+test('[lipo] 稀釋因子 (b) 偏移格點：內插後仍在 0.45 ± 1e-3（線性內插對高斯有二階誤差，勿改內插法）', () => {
+    const solution = guinierCurve(1, 0);
+    const bypass = guinierCurve(0.45, 0.0003);
+    const r = Liposome.computeDilutionFactor(solution, bypass, { qMin: 0.1, qMax: 0.15 });
+    approx(r.factor, 0.45, 1e-3, 'factor');
+    assert.ok(r.sd < 1e-3, `sd ${r.sd}`);
+    approx(r.lsqScale, 0.45, 1e-3, 'lsqScale');
+});
+
+test('[lipo] 稀釋因子：預設 q 視窗 0.1–0.15、視窗不足 5 點 throw、非正強度被排除並計數', () => {
+    const solution = guinierCurve(1, 0);
+    const bypass = guinierCurve(0.45, 0);
+    const byDefault = Liposome.computeDilutionFactor(solution, bypass);
+    assert.equal(byDefault.n, 51);
+
+    assert.throws(() => Liposome.computeDilutionFactor(solution, bypass, { qMin: 0.1, qMax: 0.102 }),
+        /只有 3 個有效點/);
+    assert.throws(() => Liposome.computeDilutionFactor(solution, bypass, { qMin: 0.15, qMax: 0.1 }),
+        /上限必須大於下限/);
+
+    // bypass 在視窗內有 2 點是負值 → 排除、計數，其餘照算
+    const dented = { q: bypass.q, i: bypass.i.map((v, k) => (bypass.q[k] > 0.1199 && bypass.q[k] < 0.1211 ? -1 : v)) };
+    const r = Liposome.computeDilutionFactor(solution, dented);
+    assert.equal(r.excluded.nonPositive, 2);
+    assert.equal(r.n, 49);
+    approx(r.factor, 0.45, 1e-9, 'factor after exclusion');
+
+    // bypass 的 q 範圍沒蓋住視窗 → 超出的點計入 outOfRange
+    const short = { q: bypass.q.filter(q => q <= 0.13), i: bypass.i.filter((_, k) => bypass.q[k] <= 0.13) };
+    const r2 = Liposome.computeDilutionFactor(solution, short);
+    assert.ok(r2.excluded.outOfRange > 0);
+    assert.equal(r2.n + r2.excluded.outOfRange, 51);
+});
+
+test('[lipo] 稀釋因子：曲線 q 非嚴格遞增或長度不一致 throw', () => {
+    assert.throws(() => Liposome.computeDilutionFactor({ q: [0.1, 0.1, 0.2], i: [1, 1, 1] }, guinierCurve(1, 0)), /嚴格遞增/);
+    assert.throws(() => Liposome.computeDilutionFactor({ q: [0.1, 0.2], i: [1] }, guinierCurve(1, 0)), /長度不一致/);
+});
