@@ -171,10 +171,63 @@
         });
     }
 
+    /**
+     * 扣背景：以 loaded 的波長格點為準，blank 內插後相減。
+     * loaded 超出 blank 範圍的點捨棄（計入 dropped）。重疊 < MIN_OVERLAP_POINTS → throw。
+     *
+     * @param {{wavelength:number[], absorbance:number[]}} loaded - 含藥光譜
+     * @param {{wavelength:number[], absorbance:number[]}} blank - 空白脂質體光譜
+     * @returns {{wavelength:number[], absorbance:number[], dropped:number}}
+     */
+    function subtractSpectra(loaded, blank) {
+        assertCurve(loaded, 'wavelength', 'absorbance', '含藥光譜');
+        assertCurve(blank, 'wavelength', 'absorbance', '空白光譜');
+        const bw = blank.wavelength;
+        const ba = blank.absorbance;
+        const lo = bw[0];
+        const hi = bw[bw.length - 1];
+        const wavelength = [];
+        const absorbance = [];
+        let dropped = 0;
+        loaded.wavelength.forEach((w, k) => {
+            if (!inRange(w, lo, hi)) { dropped += 1; return; }
+            wavelength.push(w);
+            absorbance.push(loaded.absorbance[k] - interpolateLinear(bw, ba, w));
+        });
+        if (wavelength.length < DEFAULTS.MIN_OVERLAP_POINTS) {
+            throw new Error(`兩條光譜的波長重疊只有 ${wavelength.length} 點，至少需要 ${DEFAULTS.MIN_OVERLAP_POINTS} 點`);
+        }
+        return Object.freeze({
+            wavelength: Object.freeze(wavelength),
+            absorbance: Object.freeze(absorbance),
+            dropped,
+        });
+    }
+
+    /**
+     * 讀取指定波長的吸光度（線性內插）。任一波長超出範圍 → throw。
+     * @param {{wavelength:number[], absorbance:number[]}} spectrum
+     * @param {number[]} wavelengthsNm
+     * @returns {number[]}
+     */
+    function absorbanceAt(spectrum, wavelengthsNm) {
+        assertCurve(spectrum, 'wavelength', 'absorbance', '光譜');
+        const ws = spectrum.wavelength;
+        const lo = ws[0];
+        const hi = ws[ws.length - 1];
+        return wavelengthsNm.map((w) => {
+            assertFinite(w, '讀值波長');
+            if (!inRange(w, lo, hi)) throw new Error(`波長 ${w} nm 超出光譜範圍 ${lo}–${hi} nm`);
+            return interpolateLinear(ws, spectrum.absorbance, w);
+        });
+    }
+
     global.LiposomeCalculations = Object.freeze({
         DEFAULTS,
         interpolateLinear,
         sampleStd,
         computeDilutionFactor,
+        subtractSpectra,
+        absorbanceAt,
     });
 })(typeof window !== 'undefined' ? window : globalThis);

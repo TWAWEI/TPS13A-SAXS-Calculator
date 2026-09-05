@@ -114,3 +114,55 @@ test('[lipo] 稀釋因子：曲線 q 非嚴格遞增或長度不一致 throw', (
     assert.throws(() => Liposome.computeDilutionFactor({ q: [0.1, 0.1, 0.2], i: [1, 1, 1] }, guinierCurve(1, 0)), /嚴格遞增/);
     assert.throws(() => Liposome.computeDilutionFactor({ q: [0.1, 0.2], i: [1] }, guinierCurve(1, 0)), /長度不一致/);
 });
+
+// ---------------------------------------------------------------- 光譜
+/** 合成光譜：blank = 2·exp(−λ/150)，pure = 高斯（中心 495、寬 25、峰 1），loaded = blank + k·pure。 */
+function syntheticSpectra(k, step = 1, from = 400, to = 600) {
+    const wavelength = [];
+    for (let w = from; w <= to + 1e-9; w += step) wavelength.push(Number(w.toFixed(4)));
+    const blankA = wavelength.map(w => 2 * Math.exp(-w / 150));
+    const pureA = wavelength.map(w => Math.exp(-((w - 495) ** 2) / (2 * 25 ** 2)));
+    const loadedA = blankA.map((b, j) => b + k * pureA[j]);
+    return {
+        loaded: { wavelength, absorbance: loadedA },
+        blank: { wavelength, absorbance: blankA },
+        pure: { wavelength, absorbance: pureA },
+    };
+}
+
+test('[lipo] subtractSpectra 回 loaded − blank（同格點時精確到 1e-9），結果凍結', () => {
+    const s = syntheticSpectra(0.8);
+    const r = Liposome.subtractSpectra(s.loaded, s.blank);
+    assert.equal(r.wavelength.length, 201);
+    assert.equal(r.dropped, 0);
+    r.absorbance.forEach((a, j) => approx(a, 0.8 * s.pure.absorbance[j], 1e-9, `λ=${r.wavelength[j]}`));
+    assert.ok(Object.isFrozen(r) && Object.isFrozen(r.absorbance));
+});
+
+test('[lipo] subtractSpectra 以 loaded 格點為準、blank 內插；loaded 超出 blank 範圍的點捨棄並計數', () => {
+    const s = syntheticSpectra(0.8, 1, 400, 600);
+    const blankHalf = syntheticSpectra(0.8, 0.5, 450, 550).blank;     // 0.5 nm 格點、範圍較窄
+    const r = Liposome.subtractSpectra(s.loaded, blankHalf);
+    assert.equal(r.wavelength.length, 101, '450…550 共 101 點');
+    assert.equal(r.dropped, 100);
+    r.absorbance.forEach((a, j) => approx(a, 0.8 * Math.exp(-((r.wavelength[j] - 495) ** 2) / 1250), 1e-6, `λ=${r.wavelength[j]}`));
+});
+
+test('[lipo] subtractSpectra 重疊不足 10 點 throw', () => {
+    const s = syntheticSpectra(0.8, 1, 400, 600);
+    const tiny = syntheticSpectra(0.8, 1, 500, 505).blank;
+    assert.throws(() => Liposome.subtractSpectra(s.loaded, tiny), /重疊只有 6 點/);
+});
+
+test('[lipo] absorbanceAt 在 1 nm 與 0.5 nm 格點上讀 494/495/496 都對到解析值；超出範圍 throw', () => {
+    for (const step of [1, 0.5]) {
+        const s = syntheticSpectra(0.8, step);
+        const sub = Liposome.subtractSpectra(s.loaded, s.blank);
+        const [a494, a495, a496] = Liposome.absorbanceAt(sub, [494, 495, 496]);
+        approx(a495, 0.8, 1e-6, `A495 step ${step}`);
+        approx(a494, 0.8 * Math.exp(-1 / 1250), 1e-6, `A494 step ${step}`);
+        approx(a496, 0.8 * Math.exp(-1 / 1250), 1e-6, `A496 step ${step}`);
+    }
+    const sub = Liposome.subtractSpectra(syntheticSpectra(0.8).loaded, syntheticSpectra(0.8).blank);
+    assert.throws(() => Liposome.absorbanceAt(sub, [494, 495, 650]), /650 nm 超出光譜範圍 400–600 nm/);
+});
