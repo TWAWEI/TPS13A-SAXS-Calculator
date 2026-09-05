@@ -9,6 +9,8 @@
  *     並停用「加入結果表」，直到下一次計算成功
  *   - 錯誤：showAlert 取代結果區；輸入值、chip、圖表不動
  *   - 成功：渲染函式自組 HTML（含警告列），再 A11y.focusResults
+ *   - 面板 2 的更新是原子的：扣背景、擬合、讀值三者都成功後才動 state 與畫面（Task 11b）
+ *   - D/L 快照的 q 視窗取自 state.dilution（稀釋因子計算當下），手動因子時為 null
  *
  * 依賴：LiposomeCalculations、LiposomeFileParsers、LiposomeCharts、LiposomeResultsTable、
  *       DndcFileParser.readFile、FormUtils、A11y、showAlert、downloadChartPng。
@@ -29,8 +31,11 @@
 
     const SOURCE_LABEL = Object.freeze({ saxs: 'SAXS 計算', manual: '手動', spectrum: '光譜讀值' });
 
+    /** 三個波長吸光度的樣本標準差不只是雜訊，也含吸收帶在 ±1 nm 的斜率（科學審查措辭）。 */
+    const SPREAD_LABEL = '三點譜線離散（含譜帶斜率）';
+
     const initialState = () => Object.freeze({
-        dilution: Object.freeze({ factor: null, sd: 0, n: 0, lsqScale: null, source: null }),
+        dilution: Object.freeze({ factor: null, sd: 0, n: 0, lsqScale: null, source: null, qMin: null, qMax: null }),
         spectra: null,
         absorbance: Object.freeze({ values: Object.freeze([null, null, null]), sd: 0, source: null }),
         dl: null,
@@ -65,6 +70,10 @@
 
     function warningRow(text) {
         return `<div class="alert alert-warning mt-sm">${esc(text)}</div>`;
+    }
+
+    function warningRows(texts) {
+        return texts.map(warningRow).join('');
     }
 
     function resultItem(label, value, unit = '') {
@@ -105,29 +114,37 @@
         if (d.source === 'saxs') {
             els.factorEcho.textContent = `SAXS 計算：${d.factor.toPrecision(4)} ± ${d.sd.toPrecision(2)}（n = ${d.n}）`;
         } else {
-            els.factorEcho.textContent = `手動因子 ${d.factor.toPrecision(4)}，無離散度（誤差只含 UV 項）`;
+            const direction = d.factor > 1 ? '（> 1，請確認方向）' : '';
+            els.factorEcho.textContent = `手動因子 ${d.factor.toPrecision(4)}${direction}，無離散度（誤差只含 UV 項）`;
         }
     }
 
-    function renderDilutionResults(r, qMin, qMax) {
+    function dilutionWarnings(r) {
         const rel = Math.abs(r.lsqScale / r.factor - 1);
-        const warn = rel > Calc().DEFAULTS.LSQ_WARN_REL
-            ? warningRow(`逐點平均與最小平方縮放相差 ${pct(rel)}，請確認 q 視窗內兩曲線形狀一致`)
-            : '';
+        const texts = [];
+        if (r.flags.factorAboveOne) texts.push('稀釋因子 > 1：bypass 應比 solution cell 稀，通常代表兩個檔案選反');
+        if (r.flags.lowCoverage) texts.push('有效點只涵蓋 q 視窗的一小段，請確認兩條曲線的 q 範圍');
+        if (rel > Calc().DEFAULTS.LSQ_WARN_REL) {
+            texts.push(`逐點平均與最小平方縮放相差 ${pct(rel)}，請確認 q 視窗內兩曲線形狀一致`);
+        }
+        return warningRows(texts);
+    }
+
+    function renderDilutionResults(r, qMin, qMax) {
         const excluded = r.excluded.outOfRange + r.excluded.nonPositive;
         els.dilutionResults.innerHTML = `
             <div class="stat-card">
                 <div class="stat-content">
                     <div class="stat-label">稀釋因子（I_bypass / I_solution 逐點平均）</div>
                     <div class="stat-value">${r.factor.toPrecision(4)} <span class="stat-unit">± ${r.sd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">q ${qMin}–${qMax} Å⁻¹，n = ${r.n}，相對離散 ${pct(r.sd / r.factor)}</div>
+                    <div class="stat-sub">q 視窗 ${qMin}–${qMax} Å⁻¹，實際涵蓋 ${r.qCovered[0].toFixed(3)}–${r.qCovered[1].toFixed(3)}，n = ${r.n}，相對離散 ${pct(r.sd / r.factor)}</div>
                 </div>
             </div>
             <div class="result-grid mt-sm">
                 ${resultItem('最小平方縮放（PRIMUS I Scale 等價）', r.lsqScale.toPrecision(4))}
                 ${resultItem('排除點', String(excluded), excluded ? `超出範圍 ${r.excluded.outOfRange}、非正 ${r.excluded.nonPositive}` : '')}
             </div>
-            ${warn}`;
+            ${dilutionWarnings(r)}`;
         global.A11y.focusResults('lipoDilutionResults');
     }
 
@@ -143,7 +160,7 @@
             const qMax = global.FormUtils.readPositiveField('lipoQMax', 'q 上限');
             const r = Calc().computeDilutionFactor(solution, bypass, { qMin, qMax });
 
-            setState({ dilution: { factor: r.factor, sd: r.sd, n: r.n, lsqScale: r.lsqScale, source: 'saxs' } });
+            setState({ dilution: { factor: r.factor, sd: r.sd, n: r.n, lsqScale: r.lsqScale, source: 'saxs', qMin, qMax } });
             invalidateDl();
             els.factor.value = r.factor.toPrecision(6);
             setChip(els.factorChip, 'saxs');
@@ -160,7 +177,7 @@
 
     function onFactorInput() {
         const v = parseFloat(els.factor.value);
-        setState({ dilution: { ...state.dilution, factor: Number.isFinite(v) ? v : null, sd: 0, n: 0, source: 'manual' } });
+        setState({ dilution: { ...state.dilution, factor: Number.isFinite(v) ? v : null, sd: 0, n: 0, source: 'manual', qMin: null, qMax: null } });
         setChip(els.factorChip, 'manual');
         syncFactorEcho();
     }
@@ -177,23 +194,25 @@
         if (!a.source) { els.absSummary.textContent = ''; return; }
         const label = SOURCE_LABEL[a.source];
         els.absSummary.textContent = a.values.every(Number.isFinite)
-            ? `${label}：三值樣本標準差 ${a.sd.toPrecision(3)}`
+            ? `${label}：${SPREAD_LABEL} ${a.sd.toPrecision(3)}`
             : `${label}：三個吸光度都填好才能算 D/L`;
     }
 
-    /** 從扣背景光譜讀三個波長，填入輸入框（五位小數），state 鏡像輸入框的值。 */
-    function readAbsorbancesFromSpectrum() {
-        const wls = currentWavelengths();
-        const raw = Calc().absorbanceAt(state.spectra.subtracted, wls);
-        const shown = raw.map(v => Number(v.toFixed(5)));
+    /** 五位小數四捨五入（與輸入框顯示一致），SD 用四捨五入後的值算（與 Excel 一致）。純函式。 */
+    function roundedAbsorbances(raw) {
+        const shown = Object.freeze(raw.map(v => Number(v.toFixed(5))));
+        return Object.freeze({ shown, sd: Calc().sampleStd(shown) });
+    }
+
+    /** 把已寫進 state 的光譜讀值反映到輸入框、chip 與摘要（只碰 DOM）。 */
+    function applyAbsorbances(shown) {
         [els.abs1, els.abs2, els.abs3].forEach((el, k) => { el.value = shown[k].toFixed(5); });
-        setState({ absorbance: { values: Object.freeze(shown), sd: Calc().sampleStd(shown), source: 'spectrum' } });
         setChip(els.absChip, 'spectrum');
         updateAbsSummary();
     }
 
-    function renderSpectraResults(subtracted, fit) {
-        const a = state.absorbance;
+    /** 結果區 HTML（純函式）：stat-card + 擬合摘要 + 警告列。 */
+    function spectraResultsHtml(a, subtracted, fit) {
         const fitHtml = fit
             ? `<div class="result-grid mt-sm">
                    ${resultItem('純 DOX 縮放係數 k', fit.k.toPrecision(4))}
@@ -201,16 +220,32 @@
                </div>
                <p class="stat-sub mt-sm">k 是讓「空白 + k×純 DOX」最貼近含藥光譜的縮放；殘差大代表兩樣品的脂質濃度可能不一致。網站不判定通過與否，請看下方擬合圖。</p>`
             : '';
-        els.spectraResults.innerHTML = `
+        const warn = fit && fit.flags.negativeScale
+            ? warningRow('縮放係數 k 為負：含藥／空白檔可能互換，或扣背景過頭')
+            : '';
+        const dropped = subtracted.dropped ? `，捨棄 ${subtracted.dropped} 點（超出空白光譜範圍）` : '';
+        return `
             <div class="stat-card">
                 <div class="stat-content">
                     <div class="stat-label">扣背景後 A(主波長)</div>
                     <div class="stat-value">${a.values[1].toFixed(5)} <span class="stat-unit">± ${a.sd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">重疊 ${subtracted.wavelength.length} 點${subtracted.dropped ? `，捨棄 ${subtracted.dropped} 點（超出空白光譜範圍）` : ''}</div>
+                    <div class="stat-sub">± 為${SPREAD_LABEL}；重疊 ${subtracted.wavelength.length} 點${dropped}</div>
                 </div>
             </div>
-            ${fitHtml}`;
+            ${fitHtml}${warn}`;
+    }
+
+    function renderSpectraResults(subtracted, fit) {
+        els.spectraResults.innerHTML = spectraResultsHtml(state.absorbance, subtracted, fit);
         global.A11y.focusResults('lipoSpectraResults');
+    }
+
+    /** 光譜圖與其文字描述；讀值波長改變時也要跟著重畫（標線跟隨）。 */
+    function renderSpectraChart(spectra, wls) {
+        const { loaded, blank, subtracted } = spectra;
+        Charts().renderSpectraChart('lipoSpectraChart', { loaded, blank, subtracted, wavelengths: wls });
+        global.A11y.describeChart('lipoSpectraChart',
+            `含藥、空白與扣背景光譜；主波長 ${wls[1]} nm 吸光度 ${state.absorbance.values[1]}`);
     }
 
     async function onComputeSpectra() {
@@ -230,16 +265,16 @@
                 const fitMax = global.FormUtils.readPositiveField('lipoFitMax', '擬合上限');
                 fit = Calc().fitPureDoxScale(loaded, blank, pure, { fitMin, fitMax });
             }
-
-            setState({ spectra: Object.freeze({ loaded, blank, subtracted, fit }) });
-            invalidateDl();
-            readAbsorbancesFromSpectrum();
-            renderSpectraResults(subtracted, fit);
-
             const wls = currentWavelengths();
-            Charts().renderSpectraChart('lipoSpectraChart', { loaded, blank, subtracted, wavelengths: wls });
-            global.A11y.describeChart('lipoSpectraChart',
-                `含藥、空白與扣背景光譜；主波長 ${wls[1]} nm 吸光度 ${state.absorbance.values[1]}`);
+            const { shown, sd } = roundedAbsorbances(Calc().absorbanceAt(subtracted, wls));
+
+            // 扣背景、擬合、讀值三者都成功，才一次更新 state 與畫面
+            const spectra = Object.freeze({ loaded, blank, subtracted, fit });
+            setState({ spectra, absorbance: Object.freeze({ values: shown, sd, source: 'spectrum' }) });
+            invalidateDl();
+            applyAbsorbances(shown);
+            renderSpectraResults(subtracted, fit);
+            renderSpectraChart(spectra, wls);
             els.fitChartWrap.hidden = !fit;
             if (fit) {
                 Charts().renderFitChart('lipoFitChart', { loaded, model: fit.model, residual: fit.residual });
@@ -251,12 +286,18 @@
         }
     }
 
-    function onWavelengthInput() {
-        const wl2 = parseFloat(els.wl2.value);
-        Table().setPrimaryWavelength(wl2);
+    function onWavelengthInput(event) {
+        if (event.target === els.wl2) Table().setPrimaryWavelength(parseFloat(els.wl2.value));
         if (!state.spectra) return;
         try {
-            readAbsorbancesFromSpectrum();
+            const wls = currentWavelengths();
+            const { shown, sd } = roundedAbsorbances(Calc().absorbanceAt(state.spectra.subtracted, wls));
+            setState({ absorbance: Object.freeze({ values: shown, sd, source: 'spectrum' }) });
+            applyAbsorbances(shown);
+            // 重讀成功：用結果取代可能殘留的錯誤訊息並清掉 role="alert"；不搶正在輸入的焦點
+            els.spectraResults.innerHTML = spectraResultsHtml(state.absorbance, state.spectra.subtracted, state.spectra.fit);
+            global.A11y.clearLiveRegion(els.spectraResults);
+            renderSpectraChart(state.spectra, wls);
         } catch (err) {
             global.showAlert('lipoSpectraResults', 'error', err.message);
         }
@@ -271,6 +312,21 @@
     }
 
     // ------------------------------------------------------------ 面板 3：D/L
+    function dlWarnings(snap) {
+        const d = Calc().DEFAULTS;
+        const texts = [];
+        if (snap.flags.epsilonWavelengthMismatch) {
+            texts.push(`主波長 ${snap.params.wavelengths[1]} nm 與 ε 的量測波長 ${d.EPSILON_REF_NM} nm 不同，請改用對應波長的 ε`);
+        }
+        if (snap.flags.absorbanceAboveLinear) {
+            texts.push(`A(主波長) > ${d.A_MAX_LINEAR} 超出線性範圍，請稀釋後重測或縮短光程`);
+        }
+        if (snap.flags.wavelengthSpreadHigh) {
+            texts.push(`三個波長的吸光度相差超過 ${(d.WAVELENGTH_SPREAD_WARN_REL * 100).toFixed(0)}%，平滑吸收帶不會如此，請檢查光譜`);
+        }
+        return warningRows(texts);
+    }
+
     function renderDlResults(snap) {
         const p = snap.params;
         els.dlResults.innerHTML = `
@@ -278,7 +334,8 @@
                 <div class="stat-content">
                     <div class="stat-label">D/L（drug-to-lipid 莫耳比）</div>
                     <div class="stat-value">${snap.dl.toPrecision(4)} <span class="stat-unit">± ${snap.dlSd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">誤差 = D/L × √(relA² + relF²)：UV 三波長貢獻 ${pct(snap.relA)}，稀釋因子貢獻 ${pct(snap.relF)}</div>
+                    <div class="stat-sub">誤差 = D/L × √(relA² + relF²)：${SPREAD_LABEL}貢獻 ${pct(snap.relA)}，稀釋因子離散貢獻 ${pct(snap.relF)}</div>
+                    <div class="stat-sub">此為精密度，不含 ε、光程、脂質配製濃度的系統誤差</div>
                     <div class="stat-sub">Excel 原式（僅 UV）：${snap.dl.toPrecision(4)} ± ${snap.dlSdExcel.toPrecision(2)}</div>
                 </div>
             </div>
@@ -287,7 +344,8 @@
                 ${resultItem('脂質實際濃度', (snap.lipidActual * 1000).toPrecision(4), 'mM')}
                 ${resultItem(`A(${p.wavelengths[1]} nm)`, snap.aPrimary.toFixed(5), `SD ${snap.sdA.toPrecision(2)}`)}
                 ${resultItem('稀釋因子', p.factor.toPrecision(4), SOURCE_LABEL[p.factorSource])}
-            </div>`;
+            </div>
+            ${dlWarnings(snap)}`;
         global.A11y.focusResults('lipoDlResults');
     }
 
@@ -308,8 +366,8 @@
                 absorbances, primaryIndex: 1, primaryWavelengthNm: wavelengths[1],
                 epsilon, pathCm, lipidMolar: lipidMM / 1000, factor, factorSd,
             });
-            const qMin = parseFloat(els.qMin.value);
-            const qMax = parseFloat(els.qMax.value);
+            // q 視窗是稀釋因子計算當下的參數；手動因子時為 null
+            const { qMin, qMax } = state.dilution;
             const snapshot = Object.freeze({
                 ...r,
                 params: Object.freeze({ absorbances: Object.freeze(absorbances), wavelengths: Object.freeze(wavelengths), epsilon, pathCm, lipidMM, factor, factorSd, factorSource, absSource, qMin, qMax }),
@@ -322,7 +380,7 @@
                 ? '；請確認含藥／空白檔沒有互換'
                 : '';
             global.showAlert('lipoDlResults', 'error', err.message + hint);
-            setAddEnabled(false);
+            invalidateDl();
         }
     }
 

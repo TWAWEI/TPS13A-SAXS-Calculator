@@ -30,6 +30,10 @@
         MIN_FIT_POINTS: 10,
         MIN_OVERLAP_POINTS: 10,
         LSQ_WARN_REL: 0.05,
+        EPSILON_REF_NM: 495,              // ε 9250 的量測波長；主波長偏離 > 1 nm 就提醒
+        A_MAX_LINEAR: 1.5,                // Beer–Lambert 線性範圍上限（雜散光造成負偏差）
+        WAVELENGTH_SPREAD_WARN_REL: 0.05, // |A(λ1) − A(λ3)| / A(主) > 5% → 平滑吸收帶不可能，資料有問題
+        WINDOW_COVERAGE_WARN: 0.5,        // 有效點實際涵蓋的 q 範圍 < 視窗寬度的 50% → 提醒
     });
 
     function assertFinite(value, label) {
@@ -171,6 +175,11 @@
             excluded: Object.freeze({ outOfRange, nonPositive }),
             ratios: Object.freeze(ratios),
             q: Object.freeze(q),
+            qCovered: Object.freeze([q[0], q[q.length - 1]]),
+            flags: Object.freeze({
+                factorAboveOne: mean(ratios) > 1,
+                lowCoverage: (q[q.length - 1] - q[0]) < DEFAULTS.WINDOW_COVERAGE_WARN * (qMax - qMin),
+            }),
         });
     }
 
@@ -290,6 +299,7 @@
             n,
             model: Object.freeze({ wavelength: Object.freeze(wavelength), absorbance: Object.freeze(model) }),
             residual: Object.freeze({ wavelength: Object.freeze(wavelength), absorbance: Object.freeze(residual) }),
+            flags: Object.freeze({ negativeScale: k < 0 }),
         });
     }
 
@@ -346,6 +356,11 @@
             dlSdExcel: dl * relA,                              // Excel R
             relA,
             relF,
+            flags: Object.freeze({
+                epsilonWavelengthMismatch: Math.abs(primaryWavelengthNm - DEFAULTS.EPSILON_REF_NM) > 1,
+                absorbanceAboveLinear: aPrimary > DEFAULTS.A_MAX_LINEAR,
+                wavelengthSpreadHigh: Math.abs(p.absorbances[0] - p.absorbances[2]) / aPrimary > DEFAULTS.WAVELENGTH_SPREAD_WARN_REL,
+            }),
         });
     }
 

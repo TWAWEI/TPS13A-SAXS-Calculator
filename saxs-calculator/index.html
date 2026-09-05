@@ -1283,6 +1283,7 @@
                         <h2 class="card-title">1. 稀釋因子（SAXS）</h2>
                     </div>
                     <div class="card-body">
+                        <p class="stat-sub">假設：UV 吸光度在 bypass 的稀釋狀態、同一支毛細管量測；solution cell 曲線對應面板 3 輸入的原始脂質濃度。</p>
                         <div class="grid grid-2">
                             <div>
                                 <div class="form-group">
@@ -1333,6 +1334,7 @@
                         <h2 class="card-title">2. UV-Vis 光譜扣背景</h2>
                     </div>
                     <div class="card-body">
+                        <p class="stat-sub">假設：吸光度來自已破膜或濁度可由空白抵消的樣品；包覆態 DOX 的 ε 可能低於自由 DOX。</p>
                         <div class="grid grid-2">
                             <div>
                                 <div class="form-group">
@@ -1454,7 +1456,7 @@
                                             <input type="number" class="form-input" id="lipoPathLength" value="0.2" min="0.01" step="0.01">
                                             <span class="input-unit">cm</span>
                                         </div>
-                                        <div class="stat-sub">SAXS 毛細管厚度</div>
+                                        <div class="stat-sub">有效光程；建議以已知濃度標準液校正，圓管內徑不等於光程</div>
                                     </div>
                                 </div>
                                 <button type="button" class="btn btn-primary btn-lg btn-full" id="lipoComputeDl">計算 D/L</button>

@@ -429,3 +429,45 @@ test('[lipo-table] isRow 只接受 id 字串、有限 dl、有限主波長、字
     assert.equal(LiposomeTable.isRow({ ...good, dl: NaN }), false);
     assert.equal(LiposomeTable.isRow(null), false);
 });
+
+// ---------------------------------------------------------------- 資料品質旗標（Task 11b）
+test('[lipo-flags] DEFAULTS 多了四個品質門檻常數', () => {
+    const d = Liposome.DEFAULTS;
+    assert.deepEqual([d.EPSILON_REF_NM, d.A_MAX_LINEAR, d.WAVELENGTH_SPREAD_WARN_REL, d.WINDOW_COVERAGE_WARN],
+        [495, 1.5, 0.05, 0.5]);
+});
+
+test('[lipo-flags] computeDilutionFactor 回傳 qCovered 與 flags（因子 > 1、涵蓋不足）', () => {
+    const solution = guinierCurve(1, 0);
+    const ok = Liposome.computeDilutionFactor(solution, guinierCurve(0.45, 0));
+    assert.deepEqual([...ok.qCovered], [0.1, 0.15]);
+    assert.deepEqual(ok.flags, { factorAboveOne: false, lowCoverage: false });
+
+    const swapped = Liposome.computeDilutionFactor(guinierCurve(0.45, 0), solution);
+    approx(swapped.factor, 1 / 0.45, 1e-9, '選反時因子 > 1');
+    assert.equal(swapped.flags.factorAboveOne, true);
+
+    const short = { q: solution.q.filter(q => q <= 0.11), i: solution.i.filter((_, k) => solution.q[k] <= 0.11) };
+    const low = Liposome.computeDilutionFactor(solution, { q: short.q, i: short.i.map(v => 0.45 * v) });
+    assert.deepEqual([...low.qCovered], [0.1, 0.11]);
+    assert.equal(low.flags.lowCoverage, true, '只涵蓋 0.01 / 0.05 = 20% 的視窗');
+    assert.ok(Object.isFrozen(ok.flags) && Object.isFrozen(ok.qCovered));
+});
+
+test('[lipo-flags] computeDrugToLipid 回傳 flags（ε 波長不符、吸光度超線性、三波長離散）', () => {
+    const base = { absorbances: [0.90287, 0.91973, 0.94266], epsilon: 9250, pathCm: 0.2, lipidMolar: 0.0117, factor: 0.454 };
+    assert.deepEqual(Liposome.computeDrugToLipid(base).flags,
+        { epsilonWavelengthMismatch: false, absorbanceAboveLinear: false, wavelengthSpreadHigh: false });
+    assert.equal(Liposome.computeDrugToLipid({ ...base, primaryWavelengthNm: 480 }).flags.epsilonWavelengthMismatch, true);
+    assert.equal(Liposome.computeDrugToLipid({ ...base, primaryWavelengthNm: 495.5 }).flags.epsilonWavelengthMismatch, false, '±1 nm 內不算');
+    assert.equal(Liposome.computeDrugToLipid({ ...base, absorbances: [1.6, 1.7, 1.8] }).flags.absorbanceAboveLinear, true);
+    // Excel DOX-20：0.74644 / 1.05761 / 0.89623 → |A1−A3|/A2 = 14% > 5%
+    assert.equal(Liposome.computeDrugToLipid({ ...base, absorbances: [0.74644, 1.05761, 0.89623] }).flags.wavelengthSpreadHigh, true);
+});
+
+test('[lipo-flags] fitPureDoxScale 回傳 flags.negativeScale', () => {
+    const s = syntheticSpectra(0.8);
+    assert.equal(Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure).flags.negativeScale, false);
+    // 含藥／空白互換 → k 為負
+    assert.equal(Liposome.fitPureDoxScale(s.blank, s.loaded, s.pure).flags.negativeScale, true);
+});
