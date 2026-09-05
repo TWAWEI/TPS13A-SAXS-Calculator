@@ -2480,6 +2480,142 @@ git commit -m "feat(liposome): panel UI — dilution, spectra subtraction, D/L s
 
 ---
 
+### Task 11b: 科學審查補強 — 資料品質旗標、警告列與措辭（不改既有公式）
+
+> 2026-09-05 science-reviewer 審 `liposome-calculations.js` 後新增。結論：六條公式代數正確、Excel DOX-18 逐步手算吻合、單位鏈無誤、**無 CRITICAL**；但有幾個「數學算得出、科學上不合理」的情況沒有守門，以及誤差的口徑要講清楚。本 task 只加旗標、警告與文字，**不改任何既有公式與既有測試的期望值**。同時順手修規格審查者對 Task 11 的四個觀察。
+
+**Files:**
+- Modify: `js/liposome-calculations.js`（DEFAULTS 常數、三個函式回傳多一個 `flags`／`qCovered`）
+- Modify: `tests/liposome.test.js`（旗標測試）
+- Modify: `js/section-liposome.js`（警告列、措辭、四個狀態修正）
+- Modify: `index.html`（三段說明文字）
+
+- [ ] **Step 1: 寫失敗的測試**（附在 `tests/liposome.test.js` 末尾）
+
+```js
+// ---------------------------------------------------------------- 資料品質旗標（Task 11b）
+test('[lipo-flags] DEFAULTS 多了四個品質門檻常數', () => {
+    const d = Liposome.DEFAULTS;
+    assert.deepEqual([d.EPSILON_REF_NM, d.A_MAX_LINEAR, d.WAVELENGTH_SPREAD_WARN_REL, d.WINDOW_COVERAGE_WARN],
+        [495, 1.5, 0.05, 0.5]);
+});
+
+test('[lipo-flags] computeDilutionFactor 回傳 qCovered 與 flags（因子 > 1、涵蓋不足）', () => {
+    const solution = guinierCurve(1, 0);
+    const ok = Liposome.computeDilutionFactor(solution, guinierCurve(0.45, 0));
+    assert.deepEqual([...ok.qCovered], [0.1, 0.15]);
+    assert.deepEqual(ok.flags, { factorAboveOne: false, lowCoverage: false });
+
+    const swapped = Liposome.computeDilutionFactor(guinierCurve(0.45, 0), solution);
+    approx(swapped.factor, 1 / 0.45, 1e-9, '選反時因子 > 1');
+    assert.equal(swapped.flags.factorAboveOne, true);
+
+    const short = { q: solution.q.filter(q => q <= 0.11), i: solution.i.filter((_, k) => solution.q[k] <= 0.11) };
+    const low = Liposome.computeDilutionFactor(solution, { q: short.q, i: short.i.map(v => 0.45 * v) });
+    assert.deepEqual([...low.qCovered], [0.1, 0.11]);
+    assert.equal(low.flags.lowCoverage, true, '只涵蓋 0.01 / 0.05 = 20% 的視窗');
+    assert.ok(Object.isFrozen(ok.flags) && Object.isFrozen(ok.qCovered));
+});
+
+test('[lipo-flags] computeDrugToLipid 回傳 flags（ε 波長不符、吸光度超線性、三波長離散）', () => {
+    const base = { absorbances: [0.90287, 0.91973, 0.94266], epsilon: 9250, pathCm: 0.2, lipidMolar: 0.0117, factor: 0.454 };
+    assert.deepEqual(Liposome.computeDrugToLipid(base).flags,
+        { epsilonWavelengthMismatch: false, absorbanceAboveLinear: false, wavelengthSpreadHigh: false });
+    assert.equal(Liposome.computeDrugToLipid({ ...base, primaryWavelengthNm: 480 }).flags.epsilonWavelengthMismatch, true);
+    assert.equal(Liposome.computeDrugToLipid({ ...base, primaryWavelengthNm: 495.5 }).flags.epsilonWavelengthMismatch, false, '±1 nm 內不算');
+    assert.equal(Liposome.computeDrugToLipid({ ...base, absorbances: [1.6, 1.7, 1.8] }).flags.absorbanceAboveLinear, true);
+    // Excel DOX-20：0.74644 / 1.05761 / 0.89623 → |A1−A3|/A2 = 14% > 5%
+    assert.equal(Liposome.computeDrugToLipid({ ...base, absorbances: [0.74644, 1.05761, 0.89623] }).flags.wavelengthSpreadHigh, true);
+});
+
+test('[lipo-flags] fitPureDoxScale 回傳 flags.negativeScale', () => {
+    const s = syntheticSpectra(0.8);
+    assert.equal(Liposome.fitPureDoxScale(s.loaded, s.blank, s.pure).flags.negativeScale, false);
+    // 含藥／空白互換 → k 為負
+    assert.equal(Liposome.fitPureDoxScale(s.blank, s.loaded, s.pure).flags.negativeScale, true);
+});
+```
+
+- [ ] **Step 2: 跑測試確認失敗**
+
+Run: `node --test saxs-calculator/tests/liposome.test.js`
+Expected: 4 個新測試 FAIL（`qCovered`／`flags` 為 undefined）。
+
+- [ ] **Step 3: 計算模組加旗標**
+
+`DEFAULTS` 加四個常數（放在 `LSQ_WARN_REL` 之後）：
+
+```js
+        EPSILON_REF_NM: 495,              // ε 9250 的量測波長；主波長偏離 > 1 nm 就提醒
+        A_MAX_LINEAR: 1.5,                // Beer–Lambert 線性範圍上限（雜散光造成負偏差）
+        WAVELENGTH_SPREAD_WARN_REL: 0.05, // |A(λ1) − A(λ3)| / A(主) > 5% → 平滑吸收帶不可能，資料有問題
+        WINDOW_COVERAGE_WARN: 0.5,        // 有效點實際涵蓋的 q 範圍 < 視窗寬度的 50% → 提醒
+```
+
+`computeDilutionFactor` 回傳物件加：
+
+```js
+            qCovered: Object.freeze([q[0], q[q.length - 1]]),
+            flags: Object.freeze({
+                factorAboveOne: mean(ratios) > 1,
+                lowCoverage: (q[q.length - 1] - q[0]) < DEFAULTS.WINDOW_COVERAGE_WARN * (qMax - qMin),
+            }),
+```
+
+`computeDrugToLipid` 回傳物件加（`p.absorbances` 已驗證為三個有限數）：
+
+```js
+            flags: Object.freeze({
+                epsilonWavelengthMismatch: Math.abs(primaryWavelengthNm - DEFAULTS.EPSILON_REF_NM) > 1,
+                absorbanceAboveLinear: aPrimary > DEFAULTS.A_MAX_LINEAR,
+                wavelengthSpreadHigh: Math.abs(p.absorbances[0] - p.absorbances[2]) / aPrimary > DEFAULTS.WAVELENGTH_SPREAD_WARN_REL,
+            }),
+```
+
+`fitPureDoxScale` 回傳物件加 `flags: Object.freeze({ negativeScale: k < 0 })`。
+
+- [ ] **Step 4: 跑測試確認通過**
+
+Run: `node --test saxs-calculator/tests/*.test.js`
+Expected: 全綠，總數 = 之前的通過數 + 4；既有測試不需改動（回傳物件只是多欄位）。
+
+- [ ] **Step 5: UI 警告列、措辭與四個狀態修正**（`js/section-liposome.js`）
+
+面板 1：
+- `onComputeDilution` 成功時把 `qMin`、`qMax` 存進 `state.dilution`（`{ …, qMin, qMax }`），D/L 快照的 `qMin/qMax` 改從 `state.dilution` 取（因子來源為手動時為 `null`），不再於 D/L 時讀輸入框。
+- `renderDilutionResults` 的 `.stat-sub` 改成「q 視窗 ${qMin}–${qMax} Å⁻¹，實際涵蓋 ${r.qCovered[0].toFixed(3)}–${r.qCovered[1].toFixed(3)}，n = …」。
+- 警告列（沿用 `warningRow`）：`r.flags.factorAboveOne` →「稀釋因子 > 1：bypass 應比 solution cell 稀，通常代表兩個檔案選反」；`r.flags.lowCoverage` →「有效點只涵蓋 q 視窗的一小段，請確認兩條曲線的 q 範圍」。
+- 手動因子 > 1 時（`onFactorInput`）`lipoFactorEcho` 補「（> 1，請確認方向）」。
+
+面板 2：
+- 「三值樣本標準差」與 stat-card 的 `±` 標籤改為「三點譜線離散（含譜帶斜率）」；`updateAbsSummary` 同步。
+- `fit.flags.negativeScale` → 警告列「縮放係數 k 為負：含藥／空白檔可能互換，或扣背景過頭」。
+- **修觀察 3（原子性）**：`onComputeSpectra` 先算 `subtracted`、`fit`、再用 `Calc().absorbanceAt(subtracted, currentWavelengths())` 試讀；三者都成功後才 `setState`、填輸入框、渲染、畫圖。任一步 throw → `showAlert`，state 與畫面完全不動。
+- **修觀察 1（殘留警告）**：`onWavelengthInput` 成功重讀後呼叫 `renderSpectraResults(state.spectra.subtracted, state.spectra.fit)`，讓舊的錯誤訊息被結果取代並清掉 `role="alert"`。
+
+面板 3：
+- `renderDlResults` 的誤差說明改為兩行 `.stat-sub`：「誤差 = D/L × √(relA² + relF²)：三點譜線離散貢獻 x%，稀釋因子離散貢獻 y%」、「此為精密度，不含 ε、光程、脂質配製濃度的系統誤差」。
+- 警告列：`epsilonWavelengthMismatch` →「主波長 ${λ} nm 與 ε 的量測波長 495 nm 不同，請改用對應波長的 ε」；`absorbanceAboveLinear` →「A(主波長) > 1.5 超出線性範圍，請稀釋後重測或縮短光程」；`wavelengthSpreadHigh` →「三個波長的吸光度相差超過 5%，平滑吸收帶不會如此，請檢查光譜」。
+- **修觀察 2**：`onComputeDl` 的 catch 內呼叫 `invalidateDl()`。
+
+- [ ] **Step 6: index.html 三段說明**
+
+- `#lipoPathLength` 下方的 `.stat-sub`：「有效光程；建議以已知濃度標準液校正，圓管內徑不等於光程」。
+- 面板 1 卡片 `.card-body` 開頭加 `<p class="stat-sub">假設：UV 吸光度在 bypass 的稀釋狀態、同一支毛細管量測；solution cell 曲線對應面板 3 輸入的原始脂質濃度。</p>`。
+- 面板 2 卡片 `.card-body` 開頭加 `<p class="stat-sub">假設：吸光度來自已破膜或濁度可由空白抵消的樣品；包覆態 DOX 的 ε 可能低於自由 DOX。</p>`。
+
+- [ ] **Step 7: 跑測試、瀏覽器抽查、commit**
+
+Run: `node --test saxs-calculator/tests/*.test.js`（全綠）；`wc -l saxs-calculator/js/section-liposome.js` < 800。
+瀏覽器：兩個 .dat 選反 → 出現「選反」警告；改主波長為 480 → D/L 結果出現 ε 波長警告；Excel DOX-20 三值 → 三波長離散警告。
+
+```bash
+git add saxs-calculator/js/liposome-calculations.js saxs-calculator/js/section-liposome.js saxs-calculator/index.html saxs-calculator/tests/liposome.test.js
+git commit -m "feat(liposome): data-quality flags and warnings from science review; precision wording; atomic spectra update"
+```
+
+---
+
 ### Task 12: 驗證、審查、上線（主 session 執行）
 
 這個 task 由主 session（有 Chrome 與 agent 工具）執行，不派給實作 subagent。
