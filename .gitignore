@@ -28,3 +28,6 @@ CLAUDE.md
 # Separate local-only repo with experimental data — never tracked here
 dndc calculator/
 data/
+
+# Local-only test fixtures exported from private workbooks
+saxs-calculator/tests/fixtures-local/
