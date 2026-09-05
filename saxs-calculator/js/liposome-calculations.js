@@ -106,6 +106,8 @@
         }
         if (curve[xKey].length < 2) throw new Error(`${label} 至少需要 2 個點`);
         if (!isStrictlyIncreasing(curve[xKey])) throw new Error(`${label} 的 ${xKey} 必須嚴格遞增`);
+        const bad = curve[yKey].findIndex(v => typeof v !== 'number' || !Number.isFinite(v));
+        if (bad !== -1) throw new Error(`${label} 的 ${yKey} 第 ${bad + 1} 點不是有限數值`);
     }
 
     function inRange(x, lo, hi) {
@@ -122,9 +124,10 @@
      * @returns {{factor:number, sd:number, n:number, lsqScale:number,
      *            excluded:{outOfRange:number, nonPositive:number}, ratios:number[], q:number[]}}
      */
-    function computeDilutionFactor(solution, bypass, options = {}) {
-        const qMin = options.qMin ?? DEFAULTS.Q_MIN;
-        const qMax = options.qMax ?? DEFAULTS.Q_MAX;
+    function computeDilutionFactor(solution, bypass, options) {
+        const opts = options || {};
+        const qMin = opts.qMin ?? DEFAULTS.Q_MIN;
+        const qMax = opts.qMax ?? DEFAULTS.Q_MAX;
         assertCurve(solution, 'q', 'i', 'solution cell 曲線');
         assertCurve(bypass, 'q', 'i', 'bypass 曲線');
         assertFinite(qMin, 'q 下限');
@@ -224,15 +227,16 @@
 
     /**
      * 純 DOX 縮放擬合：在 fitMin–fitMax 內求最小平方 k，使 blank + k·pure ≈ loaded。
-     * k = Σ[(L−B)·P] / Σ(P²)。model 與 residual 覆蓋三條光譜的整段重疊範圍。
+     * k = Σ[(L−B)·P] / Σ(P²)。rms 只在擬合窗內計算；model 與 residual 則覆蓋三條光譜的整段重疊範圍。
      *
      * @returns {{k:number, rms:number, n:number,
      *            model:{wavelength:number[], absorbance:number[]},
      *            residual:{wavelength:number[], absorbance:number[]}}}
      */
-    function fitPureDoxScale(loaded, blank, pure, options = {}) {
-        const fitMin = options.fitMin ?? DEFAULTS.FIT_MIN_NM;
-        const fitMax = options.fitMax ?? DEFAULTS.FIT_MAX_NM;
+    function fitPureDoxScale(loaded, blank, pure, options) {
+        const opts = options || {};
+        const fitMin = opts.fitMin ?? DEFAULTS.FIT_MIN_NM;
+        const fitMax = opts.fitMax ?? DEFAULTS.FIT_MAX_NM;
         assertCurve(loaded, 'wavelength', 'absorbance', '含藥光譜');
         assertCurve(blank, 'wavelength', 'absorbance', '空白光譜');
         assertCurve(pure, 'wavelength', 'absorbance', '純 DOX 光譜');
@@ -244,6 +248,7 @@
         const pw = pure.wavelength;
         const lo = Math.max(bw[0], pw[0]);
         const hi = Math.min(bw[bw.length - 1], pw[pw.length - 1]);
+        if (!(hi > lo)) throw new Error('空白與純 DOX 光譜的波長範圍沒有重疊');
 
         const wavelength = [];
         const L = [];
@@ -302,11 +307,13 @@
         const primaryWavelengthNm = p.primaryWavelengthNm ?? DEFAULTS.PRIMARY_WAVELENGTH_NM;
         const factorSd = p.factorSd ?? 0;
 
-        if (!Array.isArray(p.absorbances) || p.absorbances.length !== 3) {
+        if (!Array.isArray(p.absorbances) || p.absorbances.length !== DEFAULTS.WAVELENGTHS_NM.length) {
             throw new Error('需要三個吸光度（494 / 495 / 496 nm 或自訂的三個波長）');
         }
         p.absorbances.forEach((a, k) => assertFinite(a, `吸光度 #${k + 1}`));
-        if (!(primaryIndex >= 0 && primaryIndex < 3)) throw new Error('primaryIndex 必須是 0、1 或 2');
+        if (!(Number.isInteger(primaryIndex) && primaryIndex >= 0 && primaryIndex < DEFAULTS.WAVELENGTHS_NM.length)) {
+            throw new Error('primaryIndex 必須是 0、1 或 2');
+        }
 
         const aPrimary = p.absorbances[primaryIndex];
         if (!(aPrimary > 0)) {

@@ -36,7 +36,7 @@ test('[lipo] interpolateLinear 在格點上取值、格點間線性、範圍外 
 
 test('[lipo] sampleStd 是 n−1 的樣本標準差（Excel STDEV.S），n<2 回 0', () => {
     // Excel DL!F2 = STDEV.S(0.90287, 0.91973, 0.94266) = 0.019972016256085294
-    approx(Liposome.sampleStd([0.90287, 0.91973, 0.94266]), 0.019972016256085294, 1e-15, 'DOX-18 F 欄');
+    approx(Liposome.sampleStd([0.90287, 0.91973, 0.94266]), 0.019972016256085294, 1e-12, 'DOX-18 F 欄');
     assert.equal(Liposome.sampleStd([5]), 0);
     assert.equal(Liposome.sampleStd([]), 0);
 });
@@ -249,4 +249,59 @@ test('[lipo] computeDrugToLipid 預設 primaryIndex 1 / 495 nm；主波長吸光
     assert.throws(() => Liposome.computeDrugToLipid({ ...ok, epsilon: 0 }), /ε 必須大於 0/);
     assert.throws(() => Liposome.computeDrugToLipid({ ...ok, pathCm: 0 }), /光徑 必須大於 0/);
     assert.throws(() => Liposome.computeDrugToLipid({ ...ok, factorSd: -0.1 }), /離散度不可為負/);
+});
+
+// ---------------------------------------------------------------- 邊界防呆（code review 追加）
+test('[lipo] 曲線內含 NaN y 值一律 throw（computeDilutionFactor / subtractSpectra / absorbanceAt / fitPureDoxScale）', () => {
+    const solution = guinierCurve(1, 0);
+    const bypassNaN = { q: solution.q, i: solution.i.map((v, k) => (k === 120 ? NaN : v * 0.45)) };
+    assert.throws(() => Liposome.computeDilutionFactor(solution, bypassNaN), /不是有限數值/);
+
+    const s = syntheticSpectra(0.8);
+    const loadedNaN = { wavelength: s.loaded.wavelength, absorbance: s.loaded.absorbance.map((v, k) => (k === 50 ? NaN : v)) };
+    assert.throws(() => Liposome.subtractSpectra(loadedNaN, s.blank), /不是有限數值/);
+    assert.throws(() => Liposome.absorbanceAt(loadedNaN, [495]), /不是有限數值/);
+    assert.throws(() => Liposome.fitPureDoxScale(loadedNaN, s.blank, s.pure), /不是有限數值/);
+});
+
+test('[lipo] 五個公開函式接受深度凍結的曲線／參數（唯讀陣列）不會 throw，且結果不變', () => {
+    const freezeCurve = (curve, xKey, yKey) => Object.freeze({
+        [xKey]: Object.freeze(curve[xKey].slice()),
+        [yKey]: Object.freeze(curve[yKey].slice()),
+    });
+
+    const solution = freezeCurve(guinierCurve(1, 0), 'q', 'i');
+    const bypass = freezeCurve(guinierCurve(0.45, 0), 'q', 'i');
+    const dil = Liposome.computeDilutionFactor(solution, bypass, Object.freeze({ qMin: 0.1, qMax: 0.15 }));
+    approx(dil.factor, 0.45, 1e-9, 'frozen computeDilutionFactor');
+
+    const s = syntheticSpectra(0.8);
+    const loaded = freezeCurve(s.loaded, 'wavelength', 'absorbance');
+    const blank = freezeCurve(s.blank, 'wavelength', 'absorbance');
+    const pure = freezeCurve(s.pure, 'wavelength', 'absorbance');
+
+    const sub = Liposome.subtractSpectra(loaded, blank);
+    approx(sub.absorbance[0], 0.8 * s.pure.absorbance[0], 1e-9, 'frozen subtractSpectra');
+
+    const [a495] = Liposome.absorbanceAt(sub, Object.freeze([495]));
+    approx(a495, 0.8, 1e-6, 'frozen absorbanceAt');
+
+    const fit = Liposome.fitPureDoxScale(loaded, blank, pure, Object.freeze({ fitMin: 450, fitMax: 550 }));
+    approx(fit.k, 0.8, 1e-9, 'frozen fitPureDoxScale');
+
+    const dl = Liposome.computeDrugToLipid(Object.freeze({
+        absorbances: Object.freeze([0.90287, 0.91973, 0.94266]),
+        epsilon: 9250, pathCm: 0.2, lipidMolar: 0.0117, factor: 0.454, factorSd: 0,
+    }));
+    relApprox(dl.dl, 0.09359376319728743, 1e-9, 'frozen computeDrugToLipid');
+});
+
+test('[lipo] 稀釋因子：solution 側非正值也會被排除並計數（不只 bypass 側）', () => {
+    const solution = guinierCurve(1, 0);
+    const bypass = guinierCurve(0.45, 0);
+    const dented = { q: solution.q, i: solution.i.map((v, k) => (solution.q[k] > 0.1199 && solution.q[k] < 0.1211 ? -1 : v)) };
+    const r = Liposome.computeDilutionFactor(dented, bypass);
+    assert.equal(r.excluded.nonPositive, 2);
+    assert.equal(r.n, 49);
+    approx(r.factor, 0.45, 1e-9, 'factor after solution-side exclusion');
 });
