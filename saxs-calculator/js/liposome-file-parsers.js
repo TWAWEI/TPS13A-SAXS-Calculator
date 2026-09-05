@@ -7,6 +7,8 @@
  * 會吃掉沒有標頭的光譜檔第一列。
  *
  * 內插需要嚴格遞增的 x，這裡是唯一的保證點：非遞增就穩定排序（sorted: true），重複 x 就 throw。
+ *
+ * 小數點必須是 `.`（逗號小數的匯出會被誤讀為分隔符）。
  */
 (function attachLiposomeFileParsers(global) {
     'use strict';
@@ -27,20 +29,20 @@
         if (typeof text !== 'string') throw new Error('檔案內容不是文字');
         const rows = [];
         let skipped = 0;
-        text.split(/\r?\n/).forEach((line) => {
+        text.split(/\r\n|\r|\n/).forEach((line) => {
             const trimmed = line.trim();
             if (trimmed === '' || trimmed.startsWith('#')) return;
-            const fields = trimmed.split(SPLIT_RE).map(Number);
+            const fields = trimmed.split(SPLIT_RE).filter(f => f !== '').map(Number);
             if (fields.length < minCols || fields.slice(0, minCols).some(v => !Number.isFinite(v))) {
                 skipped += 1;
                 return;
             }
             rows.push(fields);
+            if (rows.length > LIMITS.MAX_POINTS) {
+                throw new Error(`資料點 ${rows.length} 超過上限 ${LIMITS.MAX_POINTS}`);
+            }
         });
         if (rows.length === 0) throw new Error(`找不到數值列（每列至少要有 ${minCols} 欄數字）`);
-        if (rows.length > LIMITS.MAX_POINTS) {
-            throw new Error(`資料點 ${rows.length} 超過上限 ${LIMITS.MAX_POINTS}`);
-        }
         return { rows, skipped };
     }
 

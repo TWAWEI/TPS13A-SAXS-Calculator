@@ -369,3 +369,19 @@ test('[lipo-parse] LIMITS：點數超過 MAX_POINTS throw；MAX_BYTES 為 5 MB',
     const big = Array.from({ length: 100001 }, (_, k) => `${k} 1`).join('\n');
     assert.throws(() => LiposomeParsers.parseSaxsDat(big), /超過上限 100000/);
 });
+
+test('[lipo-parse] 行首／行尾多餘分隔符不產生空欄', () => {
+    assert.equal(LiposomeParsers.parseSaxsDat('0.1,1,\n0.2,2,').err, null);
+    assert.deepEqual(LiposomeParsers.parseSaxsDat('0.1,1,0.5,\n0.2,2,0.4,').err, [0.5, 0.4]);
+    assert.deepEqual(LiposomeParsers.parseSaxsDat(',0.1,1\n,0.2,2').q, [0.1, 0.2]);
+    assert.deepEqual(LiposomeParsers.parseUvSpectrum('190;0.1;\n191;0.2;').absorbance, [0.1, 0.2]);
+});
+
+test('[lipo-parse] BOM、CRLF 尾端空白、Infinity／1e400 都在邊界處理', () => {
+    assert.deepEqual(LiposomeParsers.parseSaxsDat('﻿0.1 1 0.5\r\n0.2 2 0.4  \r\n').err, [0.5, 0.4]);
+    const r = LiposomeParsers.parseSaxsDat('Infinity 1\n0.1 1e400\n0.2 2\n0.3 3');
+    assert.deepEqual(r.q, [0.2, 0.3]);
+    assert.equal(r.skipped, 2);
+    assert.equal(LiposomeParsers.parseSaxsDat('0.1 1 Infinity\n0.2 2 0.4').err, null);
+    assert.deepEqual(LiposomeParsers.parseSaxsDat('0.1 1\r0.2 2\r0.3 3').q, [0.1, 0.2, 0.3]);
+});
