@@ -60,12 +60,17 @@
             && Number.isFinite(r.primaryWavelengthNm) && typeof r.sampleName === 'string';
     }
 
+    /** 結果列進表後不再改動：外層與 meta 都凍結（meta 缺就補空物件）。 */
+    function freezeRow(row) {
+        return Object.freeze({ ...row, meta: Object.freeze({ ...(row.meta || {}) }) });
+    }
+
     function loadRows() {
         const raw = global.FormUtils.safeLocal.get(RESULTS_KEY);
         if (!raw) return [];
         try {
             const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed.filter(isRow) : [];
+            return Array.isArray(parsed) ? parsed.filter(isRow).map(freezeRow) : [];
         } catch (err) {
             console.warn('[liposome] 結果表 JSON 損壞，已忽略', err);
             return [];
@@ -76,7 +81,8 @@
         rows = Object.freeze(next);
         const saved = global.FormUtils.safeLocal.set(RESULTS_KEY, JSON.stringify(rows));
         render();
-        if (!saved) global.showAlert('lipoResultsAlert', 'warning', '結果已顯示但無法寫入瀏覽器儲存空間，重新整理後會消失，請先匯出 CSV');
+        if (saved) global.clearAlert('lipoResultsAlert');   // 刪列／清空成功後，上限或儲存警告不該留著
+        else global.showAlert('lipoResultsAlert', 'warning', '結果已顯示但無法寫入瀏覽器儲存空間，重新整理後會消失，請先匯出 CSV');
     }
 
     // ------------------------------------------------------------ 渲染
@@ -129,8 +135,7 @@
             global.showAlert('lipoResultsAlert', 'error', `結果表已達 ${MAX_ROWS} 列上限，請先匯出 CSV 再清空`);
             return false;
         }
-        global.clearAlert('lipoResultsAlert');
-        setRows([...rows, row]);
+        setRows([...rows, freezeRow(row)]);
         return true;
     }
 
@@ -192,7 +197,10 @@
         els.clearBtn = $('lipoClearResults');
         els.dialog = $('lipoClearDialog');
         els.dialogCancel = $('lipoClearCancel');
-        if (!els.body) return;
+        if (!els.body) {
+            console.error('[liposome] 結果表缺少元素：lipoResultsBody');
+            return;
+        }
 
         rows = Object.freeze(loadRows());
         render();

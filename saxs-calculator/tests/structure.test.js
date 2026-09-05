@@ -152,3 +152,19 @@ test('[structure] 待拆名單沒有過期項目（拆完就要從名單移除�
     assert.deepEqual(stale, [],
         `已經不超行（或不存在）了，請從 PENDING_SPLIT 移除: ${stale.join(', ')}`);
 });
+
+test('[structure] section-liposome.js 排在它呼叫的所有模組之後（liposome-*.js、alerts.js、dndc-export.js）', () => {
+    const pos = name => SCRIPT_REFS.indexOf(name);
+    const section = pos('js/section-liposome.js');
+    assert.ok(section >= 0, 'section-liposome.js 未被引用');
+    const deps = [
+        ...JS_FILES.filter(f => f.startsWith('liposome-')).map(f => `js/${f}`),
+        'js/alerts.js',
+        'js/dndc-export.js',
+    ];
+    assert.ok(deps.length >= 6, `相依清單異常：${deps.join(', ')}`);
+    for (const dep of deps) {
+        assert.ok(pos(dep) >= 0, `${dep} 未被引用`);
+        assert.ok(pos(dep) < section, `${dep} 必須排在 section-liposome.js 之前`);
+    }
+});

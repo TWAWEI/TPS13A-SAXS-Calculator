@@ -126,7 +126,8 @@
      * @param {{q:number[], i:number[]}} bypass - bypass 曲線
      * @param {{qMin?:number, qMax?:number}} [options]
      * @returns {{factor:number, sd:number, n:number, lsqScale:number,
-     *            excluded:{outOfRange:number, nonPositive:number}, ratios:number[], q:number[]}}
+     *            excluded:{outOfRange:number, nonPositive:number}, ratios:number[], q:number[],
+     *            qCovered:number[], flags:{factorAboveOne:boolean, lowCoverage:boolean}}}
      */
     function computeDilutionFactor(solution, bypass, options) {
         const opts = options || {};
@@ -259,7 +260,8 @@
      *
      * @returns {{k:number, rms:number, n:number,
      *            model:{wavelength:number[], absorbance:number[]},
-     *            residual:{wavelength:number[], absorbance:number[]}}}
+     *            residual:{wavelength:number[], absorbance:number[]},
+     *            flags:{negativeScale:boolean}}}
      */
     function fitPureDoxScale(loaded, blank, pure, options) {
         const opts = options || {};
@@ -328,7 +330,8 @@
      * @param {{absorbances:number[], primaryIndex?:number, primaryWavelengthNm?:number,
      *          epsilon:number, pathCm:number, lipidMolar:number, factor:number, factorSd?:number}} params
      * @returns {{aPrimary:number, sdA:number, doxConc:number, doxSd:number, lipidActual:number,
-     *            dl:number, dlSd:number, dlSdExcel:number, relA:number, relF:number}}
+     *            dl:number, dlSd:number, dlSdExcel:number, relA:number, relF:number,
+     *            flags:{epsilonWavelengthMismatch:boolean, absorbanceAboveLinear:boolean, wavelengthSpreadHigh:boolean}}}
      */
     function computeDrugToLipid(params) {
         const p = params || {};

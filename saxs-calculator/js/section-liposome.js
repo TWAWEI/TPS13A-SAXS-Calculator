@@ -204,8 +204,9 @@
 
     function onFactorInput() {
         const v = parseFloat(els.factor.value);
-        setState({ dilution: Object.freeze({ ...state.dilution, factor: Number.isFinite(v) ? v : null, sd: 0, n: 0, source: 'manual', qMin: null, qMax: null }) });
-        setChip(els.factorChip, 'manual');
+        const factor = Number.isFinite(v) ? v : null;
+        setState({ dilution: Object.freeze({ ...state.dilution, factor, sd: 0, n: 0, source: 'manual', qMin: null, qMax: null }) });
+        setChip(els.factorChip, factor === null ? null : 'manual');   // 欄位清空：chip 隱藏，與回顯「尚未設定」一致
         syncFactorEcho();
     }
 
@@ -306,6 +307,8 @@
             if (fit) {
                 Charts().renderFitChart('lipoFitChart', { loaded, model: fit.model, residual: fit.residual });
                 global.A11y.describeChart('lipoFitChart', `含藥實測與空白加 ${fit.k.toPrecision(3)} 倍純 DOX 的模型，殘差 RMS ${fit.rms.toPrecision(2)}`);
+            } else {
+                Charts().destroyChart('lipoFitChart');   // 上一次的擬合圖不留在隱藏的容器裡
             }
         } catch (err) {
             global.showAlert('lipoSpectraResults', 'error', err.message);
@@ -374,7 +377,7 @@
             <div class="result-grid mt-sm">
                 ${resultItem('[DOX]', (snap.doxConc * 1000).toPrecision(4), `± ${(snap.doxSd * 1000).toPrecision(2)} mM`)}
                 ${resultItem('脂質實際濃度', (snap.lipidActual * 1000).toPrecision(4), 'mM')}
-                ${resultItem(`A(${p.wavelengths[primary()]} nm)`, snap.aPrimary.toFixed(5), `SD ${snap.sdA.toPrecision(2)}`)}
+                ${resultItem(`A(${p.wavelengths[primary()]} nm)`, snap.aPrimary.toFixed(5), `${SPREAD_LABEL} ${snap.sdA.toPrecision(2)}`)}
                 ${resultItem('稀釋因子', p.factor.toPrecision(4), SOURCE_LABEL[p.factorSource])}
             </div>
             ${dlWarnings(snap)}`;

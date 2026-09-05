@@ -32,14 +32,18 @@
         return charts.get(canvasId) || null;
     }
 
+    /** 銷毀並移除某 canvas 的實例；沒有就 no-op（例如這次沒有純 DOX 檔，要收掉上次的擬合圖）。 */
+    function destroyChart(canvasId) {
+        const old = charts.get(canvasId);
+        if (!old) return;
+        old.destroy();
+        charts.delete(canvasId);
+    }
+
     function replaceChart(canvasId, config) {
         const canvas = typeof document !== 'undefined' ? document.getElementById(canvasId) : null;
         if (!canvas || typeof global.Chart !== 'function') return null;
-        const old = charts.get(canvasId);
-        if (old) {
-            old.destroy();
-            charts.delete(canvasId);
-        }
+        destroyChart(canvasId);
         const chart = new global.Chart(canvas, config);
         charts.set(canvasId, chart);
         return chart;
@@ -208,6 +212,7 @@
     global.LiposomeCharts = Object.freeze({
         LIPO_CHART_COLORS,
         getChart,
+        destroyChart,
         renderDilutionChart,
         renderSpectraChart,
         renderFitChart,
