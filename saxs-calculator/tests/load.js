@@ -19,6 +19,7 @@ require(path.join(JS, 'dndc-file-parser.js'));
 require(path.join(JS, 'dndc-astra-parser.js'));
 // UI 檔，但頂層只有函式宣告；純文案函式從 window.DndcAstraUi 取用
 require(path.join(JS, 'dndc-astra-ui.js'));
+require(path.join(JS, 'liposome-calculations.js'));
 
 module.exports = {
     SAXS: window.SAXSCalculations,
@@ -29,4 +30,5 @@ module.exports = {
     AstraParser: window.DndcAstraParser,
     AstraUi: window.DndcAstraUi,
     FormUtils: window.FormUtils,
+    Liposome: window.LiposomeCalculations,
 };
