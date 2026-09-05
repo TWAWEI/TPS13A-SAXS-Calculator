@@ -35,5 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initCentrifugeSection();
     initDetectorSection();
     initIUCrSection();
+    window.LiposomeSection?.init();
     initDndcLock();
 });

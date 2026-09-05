@@ -93,6 +93,10 @@
                     <button class="nav-item" data-section="detector" data-short="偵測" data-title="偵測器距離">
                         <span class="nav-item-text">偵測器距離</span>
                     </button>
+
+                    <button class="nav-item" data-section="liposome" data-short="載藥" data-title="脂質體 DOX 載藥">
+                        <span class="nav-item-text">脂質體 DOX 載藥</span>
+                    </button>
                 </div>
 
                 <div class="nav-section" id="dndcNavSection">
@@ -128,7 +132,7 @@
 
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.13
+                Version 4.14
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" aria-label="收合側邊欄" aria-expanded="true" aria-controls="sidebar">
                 <span id="sidebarToggleIcon" aria-hidden="true">◀</span>
@@ -1266,6 +1270,239 @@
                 </div>
             </section>
 
+            <!-- ============ 脂質體 DOX 載藥量 (D/L) ============ -->
+            <section class="section" id="section-liposome" aria-labelledby="liposome-title">
+                <div class="page-header">
+                    <h1 class="page-title" id="liposome-title">脂質體 DOX 載藥量 (D/L)</h1>
+                    <p class="page-subtitle">由 solution cell 與 bypass 的 SAXS 曲線求稀釋因子，UV-Vis 光譜扣背景得純 DOX 吸收，再算 drug-to-lipid 莫耳比與誤差。一次一個樣品，結果累積在最下方的表格。</p>
+                </div>
+
+                <!-- 面板 1：稀釋因子 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">1. 稀釋因子（SAXS）</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="grid grid-2">
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoSolutionFile">Solution cell 曲線 (.dat)</label>
+                                    <input type="file" class="form-input" id="lipoSolutionFile" accept=".dat,.txt,.csv">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoBypassFile">Bypass 曲線 (.dat)</label>
+                                    <input type="file" class="form-input" id="lipoBypassFile" accept=".dat,.txt,.csv">
+                                </div>
+                                <div class="grid grid-2">
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoQMin">q 下限</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoQMin" value="0.1" min="0.001" max="2" step="0.005">
+                                            <span class="input-unit">Å⁻¹</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoQMax">q 上限</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoQMax" value="0.15" min="0.001" max="2" step="0.005">
+                                            <span class="input-unit">Å⁻¹</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-lg btn-full" id="lipoComputeDilution" disabled>計算稀釋因子</button>
+                                <div class="form-group mt-md">
+                                    <label class="form-label" for="lipoDilutionFactor">目前採用的稀釋因子 <span class="info-panel-chip" id="lipoDilutionChip" hidden>手動</span></label>
+                                    <input type="number" class="form-input" id="lipoDilutionFactor" placeholder="計算後自動填入，或手動輸入 PRIMUS 的 I Scale" min="0" step="0.0001">
+                                    <div class="stat-sub" id="lipoFactorEcho">尚未設定稀釋因子</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div id="lipoDilutionResults" class="mt-sm"></div>
+                                <div class="chart-container mt-md">
+                                    <canvas id="lipoDilutionChart" role="img" aria-label="尚未載入 SAXS 曲線"></canvas>
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm mt-sm" id="lipoDilutionPng" disabled>下載 PNG</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 面板 2：UV 光譜 -->
+                <div class="card mt-lg">
+                    <div class="card-header">
+                        <h2 class="card-title">2. UV-Vis 光譜扣背景</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="grid grid-2">
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoLoadedFile">含藥光譜 Chol-DOX-Liposome（波長, 吸光度）</label>
+                                    <input type="file" class="form-input" id="lipoLoadedFile" accept=".csv,.txt,.tsv,.dat">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoBlankFile">空白光譜 Chol-Liposome</label>
+                                    <input type="file" class="form-input" id="lipoBlankFile" accept=".csv,.txt,.tsv,.dat">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoPureFile">純 DOX 光譜（選填，用於濃度一致性檢查）</label>
+                                    <input type="file" class="form-input" id="lipoPureFile" accept=".csv,.txt,.tsv,.dat">
+                                </div>
+                                <div class="grid grid-2">
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoFitMin">擬合下限</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoFitMin" value="450" min="190" max="900" step="1">
+                                            <span class="input-unit">nm</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoFitMax">擬合上限</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoFitMax" value="550" min="190" max="900" step="1">
+                                            <span class="input-unit">nm</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-lg btn-full" id="lipoComputeSpectra" disabled>扣背景</button>
+
+                                <div class="section-divider mt-md"><span>讀值波長與吸光度</span></div>
+                                <div class="grid grid-3">
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoWl1">波長 1</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoWl1" value="494" min="190" max="900" step="0.5">
+                                            <span class="input-unit">nm</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoWl2">主波長</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoWl2" value="495" min="190" max="900" step="0.5">
+                                            <span class="input-unit">nm</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoWl3">波長 3</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoWl3" value="496" min="190" max="900" step="0.5">
+                                            <span class="input-unit">nm</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-3">
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoAbs1">A(波長 1)</label>
+                                        <input type="number" class="form-input" id="lipoAbs1" step="0.00001" placeholder="扣背景後自動填入">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoAbs2">A(主波長) <span class="info-panel-chip" id="lipoAbsChip" hidden>手動</span></label>
+                                        <input type="number" class="form-input" id="lipoAbs2" step="0.00001" placeholder="扣背景後自動填入">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoAbs3">A(波長 3)</label>
+                                        <input type="number" class="form-input" id="lipoAbs3" step="0.00001" placeholder="扣背景後自動填入">
+                                    </div>
+                                </div>
+                                <div class="stat-sub" id="lipoAbsSummary"></div>
+                            </div>
+                            <div>
+                                <div id="lipoSpectraResults" class="mt-sm"></div>
+                                <div class="chart-container mt-md">
+                                    <canvas id="lipoSpectraChart" role="img" aria-label="尚未載入光譜"></canvas>
+                                </div>
+                                <div class="chart-container mt-md" id="lipoFitChartWrap" hidden>
+                                    <canvas id="lipoFitChart" role="img" aria-label="尚未載入純 DOX 光譜"></canvas>
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm mt-sm" id="lipoSpectraPng" disabled>下載 PNG</button>
+                                <button type="button" class="btn btn-secondary btn-sm mt-sm" id="lipoFitPng" hidden>下載擬合圖 PNG</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 面板 3：D/L -->
+                <div class="card mt-lg">
+                    <div class="card-header">
+                        <h2 class="card-title">3. D/L（drug-to-lipid 莫耳比）</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="grid grid-2">
+                            <div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoSampleName">樣品名</label>
+                                    <input type="text" class="form-input" id="lipoSampleName" maxlength="60" placeholder="例如 Chol-DOX-20">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoLipidConc">脂質原始濃度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="lipoLipidConc" min="0" step="0.01" placeholder="例如 11.7">
+                                        <span class="input-unit">mM</span>
+                                    </div>
+                                </div>
+                                <div class="grid grid-2">
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoEpsilon">ε (DOX)</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoEpsilon" value="9250" min="1" step="10">
+                                            <span class="input-unit">L·mol⁻¹·cm⁻¹</span>
+                                        </div>
+                                        <div class="stat-sub">495 nm，Lee et al., Int. J. Nanomed. 20 (2025) 6357–6378</div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="lipoPathLength">光徑</label>
+                                        <div class="form-input-group">
+                                            <input type="number" class="form-input" id="lipoPathLength" value="0.2" min="0.001" step="0.01">
+                                            <span class="input-unit">cm</span>
+                                        </div>
+                                        <div class="stat-sub">SAXS 毛細管厚度</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-primary btn-lg btn-full" id="lipoComputeDl">計算 D/L</button>
+                                <button type="button" class="btn btn-secondary btn-full mt-sm" id="lipoAddResult" disabled>加入結果表</button>
+                            </div>
+                            <div>
+                                <div id="lipoDlResults" class="mt-sm"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 結果表 -->
+                <div class="card mt-lg">
+                    <div class="card-header">
+                        <h2 class="card-title">結果表 <span class="stat-sub" id="lipoResultsCount"></span></h2>
+                    </div>
+                    <div class="card-body">
+                        <div id="lipoResultsAlert"></div>
+                        <p class="stat-sub" id="lipoResultsEmpty">尚無結果。在上方算出 D/L 後按「加入結果表」。</p>
+                        <div class="table-wrapper" id="lipoResultsWrapper" tabindex="0" role="region" aria-label="脂質體 D/L 結果表（可橫向捲動）" hidden>
+                            <table class="table" id="lipoResultsTable">
+                                <caption class="stat-sub">每列一個樣品；數值以完整精度存檔，表格顯示 4 位有效數字。</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">樣品</th>
+                                        <th scope="col" class="text-right">稀釋因子</th>
+                                        <th scope="col">因子來源</th>
+                                        <th scope="col" class="text-right" id="lipoResultsAbsHeader">A(495 nm)</th>
+                                        <th scope="col" class="text-right">[DOX] mM</th>
+                                        <th scope="col" class="text-right">脂質實際 mM</th>
+                                        <th scope="col" class="text-right">D/L</th>
+                                        <th scope="col" class="text-right">誤差</th>
+                                        <th scope="col">加入時間</th>
+                                        <th scope="col"><span class="sr-only">操作</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="lipoResultsBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="mt-md">
+                            <button type="button" class="btn btn-primary" id="lipoExportCsv" disabled>匯出 CSV</button>
+                            <button type="button" class="btn btn-secondary" id="lipoClearResults" disabled>清空</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Section: dn/dc Theoretical Calculator -->
             <section class="section" id="section-dndc-theory" aria-labelledby="dndc-theory-title">
                 <div class="page-header">
@@ -1870,6 +2107,18 @@
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" id="dndcPasswordCancel">取消</button>
                 <button type="submit" class="btn btn-primary" id="dndcPasswordSubmit">解鎖</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- 脂質體結果表：清空確認 -->
+    <dialog id="lipoClearDialog" class="modal-dialog" aria-labelledby="lipoClearTitle" aria-describedby="lipoClearDesc">
+        <form method="dialog" class="modal-content">
+            <h2 class="modal-title" id="lipoClearTitle">清空結果表？</h2>
+            <p class="modal-desc" id="lipoClearDesc">所有列都會被刪除，且無法復原。建議先匯出 CSV。</p>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="lipoClearCancel">取消</button>
+                <button type="submit" class="btn btn-primary" value="confirm">清空</button>
             </div>
         </form>
     </dialog>
