@@ -258,30 +258,29 @@
                             <h2 class="card-title">參數輸入</h2>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info">
-                                <strong>提示：</strong>請先在「蛋白質分析」頁面輸入序列，分子量等參數會自動帶入。
-                            </div>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="sampleConcentration">樣品濃度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="sampleConcentration" value="1.0"
+                                            step="0.1" min="0.001">
+                                        <span class="input-unit">mg/mL</span>
+                                    </div>
+                                </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="sampleConcentration">樣品濃度</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="sampleConcentration" value="1.0"
-                                        step="0.1" min="0.001">
-                                    <span class="input-unit">mg/mL</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="xrayEnergy">X 射線能量</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="xrayEnergy" value="15" step="0.1"
+                                            min="1">
+                                        <span class="input-unit">keV</span>
+                                    </div>
                                 </div>
                             </div>
-
-                            <div class="form-group">
-                                <label class="form-label" for="xrayEnergy">X 射線能量</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="xrayEnergy" value="15" step="0.1"
-                                        min="1">
-                                    <span class="input-unit">keV</span>
-                                </div>
-                            </div>
+                            <p class="form-list-foot">請先在「蛋白質分析」頁面輸入序列，分子量等參數會自動帶入。</p>
 
                             <!-- 理論值顯示區塊 -->
-                            <div class="form-group info-panel info-panel--success">
+                            <div class="form-group info-panel">
                                 <div class="info-panel-header">
                                     <div class="info-panel-title">理論預測值</div>
                                     <div class="info-panel-header-right">
@@ -323,7 +322,7 @@
                             </div>
 
                             <!-- 偵測器距離建議區塊 -->
-                            <div class="form-group info-panel info-panel--warning">
+                            <div class="form-group info-panel">
                                 <div class="info-panel-header">
                                     <div class="info-panel-title">偵測器距離建議</div>
                                     <div class="info-panel-header-right">
@@ -375,65 +374,67 @@
 
                             <div class="section-divider"><span>量測結果輸入</span></div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="i0Guinier"><i>I</i>(0) from Guinier</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="i0Guinier" step="0.0001"
-                                        placeholder="例: 0.0526">
-                                    <span class="input-unit">cm⁻¹</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="i0Guinier"><i>I</i>(0) from Guinier</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="i0Guinier" step="0.0001"
+                                            placeholder="例: 0.0526">
+                                        <span class="input-unit">cm⁻¹</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="rgGuinier"><i>R</i><sub>g</sub> from Guinier</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="rgGuinier" step="0.01"
-                                        placeholder="例: 27.88">
-                                    <span class="input-unit">Å</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="rgGuinier"><i>R</i><sub>g</sub> from Guinier</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="rgGuinier" step="0.01"
+                                            placeholder="例: 27.88">
+                                        <span class="input-unit">Å</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="guinierQmax"><i>q</i><sub>max</sub> (Guinier fit)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="guinierQmax" step="0.001"
-                                        placeholder="例: 0.045">
-                                    <span class="input-unit">Å⁻¹</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="guinierQmax"><i>q</i><sub>max</sub> (Guinier fit)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="guinierQmax" step="0.001"
+                                            placeholder="例: 0.045">
+                                        <span class="input-unit">Å⁻¹</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="i0Pr"><i>I</i>(0) from <i>P</i>(<i>r</i>)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="i0Pr" step="0.0001"
-                                        placeholder="例: 0.03887">
-                                    <span class="input-unit">cm⁻¹</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="i0Pr"><i>I</i>(0) from <i>P</i>(<i>r</i>)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="i0Pr" step="0.0001"
+                                            placeholder="例: 0.03887">
+                                        <span class="input-unit">cm⁻¹</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="rgPr"><i>R</i><sub>g</sub> from <i>P</i>(<i>r</i>)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="rgPr" step="0.01"
-                                        placeholder="例: 13.17">
-                                    <span class="input-unit">Å</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="rgPr"><i>R</i><sub>g</sub> from <i>P</i>(<i>r</i>)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="rgPr" step="0.01"
+                                            placeholder="例: 13.17">
+                                        <span class="input-unit">Å</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="dmax"><i>D</i><sub>max</sub></label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dmax" step="1" placeholder="例: 43">
-                                    <span class="input-unit">Å</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="dmax"><i>D</i><sub>max</sub></label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dmax" step="1" placeholder="例: 43">
+                                        <span class="input-unit">Å</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="porodVolume">Porod volume</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="porodVolume" step="100"
-                                        placeholder="例: 13051">
-                                    <span class="input-unit">Å³</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="porodVolume">Porod volume</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="porodVolume" step="100"
+                                            placeholder="例: 13051">
+                                        <span class="input-unit">Å³</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -473,59 +474,60 @@
                             <h2 class="card-title">Pre-run 參數輸入</h2>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info alert--compact">
-                                <strong>提示：</strong>先用 3μL 樣品做 pre-run HPLC，記錄峰的位置和寬度。
-                            </div>
+                            <div class="form-list">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="hplcPeakCenter">Peak center (min) from 3μL
+                                        pre-run</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="hplcPeakCenter" value="10.937"
+                                            step="0.001" min="0">
+                                        <span class="input-unit">min</span>
+                                    </div>
+                                </div>
 
-                            <div class="form-group form-group--compact">
-                                <label class="form-label form-label--sm" for="hplcPeakCenter">Peak center (min) from 3μL
-                                    pre-run</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="hplcPeakCenter" value="10.937"
-                                        step="0.001" min="0">
-                                    <span class="input-unit">min</span>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="hplcPeakFWHM">Peak width (FWHM) (min) from 3μL
+                                        pre-run</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="hplcPeakFWHM" value="1" step="0.1"
+                                            min="0">
+                                        <span class="input-unit">min</span>
+                                    </div>
                                 </div>
                             </div>
-
-                            <div class="form-group form-group--compact">
-                                <label class="form-label form-label--sm" for="hplcPeakFWHM">Peak width (FWHM) (min) from 3μL
-                                    pre-run</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="hplcPeakFWHM" value="1" step="0.1"
-                                        min="0">
-                                    <span class="input-unit">min</span>
-                                </div>
-                            </div>
+                            <p class="form-list-foot">先用 3μL 樣品做 pre-run HPLC，記錄峰的位置和寬度。</p>
 
                             <div class="section-divider section-divider--compact"><span>SAXS 實驗設定</span></div>
 
-                            <div class="form-group form-group--compact">
-                                <label class="form-label form-label--sm" for="hplcInjectionVolume">Volume to inject in SAXS
-                                    exp</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="hplcInjectionVolume" value="100"
-                                        step="1" min="3" max="100"
-                                        title="峰寬多項式的校正範圍為 3–100 μL，超出範圍會外插出負的峰寬與倒置的收集時間">
-                                    <span class="input-unit">μL</span>
+                            <div class="form-list">
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="hplcInjectionVolume">Volume to inject in SAXS
+                                        exp</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="hplcInjectionVolume" value="100"
+                                            step="1" min="3" max="100"
+                                            title="峰寬多項式的校正範圍為 3–100 μL，超出範圍會外插出負的峰寬與倒置的收集時間">
+                                        <span class="input-unit">μL</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group form-group--compact">
-                                <label class="form-label form-label--sm" for="hplcTargetFlowRate">Target flow rate around
-                                    peak</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="hplcTargetFlowRate" value="0.35"
-                                        step="0.01" min="0.01">
-                                    <span class="input-unit">mL/min</span>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="hplcTargetFlowRate">Target flow rate around
+                                        peak</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="hplcTargetFlowRate" value="0.35"
+                                            step="0.01" min="0.01">
+                                        <span class="input-unit">mL/min</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group form-group--compact">
-                                <label class="form-label form-label--sm" for="hplcInitialFlowRate">Initial flow rate</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="hplcInitialFlowRate" value="0.35"
-                                        step="0.01" min="0.01">
-                                    <span class="input-unit">mL/min</span>
+                                <div class="form-group form-group--compact">
+                                    <label class="form-label form-label--sm" for="hplcInitialFlowRate">Initial flow rate</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="hplcInitialFlowRate" value="0.35"
+                                            step="0.01" min="0.01">
+                                        <span class="input-unit">mL/min</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -603,20 +605,20 @@
                     <!-- Fraction Collector -->
                     <div class="card">
                         <div class="card-header">
-                            <h2 class="card-title card-title--purple">Fraction Collector</h2>
+                            <h2 class="card-title">Fraction Collector</h2>
                         </div>
                         <div class="card-body">
-                            <div class="gradient-stat gradient-stat--purple">
+                            <div class="gradient-stat">
                                 <div class="stat-label">Start Time</div>
                                 <div class="stat-value" id="fractionStartTime">--</div>
                                 <div class="stat-sub">min</div>
                             </div>
-                            <div class="gradient-stat gradient-stat--purple mt-md">
+                            <div class="gradient-stat mt-md">
                                 <div class="stat-label">Stop Time</div>
                                 <div class="stat-value" id="fractionStopTime">--</div>
                                 <div class="stat-sub">min</div>
                             </div>
-                            <div class="gradient-stat gradient-stat--purple mt-md">
+                            <div class="gradient-stat mt-md">
                                 <div class="stat-label">Time/Fraction</div>
                                 <div class="stat-value" id="timePerFraction">--</div>
                                 <div class="stat-sub">min</div>
@@ -632,17 +634,17 @@
                     </div>
                     <div class="card-body" id="hplcSuggestedValues">
                         <div class="suggested-values">
-                            <div class="gradient-stat gradient-stat--pink">
+                            <div class="gradient-stat">
                                 <div class="stat-label">Suggested Peak Center</div>
                                 <div class="stat-value" id="suggestPeakCenter">--</div>
                                 <div class="stat-sub">min</div>
                             </div>
-                            <div class="gradient-stat gradient-stat--pink">
+                            <div class="gradient-stat">
                                 <div class="stat-label">Suggested Peak Width</div>
                                 <div class="stat-value" id="suggestPeakWidth">--</div>
                                 <div class="stat-sub">min</div>
                             </div>
-                            <div class="gradient-stat gradient-stat--pink">
+                            <div class="gradient-stat">
                                 <div class="stat-label">Suggested Sample Volume</div>
                                 <div class="stat-value" id="suggestSampleVolume">--</div>
                                 <div class="stat-sub">μL</div>
@@ -668,39 +670,41 @@
                             <h2 class="card-title">UV 測量參數</h2>
                         </div>
                         <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label" for="uvAbsorbance">UV 吸光值</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="uvAbsorbance" step="0.001"
-                                        placeholder="例: 0.8053">
-                                    <span class="input-unit">AU</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="uvAbsorbance">UV 吸光值</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="uvAbsorbance" step="0.001"
+                                            placeholder="例: 0.8053">
+                                        <span class="input-unit">AU</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="pathLength">光徑長度</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="pathLength" value="0.2" step="0.01"
-                                        min="0.001">
-                                    <span class="input-unit">cm</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="pathLength">光徑長度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="pathLength" value="0.2" step="0.01"
+                                            min="0.001">
+                                        <span class="input-unit">cm</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="inputEpsilon">消光係數 <i>ε</i> (莫耳)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="inputEpsilon" step="0.1"
-                                        placeholder="自動從蛋白質序列計算" title="莫耳消光係數。注意：HPLC dn/dc 頁面使用質量消光係數 mL/(mg·cm)，兩者不可混用">
-                                    <span class="input-unit">M⁻¹ cm⁻¹</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="inputEpsilon">消光係數 <i>ε</i> (莫耳)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="inputEpsilon" step="0.1"
+                                            placeholder="自動從蛋白質序列計算" title="莫耳消光係數。注意：HPLC dn/dc 頁面使用質量消光係數 mL/(mg·cm)，兩者不可混用">
+                                        <span class="input-unit">M⁻¹ cm⁻¹</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="inputMw">分子量</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="inputMw" step="0.01"
-                                        placeholder="自動從蛋白質序列計算">
-                                    <span class="input-unit">Da</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="inputMw">分子量</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="inputMw" step="0.01"
+                                            placeholder="自動從蛋白質序列計算">
+                                        <span class="input-unit">Da</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -729,12 +733,14 @@
                             <h2 class="card-title">SEC 稀釋因子估算</h2>
                         </div>
                         <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label" for="dfInjectionVolume">注射體積 (Injection Volume)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dfInjectionVolume" step="1" min="1"
-                                        placeholder="例: 50" value="100">
-                                    <span class="input-unit">μL</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="dfInjectionVolume">注射體積 (Injection Volume)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dfInjectionVolume" step="1" min="1"
+                                            placeholder="例: 50" value="100">
+                                        <span class="input-unit">μL</span>
+                                    </div>
                                 </div>
                             </div>
                             <button class="btn btn-primary btn-lg btn-full" id="calculateDilutionFactor">
@@ -775,47 +781,46 @@
                             <h2 class="card-title">輸入參數</h2>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info">
-                                <strong>提示：</strong>如已分析蛋白質序列，分子量會自動帶入。
-                            </div>
-
                             <div class="section-divider"><span>MW → 滯留時間</span></div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="mwInput">分子量 (Input protein Mw)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="mwInput" step="0.01"
-                                        placeholder="來自序列分析或手動輸入">
-                                    <span class="input-unit">Da</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="mwInput">分子量 (Input protein Mw)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="mwInput" step="0.01"
+                                            placeholder="來自序列分析或手動輸入">
+                                        <span class="input-unit">Da</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="mwOligomer">Oligomer 數</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="mwOligomer" step="1" value="1" min="1"
-                                        placeholder="1">
-                                    <span class="input-unit">mer</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="mwOligomer">Oligomer 數</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="mwOligomer" step="1" value="1" min="1"
+                                            placeholder="1">
+                                        <span class="input-unit">mer</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="mwInjectionVolume">注入體積 (Injection Volume)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="mwInjectionVolume" step="0.1" value="3"
-                                        placeholder="3">
-                                    <span class="input-unit">μL</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="mwInjectionVolume">注入體積 (Injection Volume)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="mwInjectionVolume" step="0.1" value="3"
+                                            placeholder="3">
+                                        <span class="input-unit">μL</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="mwFlowRate">流速 (Flow Rate)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="mwFlowRate" step="0.01" value="0.35"
-                                        placeholder="0.35">
-                                    <span class="input-unit">mL/min</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="mwFlowRate">流速 (Flow Rate)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="mwFlowRate" step="0.01" value="0.35"
+                                            placeholder="0.35">
+                                        <span class="input-unit">mL/min</span>
+                                    </div>
                                 </div>
                             </div>
+                            <p class="form-list-foot">如已分析蛋白質序列，分子量會自動帶入。</p>
 
                             <div class="form-group">
                                 <label class="form-label" for="poreSize">管柱孔徑 (Column Pore Size)</label>
@@ -832,12 +837,14 @@
 
                             <div class="section-divider mt-lg"><span>滯留時間 → MW</span></div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="retentionTimeInput">滯留時間 (Input Retention Time)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="retentionTimeInput" step="0.001"
-                                        placeholder="例: 9.481">
-                                    <span class="input-unit">min</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="retentionTimeInput">滯留時間 (Input Retention Time)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="retentionTimeInput" step="0.001"
+                                            placeholder="例: 9.481">
+                                        <span class="input-unit">min</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -875,65 +882,69 @@
                             <h2 class="card-title">離心機參數</h2>
                         </div>
                         <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label" for="rpm">轉速</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="rpm" value="15000" step="100" min="0">
-                                    <span class="input-unit">rpm</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="rpm">轉速</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="rpm" value="15000" step="100" min="0">
+                                        <span class="input-unit">rpm</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="rotorRadius">轉子半徑</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="rotorRadius" value="9.5" step="0.1"
-                                        min="0">
-                                    <span class="input-unit">cm</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="rotorRadius">轉子半徑</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="rotorRadius" value="9.5" step="0.1"
+                                            min="0">
+                                        <span class="input-unit">cm</span>
+                                    </div>
                                 </div>
                             </div>
 
                             <div class="section-divider"><span>樣品參數</span></div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="centrifugeMw">分子量</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="centrifugeMw" value="66500" step="100">
-                                    <span class="input-unit">Da</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="centrifugeMw">分子量</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="centrifugeMw" value="66500" step="100">
+                                        <span class="input-unit">Da</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="viscosity">黏度 (水 @ 20°C)</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="viscosity" value="0.001002"
-                                        step="0.000001">
-                                    <span class="input-unit">Pa·s</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="viscosity">黏度 (水 @ 20°C)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="viscosity" value="0.001002"
+                                            step="0.000001">
+                                        <span class="input-unit">Pa·s</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="vbar">部分比容 <i>v̄</i></label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="vbar" value="0.73" step="0.01">
-                                    <span class="input-unit">cm³/g</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="vbar">部分比容 <i>v̄</i></label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="vbar" value="0.73" step="0.01">
+                                        <span class="input-unit">cm³/g</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="solventDensity">溶劑密度</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="solventDensity" value="0.998"
-                                        step="0.001">
-                                    <span class="input-unit">g/cm³</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="solventDensity">溶劑密度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="solventDensity" value="0.998"
+                                            step="0.001">
+                                        <span class="input-unit">g/cm³</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label class="form-label" for="centrifugeTime">離心時間</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="centrifugeTime" value="15" step="1"
-                                        min="1">
-                                    <span class="input-unit">min</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="centrifugeTime">離心時間</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="centrifugeTime" value="15" step="1"
+                                            min="1">
+                                        <span class="input-unit">min</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1211,22 +1222,24 @@
                             </div>
 
                             <!-- MW Input (shown by default) -->
-                            <div class="form-group" id="mwInputGroup">
-                                <label class="form-label" for="targetProteinMW">目標蛋白質分子量 (MW)</label>
-                                <div class="form-input-group">
-                                    <input type="number" id="targetProteinMW" class="form-input"
-                                        placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
-                                    <span class="input-unit">Da</span>
+                            <div class="form-list">
+                                <div class="form-group" id="mwInputGroup">
+                                    <label class="form-label" for="targetProteinMW">目標蛋白質分子量 (MW)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" id="targetProteinMW" class="form-input"
+                                            placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
+                                        <span class="input-unit">Da</span>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <!-- Rg Input (hidden by default) -->
-                            <div class="form-group hidden" id="rgInputGroup">
-                                <label class="form-label" for="targetProteinRg">目標蛋白質 <i>R</i><sub>g</sub> (迴旋半徑)</label>
-                                <div class="form-input-group">
-                                    <input type="number" id="targetProteinRg" class="form-input"
-                                        placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
-                                    <span class="input-unit">Å</span>
+                                <!-- Rg Input (hidden by default) -->
+                                <div class="form-group hidden" id="rgInputGroup">
+                                    <label class="form-label" for="targetProteinRg">目標蛋白質 <i>R</i><sub>g</sub> (迴旋半徑)</label>
+                                    <div class="form-input-group">
+                                        <input type="number" id="targetProteinRg" class="form-input"
+                                            placeholder="輸入 Rg..." value="28" min="5" max="500" step="0.1">
+                                        <span class="input-unit">Å</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1238,21 +1251,21 @@
                             <div id="detectorResults" class="mt-lg">
                                 <div class="detector-result-grid">
                                     <!-- MW Result (shown in Rg mode) -->
-                                    <div id="mwResultCard" class="result-card result-card--success hidden">
+                                    <div id="mwResultCard" class="result-card hidden">
                                         <div class="result-card-label">預測 MW</div>
                                         <div class="result-card-value" id="detectorMwResult">66,500</div>
                                         <div class="result-card-unit">Da</div>
                                     </div>
 
                                     <!-- Rg Result (shown in MW mode) -->
-                                    <div id="rgResultCard" class="result-card result-card--primary">
+                                    <div id="rgResultCard" class="result-card">
                                         <div class="result-card-label">理論 <i>R</i><sub>g</sub></div>
                                         <div class="result-card-value" id="detectorRgResult">28.00</div>
                                         <div class="result-card-unit">Å</div>
                                     </div>
 
                                     <!-- qmin Result -->
-                                    <div class="result-card result-card--pink">
+                                    <div class="result-card">
                                         <div class="result-card-label"><i>q</i><sub>min</sub></div>
                                         <div class="result-card-value" id="detectorQminResult">0.0080</div>
                                         <div class="result-card-unit">Å⁻¹</div>
@@ -1260,7 +1273,7 @@
                                 </div>
 
                                 <!-- 9M SD Result (Full Width) -->
-                                <div class="result-card result-card--warning result-card--lg">
+                                <div class="result-card result-card--lg">
                                     <div class="result-card-label">建議 9M 偵測器距離 (SD)</div>
                                     <div class="result-card-value" id="detectorSDResult">1,900</div>
                                     <span class="info-panel-badge info-panel-badge--warn" id="detectorSDBadge" hidden>超出行程</span>
@@ -1546,39 +1559,41 @@
                             <h2 class="card-title">溫度 / 波長校正</h2>
                         </div>
                         <div class="card-body">
-                            <div class="form-group">
-                                <label class="form-label" for="dndcRefValue">參考 <span class="sci-var">dn/dc</span> 值</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcRefValue" value="0.185" step="0.001">
-                                    <span class="input-unit">mL/g</span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="dndcRefValue">參考 <span class="sci-var">dn/dc</span> 值</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcRefValue" value="0.185" step="0.001">
+                                        <span class="input-unit">mL/g</span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label" for="dndcRefTemp">參考溫度</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcRefTemp" value="25" step="0.1">
-                                    <span class="input-unit">°C</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="dndcRefTemp">參考溫度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcRefTemp" value="25" step="0.1">
+                                        <span class="input-unit">°C</span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label" for="dndcRefWave">參考波長</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcRefWave" value="589" step="1">
-                                    <span class="input-unit">nm</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="dndcRefWave">參考波長</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcRefWave" value="589" step="1">
+                                        <span class="input-unit">nm</span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label" for="dndcTargetTemp">目標溫度</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcTargetTemp" value="25" step="0.1">
-                                    <span class="input-unit">°C</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="dndcTargetTemp">目標溫度</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcTargetTemp" value="25" step="0.1">
+                                        <span class="input-unit">°C</span>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label" for="dndcTargetWave">目標波長</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="dndcTargetWave" value="658" step="1">
-                                    <span class="input-unit">nm</span>
+                                <div class="form-group">
+                                    <label class="form-label" for="dndcTargetWave">目標波長</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="dndcTargetWave" value="658" step="1">
+                                        <span class="input-unit">nm</span>
+                                    </div>
                                 </div>
                             </div>
                             <button class="btn btn-primary btn-lg btn-full" id="calculateDndcCorrection">
@@ -2031,17 +2046,16 @@
                             <h2 class="card-title">數據與參數</h2>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info alert--compact">
-                                使用與 HPLC dn/dc 頁面相同的數據。請先在該頁面載入檔案。
-                            </div>
-
-                            <div class="form-group">
-                                <label class="form-label" for="sliceMinUvFraction">最小 UV 閾值（相對峰值比例）</label>
-                                <div class="form-input-group">
-                                    <input type="number" class="form-input" id="sliceMinUvFraction" value="0.05" step="0.01" min="0.01" max="0.5">
-                                    <span class="input-unit"></span>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="sliceMinUvFraction">最小 UV 閾值（相對峰值比例）</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="sliceMinUvFraction" value="0.05" step="0.01" min="0.01" max="0.5">
+                                        <span class="input-unit"></span>
+                                    </div>
                                 </div>
                             </div>
+                            <p class="form-list-foot">使用與 HPLC dn/dc 頁面相同的數據。請先在該頁面載入檔案。</p>
 
                             <button class="btn btn-primary btn-lg btn-full" id="calculateSliceDndc">
                                 Slice-by-slice 分析
