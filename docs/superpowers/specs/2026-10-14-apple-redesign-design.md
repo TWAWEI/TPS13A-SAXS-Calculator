@@ -497,3 +497,8 @@
 11. **§5.8**：`::backdrop` 從 Chrome 122／Safari 17.4／Firefox 120 起才繼承自訂屬性；更舊的瀏覽器遮罩色會變透明（blur 仍在，對話框照常可用）。
 12. **§8.1**：既有測試基準是 179（不是 159），v5.0 完成後 208。用途測試另加「不准任何 `border-left`」；`structure.test.js` 另加「每個 `new Chart(` 都經過 `ChartTheme.colorize(`」；對比矩陣加上語意色 `-text` × tertiary、`--color-text-muted` × 淡珊瑚疊卡片。測試指令要用 `node --test saxs-calculator/tests/*.test.js`（Node 26 不接受目錄形式）。
 13. **§8.4 驗收**：axe 要用 `preload: false` 執行——預載會去抓 Google Fonts 樣式表，被本站 CSP 的 `connect-src` 擋下而在 console 報錯，不是網站的問題。
+14. **實作後的修正（2026-10-15，code review 與截圖檢查）**
+    - 深色模式下列印：頁面會換回淺色，但圖表是已畫好的 canvas。`ChartTheme.init` 在 `beforeprint` 用淺色重畫所有圖表，`afterprint` 換回。
+    - `ThemeToggle` 的系統外觀監聽在 `MediaQueryList.addEventListener` 不存在時（Safari 14 以前）改用 `addListener`，不讓 App 啟動流程中斷。
+    - `.alert` 改成一般區塊（原本是 flex）：內文的 `<strong>`、`<br>`、`<i>`、`<sub>` 會被 flex 拆成並排的欄。`.mode-toggle` 的按鈕同理改成一般排版（*R*<sub>g</sub> 不再被拆開）。這兩個是 v4.15 就有的排版問題，屬於本次改版的元件，一併修正。
+    - `.formula-note` 移出左右對齊名單：等寬字公式屬於使用者排版規則的「程式碼區塊」例外，justify 會把中文拉開。
