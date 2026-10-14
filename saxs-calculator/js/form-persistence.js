@@ -82,13 +82,18 @@ function saveFormState() {
             values[el.id] = el.value;
         }
     });
-    safeStorage.set(STORAGE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), values }));
+    safeStorage.set(STORAGE_KEY, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        massUnit: MassUnits.STATE_UNIT,
+        values,
+    }));
 }
 
 /**
  * 讀取存檔（相容 v4.6 之前的扁平格式），並一次性清掉曾經落地的敏感欄位。
+ * v5.1 起分子量欄位收 kDa：沒有 massUnit 標記的舊存檔（Da）換算一次並立刻寫回，不會再除第二次。
  *
- * @returns {{savedAt: string|null, values: object}|null} 解析結果
+ * @returns {{savedAt: string|null, values: object, massMigrated: boolean}|null} 解析結果
  */
 function readFormState() {
     const raw = safeStorage.get(STORAGE_KEY);
@@ -110,13 +115,18 @@ function readFormState() {
 
     // 一次性清理：舊版本可能已把明文密碼寫進 localStorage
     const leaked = PERSIST_SKIP_IDS.filter(id => id in rawValues);
-    const values = { ...rawValues };
-    if (leaked.length > 0) {
-        leaked.forEach(id => { delete values[id]; });
-        safeStorage.set(STORAGE_KEY, JSON.stringify({ savedAt, values }));
+    const cleaned = { ...rawValues };
+    leaked.forEach(id => { delete cleaned[id]; });
+
+    const needsMassMigration = parsed.massUnit !== MassUnits.STATE_UNIT;
+    const values = needsMassMigration ? MassUnits.migrateSavedValues(cleaned) : cleaned;
+    const massMigrated = MassUnits.INPUT_IDS.some(id => values[id] !== cleaned[id]);
+
+    if (leaked.length > 0 || needsMassMigration) {
+        safeStorage.set(STORAGE_KEY, JSON.stringify({ savedAt, massUnit: MassUnits.STATE_UNIT, values }));
     }
 
-    return { savedAt, values };
+    return { savedAt, values, massMigrated };
 }
 
 /**
@@ -140,9 +150,10 @@ function formatSavedAt(iso) {
  * 欄位是實際會造成錯誤科學結論的資料完整性風險。
  *
  * @param {string|null} savedAt - 存檔時間（ISO）
+ * @param {boolean} massMigrated - 是否有分子量欄位從舊版的 Da 換算成 kDa
  * @returns {void}
  */
-function showRestoreNotice(savedAt) {
+function showRestoreNotice(savedAt, massMigrated) {
     const main = document.getElementById('main-content');
     if (!main) return;
 
@@ -157,7 +168,8 @@ function showRestoreNotice(savedAt) {
 
     const text = document.createElement('span');
     text.style.flex = '1 1 20rem';
-    text.textContent = `已還原 ${formatSavedAt(savedAt)} 儲存的輸入值，請確認是否為本次樣品的參數。`;
+    text.textContent = `已還原 ${formatSavedAt(savedAt)} 儲存的輸入值，請確認是否為本次樣品的參數。`
+        + (massMigrated ? '分子量已由舊版的 Da 換算為 kDa。' : '');
 
     const clearBtn = document.createElement('button');
     clearBtn.type = 'button';
@@ -221,7 +233,7 @@ function restoreFormState() {
     });
 
     if (restoredIds.length === 0) return;
-    showRestoreNotice(state.savedAt);
+    showRestoreNotice(state.savedAt, state.massMigrated);
     dispatchDerivedUpdates(restoredIds);
 }
 

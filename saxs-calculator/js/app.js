@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ThemeToggle.init();
     ChartTheme.init();   // 此時 defer 載入的 Chart.js 已執行
     initFormPersistence();
+    MassUnits.initInputHints();   // 在還原之後：剛還原的分子量也要檢查是不是 Da
     initNavigation();
     initProteinSection();
     window.DetectorRgPanel?.init();

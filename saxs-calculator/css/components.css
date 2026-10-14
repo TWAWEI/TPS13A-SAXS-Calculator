@@ -210,6 +210,24 @@
     }
 }
 
+/* 分子量欄位的單位提示（v5.1，由 MassUnits.initInputHints 建立）：值大於 10,000 kDa 才有文字，
+   空白時不佔位。表單列表的列是 flex-wrap，提示自成一行；理論值面板裡接在標題列之下。 */
+.field-warning {
+    flex: 1 0 100%;
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-warning-text);
+}
+
+.field-warning:empty {
+    display: none;
+}
+
+.info-panel-header + .field-warning {
+    margin-bottom: var(--spacing-sm);
+}
+
 .form-list-foot {
     margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-md);
     padding: 0 14px;
