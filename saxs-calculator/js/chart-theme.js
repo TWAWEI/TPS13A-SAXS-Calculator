@@ -232,15 +232,25 @@
         }
     }
 
+    function eachChart(fn) {
+        const Chart = global.Chart;
+        if (typeof Chart !== 'function' || !Chart.instances) return;
+        Object.values(Chart.instances).forEach(fn);
+    }
+
     /** 由 app.js 的 DOMContentLoaded 呼叫（此時 defer 的 Chart.js 已執行） */
     function init() {
         if (!global.document) return;
         global.document.addEventListener('tps:themechange', event => {
-            const Chart = global.Chart;
-            if (typeof Chart !== 'function' || !Chart.instances) return;
             const name = event.detail && event.detail.theme;
-            Object.values(Chart.instances).forEach(chart => applyTo(chart, name));
+            eachChart(chart => applyTo(chart, name));
         });
+        // 列印一律淺色（tokens.css 的深色區塊限定 screen），但 canvas 是已經畫好的點陣圖，
+        // 不會跟著 @media print 換色：列印前用淺色重畫，列印後換回目前主題。
+        if (typeof global.addEventListener === 'function') {
+            global.addEventListener('beforeprint', () => eachChart(chart => applyTo(chart, 'light')));
+            global.addEventListener('afterprint', () => eachChart(chart => applyTo(chart)));
+        }
     }
 
     global.ChartTheme = Object.freeze({

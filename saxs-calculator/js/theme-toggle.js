@@ -15,17 +15,17 @@
     const EVENT = 'tps:themechange';
 
     function dispatch() {
-        global.document.dispatchEvent(new CustomEvent(EVENT, { detail: { theme: ThemeInit.effective() } }));
+        global.document.dispatchEvent(new CustomEvent(EVENT, { detail: { theme: global.ThemeInit.effective() } }));
     }
 
     /** 套用一個選擇：寫入儲存（失敗時本次頁面照樣切換，下次開頁回到自動）、更新屬性、派發事件 */
     function choose(choice) {
-        const normalized = ThemeInit.normalize(choice);
+        const normalized = global.ThemeInit.normalize(choice);
         const saved = normalized === 'auto'
-            ? FormUtils.safeLocal.remove(ThemeInit.STORAGE_KEY)
-            : FormUtils.safeLocal.set(ThemeInit.STORAGE_KEY, normalized);
+            ? global.FormUtils.safeLocal.remove(global.ThemeInit.STORAGE_KEY)
+            : global.FormUtils.safeLocal.set(global.ThemeInit.STORAGE_KEY, normalized);
         if (!saved) console.warn('[theme] 無法儲存外觀設定，只在這次開頁有效');
-        ThemeInit.apply(normalized);
+        global.ThemeInit.apply(normalized);
         dispatch();
     }
 
@@ -33,7 +33,7 @@
         const fieldset = global.document.getElementById('themeToggle');
         if (!fieldset) return;
 
-        const current = ThemeInit.readStored();
+        const current = global.ThemeInit.readStored();
         fieldset.querySelectorAll('input[name="theme"]').forEach(radio => {
             radio.checked = radio.value === current;
             radio.addEventListener('change', () => {
@@ -41,11 +41,16 @@
             });
         });
 
-        // 自動模式（沒有 data-theme）時跟著系統外觀變；手動模式不理會系統
+        // 自動模式（沒有 data-theme）時跟著系統外觀變；手動模式不理會系統。
+        // Safari 14 以前的 MediaQueryList 只有 addListener：直接呼叫 addEventListener 會丟例外，
+        // 而 init() 是 app.js 啟動流程的第一步，一丟例外後面所有頁面都不會初始化。
         if (typeof global.matchMedia === 'function') {
-            global.matchMedia(ThemeInit.DARK_QUERY).addEventListener('change', () => {
+            const query = global.matchMedia(global.ThemeInit.DARK_QUERY);
+            const onSystemChange = () => {
                 if (!global.document.documentElement.hasAttribute('data-theme')) dispatch();
-            });
+            };
+            if (typeof query.addEventListener === 'function') query.addEventListener('change', onSystemChange);
+            else if (typeof query.addListener === 'function') query.addListener(onSystemChange);
         }
     }
 

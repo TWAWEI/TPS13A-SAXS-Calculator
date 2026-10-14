@@ -250,8 +250,9 @@ a:hover {
 }
 
 /* 多行段落左右對齊（使用者全域排版規則）。:where() 特異性為 0，任何顯式 text-align 都會蓋過；
-   單行文字 justify 後等同靠左。表格儲存格、按鈕、表單 label、導覽項不在名單內。 */
-:where(p, li, dd, blockquote, .alert, .modal-desc, .formula-note, .form-list-foot,
+   單行文字 justify 後等同靠左。表格儲存格、按鈕、表單 label、導覽項不在名單內；
+   .formula-note 是等寬字公式（規則裡的「程式碼區塊」例外），justify 會把中文拉開成「校 準 值」。 */
+:where(p, li, dd, blockquote, .alert, .modal-desc, .form-list-foot,
        .stat-sub, .quick-ref-body, .info-panel-formula, .info-panel-hint, .result-note) {
     text-align: justify;
 }

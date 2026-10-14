@@ -197,3 +197,58 @@ test('[chart-theme] exportPng（淺色模式）不換色，只開白底', () => 
     const L = ChartTheme.PALETTES.light.primary;
     assert.deepEqual(log, ['stop', `update:none:${L}:true`, `image:${L}:true`, `update:none:${L}:false`]);
 });
+
+// ---------------------------------------------------------------- v5.0 code review 修正
+test('[chart-theme] 列印前把所有圖表換成淺色、列印後換回目前主題（canvas 是點陣圖，不會跟著 @media print）', () => {
+    const listeners = {};
+    const saved = { document: window.document, addEventListener: window.addEventListener, Chart: window.Chart };
+    const log = [];
+    const { chart } = stubChart(log);
+    window.document = {
+        addEventListener() {},
+        documentElement: { getAttribute: name => (name === 'data-theme' ? 'dark' : null) },
+    };
+    window.addEventListener = (type, fn) => { listeners[type] = fn; };
+    window.Chart = function Chart() {};
+    window.Chart.instances = { 0: chart };
+    try {
+        ChartTheme.init();
+        assert.equal(typeof listeners.beforeprint, 'function', '沒有註冊 beforeprint');
+        assert.equal(typeof listeners.afterprint, 'function', '沒有註冊 afterprint');
+        listeners.beforeprint();
+        assert.equal(chart.config.data.datasets[0].borderColor, ChartTheme.PALETTES.light.primary);
+        listeners.afterprint();
+        assert.equal(chart.config.data.datasets[0].borderColor, ChartTheme.PALETTES.dark.primary);
+    } finally {
+        Object.entries(saved).forEach(([key, value]) => {
+            if (value === undefined) delete window[key];
+            else window[key] = value;
+        });
+    }
+});
+
+test('[theme] ThemeToggle.init：舊瀏覽器的 MediaQueryList 只有 addListener 也不會丟例外', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const vm = require('node:vm');
+    const file = path.join(__dirname, '..', 'js', 'theme-toggle.js');
+    vm.runInThisContext(fs.readFileSync(file, 'utf8'), { filename: file });
+
+    const saved = { document: window.document, matchMedia: window.matchMedia, localStorage: window.localStorage };
+    let registered = null;
+    window.localStorage = { getItem: () => null };
+    window.document = {
+        getElementById: () => ({ querySelectorAll: () => [] }),
+        documentElement: { hasAttribute: () => false, getAttribute: () => null },
+    };
+    window.matchMedia = () => ({ matches: false, addListener: fn => { registered = fn; } });
+    try {
+        assert.doesNotThrow(() => window.ThemeToggle.init());
+        assert.equal(typeof registered, 'function', '應改用 addListener 註冊系統外觀監聽');
+    } finally {
+        Object.entries(saved).forEach(([key, value]) => {
+            if (value === undefined) delete window[key];
+            else window[key] = value;
+        });
+    }
+});

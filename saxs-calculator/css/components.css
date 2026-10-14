@@ -13,9 +13,13 @@
     border-radius: var(--radius-md);
 }
 
+/* display:block：.btn 是 inline-flex＋gap，按鈕文字裡的 <i>R</i><sub>g</sub> 會被拆成
+   兩個 flex 項目、中間多出空隙（「R g」）。改成一般排版；上下內距撐到與其他按鈕同高。 */
 .mode-toggle .btn {
+    display: block;
     flex: 1;
-    padding: var(--spacing-sm);
+    padding: 0.6875rem var(--spacing-sm);
+    line-height: 1.6;
     font-size: 0.8125rem;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -540,13 +544,13 @@
 }
 
 /* ===== Alerts ===== */
+/* 一般區塊排版（v4.15 以前是 flex）：提示框內文常混著 <strong>、<br>、<i>、<sub>，
+   flex 會把它們拆成並排的欄，閱讀順序錯亂；多則訊息（<div>×n）也會並排而不是上下排。 */
 .alert {
+    display: block;
     padding: 12px 14px;
     border-radius: var(--radius-lg);
     margin-bottom: var(--spacing-md);
-    display: flex;
-    align-items: flex-start;
-    gap: var(--spacing-sm);
     font-size: 0.8125rem;
     line-height: 1.5;
 }
@@ -577,7 +581,7 @@
     color: var(--color-danger-text);
 }
 
-/* .alert 設了 display:flex，會蓋掉瀏覽器預設的 [hidden]{display:none} —— 不補這條，
+/* .alert 設了 display:block，會蓋掉瀏覽器預設的 [hidden]{display:none} —— 不補這條，
    帶 hidden 屬性的警告會一直露出來。 */
 .alert[hidden] {
     display: none;
