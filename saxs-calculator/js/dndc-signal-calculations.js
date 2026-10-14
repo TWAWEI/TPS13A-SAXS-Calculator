@@ -194,15 +194,14 @@ function measurePeak(correctedSignal, time, peakMask, mode) {
         throw new Error('峰範圍 (peakStart–peakEnd) 內沒有任何資料點，請檢查時間單位與範圍');
     }
 
-    // Height: maximum absolute value
-    const peakHeight = sig.reduce((mx, v) => Math.max(mx, Math.abs(v)), 0);
+    // Height：絕對值最大那一點的原值（保留正負號；負峰 = 訊號低於基線，例如樣品折射率低於溶劑或極性反轉）
+    const peakHeight = sig.reduce((best, v) => (Math.abs(v) > Math.abs(best) ? v : best), 0);
 
-    // Area: trapezoidal integration of absolute area
+    // Area：梯形積分，保留正負號
     let peakArea = 0;
     for (let i = 1; i < sig.length; i++) {
         peakArea += (t[i] - t[i - 1]) * (sig[i] + sig[i - 1]) / 2;
     }
-    peakArea = Math.abs(peakArea);
 
     // SPI: value at the midpoint index
     const spi = sig[Math.floor(sig.length / 2)];

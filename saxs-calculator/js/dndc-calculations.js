@@ -11,6 +11,23 @@
 // Calculator — HPLC & Slice dn/dc
 // ============================================================
 
+/** 負 dn/dc 的警告文字（與 Python dndc.calculator.NEGATIVE_DNDC_WARNING 相同）。 */
+const NEGATIVE_DNDC_WARNING = 'dn/dc 為負：請檢查 RI 極性或峰／基線區間';
+
+/** UV 峰為負時的錯誤訊息（與 Python dndc.calculator.NEGATIVE_UV_PEAK_MESSAGE 相同）。 */
+const NEGATIVE_UV_PEAK_MESSAGE = 'UV 峰為負：基線區間落在峰上或極性反轉，請檢查 UV 峰範圍與基線範圍';
+
+/**
+ * 最終 dn/dc 為負時回傳警告。蛋白質的 dn/dc 必為正，負值幾乎都是設定錯誤；
+ * 但少數樣品在高折射率溶劑中本來就是負的，所以只警告、不擋（使用者 2026-10-14 定案）。
+ *
+ * @param {number} dndc - mL/g
+ * @returns {string[]} 新陣列
+ */
+function negativeDndcWarnings(dndc) {
+    return dndc < 0 ? [NEGATIVE_DNDC_WARNING] : [];
+}
+
 /**
  * Create a boolean mask for indices where time falls within [start, end].
  *
@@ -224,6 +241,10 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
     } else {
         const concArray = _computeConcentration(uvCorrected, epsilon, pathLen);
         const uvPeak = measurePeak(concArray, time, peakMask, peakMode);
+        // 峰值保留符號後，負 UV 峰會走到下方的「無法求得有效濃度」——那句話講錯原因，先攔下
+        if (uvPeak.value < 0) {
+            throw new Error(NEGATIVE_UV_PEAK_MESSAGE);
+        }
         concentration = uvPeak.value;
     }
 
@@ -246,7 +267,8 @@ function computeHplcDndc(time, uvSignal, riSignal, params) {
         decimalPlaces,
         alignmentInfo,
         uvCorrected,
-        riCorrected: riBaselineCorrected
+        riCorrected: riBaselineCorrected,
+        warnings: negativeDndcWarnings(dndc)
     };
 }
 
@@ -365,7 +387,8 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
         decimalPlaces,
         alignmentInfo,
         uvCorrected,
-        riCorrected: riBaselineCorrected
+        riCorrected: riBaselineCorrected,
+        warnings: negativeDndcWarnings(dndc)
     };
 }
 
@@ -401,5 +424,8 @@ window.DndcCalculations = Object.freeze({
 
     // Calculator
     computeHplcDndc,
-    computeSliceDndc
+    computeSliceDndc,
+    NEGATIVE_DNDC_WARNING,
+    NEGATIVE_UV_PEAK_MESSAGE,
+    negativeDndcWarnings
 });
