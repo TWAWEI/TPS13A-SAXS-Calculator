@@ -353,6 +353,12 @@
     gap: var(--spacing-lg);
 }
 
+/* 1fr 的最小值是內容寬度：不加這行，卡片裡的寬表格會把整欄撐開，390px 寬的手機要橫捲整頁
+   （HPLC 頁與偵測器頁，v4.15 起）。歸零後表格改在自己的 .table-wrapper 裡橫捲。 */
+.grid > * {
+    min-width: 0;
+}
+
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
