@@ -187,7 +187,7 @@ function displayProteinResults(result, name) {
         </div>
 
         <div class="formula-note">
-            <i>ε</i><sub>mass</sub> = <i>ε</i> / MW（Pace 1995 序列估計；BSA 文獻實測 0.667）
+            <i>ε</i><sub>mass</sub> = <i>ε</i> / MW（MW 以 Da 代入；Pace 1995 序列估計；BSA 文獻實測 0.667）
         </div>
     `;
 

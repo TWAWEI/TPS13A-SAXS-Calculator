@@ -15,6 +15,7 @@
     const DISPLAY_DECIMALS = 2;
     const INPUT_DECIMALS = 3;            // 自動帶入的精度：0.001 kDa = 1 Da
     const WARN_ABOVE_KDA = 10000;
+    const MIGRATE_MIN_DA = 1000;         // 舊存檔裡小於 1,000 的值多半是在 Da 欄位裡打了 kDa，不換算
     const STATE_UNIT = 'kDa';            // form-persistence 存檔裡的單位標記
     const HINT_SUFFIX = 'UnitHint';
 
@@ -62,7 +63,9 @@
     }
 
     /**
-     * v5.0 以前的存檔（Da）→ kDa。只換 INPUT_IDS 裡的數值字串，其餘原樣；回傳新物件。
+     * v5.0 以前的存檔（Da）→ kDa。只換 INPUT_IDS 裡 ≥ 1,000 的數值字串，其餘原樣；回傳新物件。
+     * 小於 1,000 Da 的蛋白質不會出現在 SAXS（偵測器欄位原本的下限就是 1,000 Da）：這種值是
+     * 使用者照 kDa 習慣打進 Da 欄位的，原樣保留正好就是他要的 kDa。
      *
      * @param {Object<string, string|boolean>} values - 存檔的欄位值
      * @returns {Object<string, string|boolean>} 換算後的新物件
@@ -73,7 +76,7 @@
             const raw = migrated[id];
             if (typeof raw !== 'string' || raw.trim() === '') return;
             const da = Number(raw);
-            if (Number.isFinite(da)) migrated[id] = toInputValue(da);
+            if (Number.isFinite(da) && da >= MIGRATE_MIN_DA) migrated[id] = toInputValue(da);
         });
         return migrated;
     }

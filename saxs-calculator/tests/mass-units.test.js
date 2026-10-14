@@ -97,6 +97,11 @@ test('[mass] migrateSavedValues：空字串與非數值原樣保留', () => {
     assert.deepEqual(after, { inputMw: '', mwInput: ' ', centrifugeMw: 'abc' });
 });
 
+test('[mass] migrateSavedValues：小於 1,000 的舊值是在 Da 欄位打了 kDa，原樣保留', () => {
+    const after = MassUnits.migrateSavedValues({ inputMw: '66.5', mwInput: '999.9', centrifugeMw: '1000' });
+    assert.deepEqual(after, { inputMw: '66.5', mwInput: '999.9', centrifugeMw: '1' });
+});
+
 test('[mass] INPUT_IDS 的 5 個欄位都在 index.html 裡', () => {
     const html = read('index.html');
     assert.equal(MassUnits.INPUT_IDS.length, 5);
@@ -144,5 +149,6 @@ test('[mass] 以 Da 為自變數的公式說明都補註「MW 以 Da 代入」',
     // 理論值面板公式列、detectorRgSource 的 title、偵測器頁 0.69 × MW^1/3 與 0.251 × MW^0.43 附註
     assert.ok((html.match(/MW 以 Da 代入/g) || []).length >= 4, 'index.html 少於 4 處補註');
     assert.match(readCode('js/detector-rg-panel.js'), /MW 以 Da 代入/);
+    assert.match(readCode('js/section-protein.js'), /<i>ε<\/i> \/ MW（MW 以 Da 代入/);
     assert.match(readCode('js/section-saxs.js'), /MW 以 Da 代入/);
 });
