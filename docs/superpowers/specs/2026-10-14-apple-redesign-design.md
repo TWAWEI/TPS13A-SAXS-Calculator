@@ -24,7 +24,7 @@
 - `dndc calculator/`（Python）的網頁介面。
 - 頁面增刪、導覽順序、資訊架構調整。
 - 網頁字型檔：SF Pro 授權不允許網頁載入，只用系統字。
-- 列印樣式。
+- 列印樣式的改版。唯一要做的是 §3.4：列印一律套淺色值，`@media print` 區塊裡的色碼換成 token。
 - 待辦批次的其他項目（拆檔、Python xfail、fraction collector、脂質體科學決策），另有規格。
 
 ## 2. 使用者定案（2026-10-14）
@@ -71,7 +71,7 @@
 | `--color-text-muted` | #636366 | #A1A1A6 | 4.9 ／ 5.4 |
 | `--color-text-on-accent` | #FFFFFF | #FFFFFF | 見 §3.3 規則 3 |
 
-`--color-text-muted` 原本想用蘋果的 #6E6E73，但它在輸入框底與 hover 底上只有 4.2–4.5:1，所以加深成 #636366。側欄毛玻璃疊在頁面上之後，主要文字 14.5 ／ 14.9、次要文字 5.2 ／ 6.3。
+`--color-text-muted` 原本想用蘋果的 #6E6E73，但它在輸入框底與 hover 底上只有 4.2–4.5:1，所以加深成 #636366。側欄毛玻璃疊在頁面上之後：`--color-text-primary` 14.5 ／ 14.9、`--color-text-secondary` 8.6 ／ 10.7、`--color-text-muted` 5.2 ／ 6.3。
 
 **強調色**
 
@@ -128,8 +128,10 @@
 | `--color-accent-danger-text` | — | `--color-danger-text` |
 | `--color-border-light` | `--color-separator` | — |
 
-目前已知「填色 token 被當文字用」的地方（改名時必須改成文字 token）：
+目前已知「填色 token 被當文字用」的地方（改名時必須改成文字 token；表格與 §8.1 的用途測試會抓到其餘的）：
 - `color: var(--color-accent-primary)` 8 處：`tokens.css:158`（`a`）、`components.css:179/282/288/459`、`sections.css:58`、`dndc-theory-ui.js:46/95`（行內 style，改成 class）。深色下 #A85555 對卡片只有 3.2:1。
+- `tokens.css:164`：`a:hover { color: var(--color-accent-primary-light) }`。連結 hover 改成 `--color-accent-text`＋底線。
+- `components.css:304/514`：`color: var(--color-accent-primary-deep)`（該 token 要刪），改成 `--color-accent-text`。
 - `section-saxs.js:33`：`style.color = 'var(--color-accent-danger)'`，改成切換 class，文字用 `--color-danger-text`。
 
 刪除（使用處先改掉）：`--color-accent-pink`、`--color-accent-pink-hot`、`--color-accent-brand`（圖表色改由 `chart-theme.js` 管）、`--color-accent-secondary-dark`、`--color-accent-tertiary-dark`、`--color-accent-primary-deep`、`--color-text-on-accent-muted`／`-dim`／`-faint`（只用在實心珊瑚側欄與漸層色塊，兩者都移除）、`--shadow-lg`。
@@ -149,13 +151,17 @@
 
 ```css
 :root { /* 全部 token 的淺色值 */ }
-@media (prefers-color-scheme: dark) {
+@media screen and (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) { /* 深色值 */ color-scheme: dark; }
 }
-:root[data-theme="dark"] { /* 與上一個區塊完全相同的深色值 */ color-scheme: dark; }
+@media screen {
+    :root[data-theme="dark"] { /* 與上一個區塊完全相同的深色值 */ color-scheme: dark; }
+}
 ```
 
-兩個深色區塊必須逐字相同（§8.1 測試比對）。側欄在 `@supports not (backdrop-filter: blur(1px))` 或 `@media (prefers-reduced-transparency: reduce)` 時改用 `--color-bg-sidebar` 實色。
+- 兩個深色區塊必須逐字相同（§8.1 測試比對）。
+- 兩個深色區塊都限定 `screen`，所以列印一律用 `:root` 的淺色值。否則從深色模式列印，`p`、標題這些自帶 token 色的元素會變成淺色字印在白紙上。現有 `@media print` 區塊（`sections.css` 約 331–353 行）裡的 `color: #0d2137`、`border: 1px solid #ccc` 換成 `--color-text-primary`、`--color-border`，其餘列印規則不動。
+- 側欄在 `@supports not (backdrop-filter: blur(1px))` 或 `@media (prefers-reduced-transparency: reduce)` 時改用 `--color-bg-sidebar` 實色。
 
 ## 4. 主題切換
 
@@ -174,6 +180,7 @@
 
 ### 4.3 `js/theme-toggle.js`（新檔）
 
+- 頂層只定義物件 `ThemeToggle`；由 `app.js` 的 `DOMContentLoaded` 區塊呼叫 `ThemeToggle.init()`（沿用 `app.js:26-39` 各區段 `init*()` 的既有做法）。
 - 側欄底部、版本號上方放一個分段控制：「自動／淺色／深色」。結構是 `<fieldset>`＋`<legend class="sr-only">外觀</legend>`＋三組 `<input type="radio">`／`<label>`，鍵盤用方向鍵切換（原生 radio 行為）。
 - 變更時：用 `FormUtils.safeLocal` 寫入 `localStorage`，更新 `data-theme`，在 `document` 派發 `CustomEvent('tps:themechange', { detail: { theme } })`，`theme` 是生效主題（`'light'` 或 `'dark'`）。
 - 自動模式下監聽 `matchMedia('(prefers-color-scheme: dark)')` 的 `change`，同樣派發事件。
@@ -212,7 +219,7 @@
 - `.btn-secondary`：`--color-bg-tertiary` 底、`--color-text-primary` 字；hover 用 `--color-bg-hover`。
 - `.btn-sm` 高 32px。
 - 錯誤或刪除類按鈕：`--color-danger` 底白字。
-- **刪除未使用的 class**：`.btn-success`、`.copy-btn`（含 `.copied`）、`.btn-icon` 在 `index.html` 與 JS 裡都沒有被用到，連同規則一起刪，不改樣式。
+- **刪除未使用的 class**：`.btn-success`、`.copy-btn`（含 `.copied`）、`.btn-icon` 在 `index.html` 與 JS 裡都沒有被用到，連同規則一起刪，不改樣式。`components.css:224` 的選擇器 `.btn:not(.btn-sm):not(.btn-icon)` 同步改成 `.btn:not(.btn-sm)`。
 
 ### 5.5 提示框
 
@@ -295,9 +302,9 @@
 
 **用途標記**：建立圖表時，dataset 加 `tpsRole: 'primary'` 這類屬性（多通道用 `tpsSeries: i`），帶顏色的座標軸（dn/dc 的 UV、RI 軸）在 scale options 加 `tpsRole`，annotation 項目也加 `tpsRole`。`colorAssignments` 只依這些標記決定顏色。
 
-**主題切換**：`chart-theme.js` 在 `DOMContentLoaded` 之後（此時 defer 的 Chart.js 已執行）監聽 `tps:themechange`，走訪 `Chart.instances`（Chart.js 4 自己維護的存活實例表）對每個實例執行 `applyTo`。不重建圖表，所以 zoom 範圍保留。實作時先確認 4.5.1 有 `Chart.instances`；沒有的話改成在 `ChartTheme` 內建登記表，並在 destroy 時移除。
+**主題切換**：由 `app.js` 的 `DOMContentLoaded` 區塊呼叫 `ChartTheme.init()` 註冊 `tps:themechange` 監聽（此時 defer 的 Chart.js 已執行）。事件觸發時走訪 `Chart.instances`（Chart.js 4 自己維護的存活實例表）對每個實例執行 `applyTo`。不重建圖表，所以 zoom 範圍保留。實作時先確認 4.5.1 有 `Chart.instances`；沒有的話改成在 `ChartTheme` 內建登記表，並在 destroy 時移除。
 
-**非圖表的通道標籤**：`dndc-hplc-results.js`（約 160 行）的通道切換 `<label>` 膠囊目前用 `color.replace('0.85','0.1')` 從圖表色推出底色，換成 hex 色表後會失效，而且不是圖表、不會被 `applyTo` 換色。改成：JS 在執行時用 `style.setProperty('--chip-color', palette.series[i])` 設定（原始碼裡沒有色碼字面值），CSS 用 `color-mix(in srgb, var(--chip-color) 12%, transparent)` 當底色；監聽 `tps:themechange` 重設。
+**非圖表的通道標籤**：`dndc-hplc-results.js`（約 160 行）的通道切換 `<label>` 膠囊目前用 `color.replace('0.85','0.1')` 從圖表色推出底色，換成 hex 色表後會失效，而且不是圖表、不會被 `applyTo` 換色。改成：JS 在執行時用 `style.setProperty('--chip-color', palette.series[i])` 設定（原始碼裡沒有色碼字面值），CSS 用 `color-mix(in srgb, var(--chip-color) 12%, transparent)` 當底色，並在它前一行先宣告 `background: var(--color-bg-tertiary)` 當後備（`color-mix()` 需要 Chrome 111、Safari 16.2、Firefox 113 以上，不支援的瀏覽器會忽略該行、沿用後備）；監聽 `tps:themechange` 重設。
 
 ### 6.2 匯出 PNG
 
@@ -368,10 +375,12 @@
      - 文字 4.5：各語意色 `-text` × 自己的 `-bg`、卡片。
      - 文字 4.5：`--color-text-on-accent` × `--color-accent-primary`、`--color-accent-primary-hover`、`--color-danger`。
      - 文字 4.5：`--color-text-primary` × `--color-bg-raised`。
-     - 元件 3：`--color-accent-primary`、`--color-accent-primary-hover`、`--color-danger`、`--color-success`、`--color-warning`、`--color-focus` × 卡片、頁面。
+     - 文字 4.5：`--color-success-text`、`--color-accent-text`、`--color-warning-text` × `--color-warning-bg`（HPLC 流速表主步驟列，§5.6；這是規則 4 唯一的例外，已列入矩陣）。
+     - 元件 3：`--color-accent-primary`、`--color-accent-primary-hover`、`--color-focus` × 卡片、頁面、側欄實色。
+     - 元件 3：`--color-danger`、`--color-success`、`--color-warning` × 卡片（語意填色只出現在卡片內；淺色 `--color-warning` 對頁面只有 2.9:1，不得直接放在頁面底上）。
    - `ChartTheme.PALETTES`：`text`、`primary`、`reference`、`model`、`residual`、`fit`、`marker`、`series[*]` 疊在卡片後 ≥ 3（`text` ≥ 4.5）；`grid`、`region`、`surface`、`tooltip*` 豁免。
 2. `tests/token-usage.test.js`（用途測試）：
-   - CSS 的 `color:`、`-webkit-text-fill-color:` 宣告，以及 JS 的 `style.color =`、`style.setProperty('color', …)`，只能用文字 token（`--color-text-*`、`--color-accent-text`、`--color-*-text`、`--color-text-on-accent`）或 `inherit`／`currentColor`。
+   - CSS 的 `color:`、`-webkit-text-fill-color:` 宣告，JS 的 `style.color =`、`style.setProperty('color', …)`，以及 `index.html` 與 JS 模板字串裡 `style="…color: …"` 的行內宣告，只能用文字 token（`--color-text-*`、`--color-accent-text`、`--color-*-text`、`--color-text-on-accent`）或 `inherit`／`currentColor`。
    - `--color-text-on-accent` 只能出現在背景是 §3.3 規則 3 那三個 token 的規則裡（依選擇器人工對照清單維護）。
 3. `tests/no-color-literals.test.js`：去掉註解後，`css/*.css`（不含 `tokens.css`）、`js/*.js`（不含 `chart-theme.js`）、`index.html` 不得出現 `#hex`、`rgb(`、`rgba(`、`hsl(`、`oklch(`。允許 `transparent`、`currentColor`、`inherit`。
 4. `tests/theme.test.js`
@@ -452,6 +461,7 @@
 | 遠端桌面壓縮讓白卡邊界消失 | `--shadow-sm` 細邊；驗收時請使用者在光束線電腦經遠端桌面看一次 |
 | 光束線電腦是 Windows 或 Linux，沒有 SF | 後備為 Inter＋Noto（現況字型）；驗收時用 Inter 寬度檢查一次版面 |
 | 毛玻璃在舊瀏覽器或遠端桌面上效能差 | 不支援或要求減少透明度時改實色（§3.4） |
+| 從深色模式列印，淺色字印在白紙上 | 深色區塊限定 `screen`（§3.4） |
 | 就地換色漏掉某些圖表選項（annotation 標籤等） | §8.1 的 stub 測試涵蓋每種用途；深色圖表逐張截圖 |
 
 ## 12. 開放事項
