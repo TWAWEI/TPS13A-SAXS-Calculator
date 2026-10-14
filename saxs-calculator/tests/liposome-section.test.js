@@ -70,6 +70,7 @@ const $ = id => elements.get(id);
 const DEFAULT_VALUES = Object.freeze({
     lipoQMin: '0.1', lipoQMax: '0.15', lipoWl1: '494', lipoWl2: '495', lipoWl3: '496',
     lipoFitMin: '450', lipoFitMax: '550', lipoEpsilon: '9250', lipoPathLength: '0.2', lipoLipidConc: '11.7',
+    lipoPureConc: '',
 });
 const FILE_IDS = ['lipoSolutionFile', 'lipoBypassFile', 'lipoLoadedFile', 'lipoBlankFile', 'lipoPureFile'];
 $('lipoSampleName').maxLength = 60;
@@ -575,7 +576,6 @@ test('[lipo-section] S10 INVALIDATING_IDS：十個欄位任一 input 都作廢�
 test('[lipo-section] S11 標準液對照：同基準差 0%；> 10% 加警告；改濃度不作廢快照；手動吸光度不顯示', async () => {
     const S = section();
     resetInputs();
-    $('lipoPureConc').value = '';
     setSpectraFiles(syntheticSpectra(0.8), { pure: true });
     await click('lipoComputeSpectra');
     input('lipoDilutionFactor', '0.45');
@@ -585,6 +585,7 @@ test('[lipo-section] S11 標準液對照：同基準差 0%；> 10% 加警告；�
     // 合成純 DOX 在 495 nm 的 A = 1；ε 9250、光徑 0.2 cm → c_pure = 1/1850 M = 0.54054 mM 時兩法一致
     input('lipoPureConc', '0.54054');
     assert.equal($('lipoStdCompare').hidden, false);
+    assert.match($('lipoStdCompare').innerHTML, /相差 [+−]0\.00%/);
     assert.match($('lipoStdCompare').innerHTML, /標準液法對照/);
     assert.doesNotMatch($('lipoStdCompare').innerHTML, /alert-warning/);
     assert.ok(S.getState().dl, '改標準液濃度不作廢快照');
@@ -594,10 +595,15 @@ test('[lipo-section] S11 標準液對照：同基準差 0%；> 10% 加警告；�
     assert.match($('lipoStdCompare').innerHTML, /\+29\.50%/);
     assert.match($('lipoStdCompare').innerHTML, /alert-warning/);
 
+    input('lipoEpsilon', '9250');   // 作廢欄位（值不變只發事件）→ 快照作廢、對照隱藏
+    assert.equal(S.getState().dl, null);
+    assert.equal($('lipoStdCompare').hidden, true, '快照作廢後對照要隱藏');
+    await click('lipoComputeDl');
+    assert.equal($('lipoStdCompare').hidden, false, '重算後對照回來');
+
     setManualAbs(0.8, 0.8, 0.8);
     await click('lipoComputeDl');
     assert.equal($('lipoStdCompare').hidden, true, '手動吸光度 → 不顯示對照');
-    $('lipoPureConc').value = '';
 });
 
 test('[lipo-section] S12 面板 1 顯示 SEM 對照（n 與 SD 同一行）', async () => {
