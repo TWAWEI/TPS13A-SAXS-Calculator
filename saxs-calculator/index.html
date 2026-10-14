@@ -16,6 +16,10 @@
     <meta name="description" content="TPS13A SAXS Calculator - 蛋白質溶液小角X射線散射參數計算工具">
     <title>TPS13A SAXS Calculator</title>
 
+    <!-- 主題初始化：必須是同步 script，且排在所有 stylesheet 之前——第一次繪製前就設好 data-theme，
+         深色使用者才不會先看到淺色閃一下（tests/structure.test.js 檢查位置） -->
+    <script src="js/theme-init.js?v=4.15"></script>
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -129,6 +133,17 @@
                     </button>
                 </div>
             </nav>
+
+            <!-- 外觀：自動（跟隨系統）／淺色／深色，存在 localStorage（js/theme-toggle.js） -->
+            <fieldset class="theme-toggle" id="themeToggle">
+                <legend class="sr-only">外觀</legend>
+                <input type="radio" name="theme" id="themeAuto" value="auto">
+                <label for="themeAuto">自動</label>
+                <input type="radio" name="theme" id="themeLight" value="light">
+                <label for="themeLight">淺色</label>
+                <input type="radio" name="theme" id="themeDark" value="dark">
+                <label for="themeDark">深色</label>
+            </fieldset>
 
             <!-- 版本號同時是所有本地 css/js 的 ?v=：bump 時兩者一起改（tests/structure.test.js 檢查） -->
             <div class="sidebar-footer">
@@ -2068,6 +2083,7 @@
     <!-- 共用工具與純計算模組（無 DOM 相依） -->
     <script src="js/form-utils.js?v=4.15"></script>
     <script src="js/a11y-utils.js?v=4.15"></script>
+    <script src="js/theme-toggle.js?v=4.15"></script>
     <script src="js/protein.js?v=4.15"></script>
     <script src="js/sample-prep-calculations.js?v=4.15"></script>
     <script src="js/hplc-calculations.js?v=4.15"></script>

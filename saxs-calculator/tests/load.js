@@ -20,6 +20,7 @@ const JS = path.join(__dirname, '..', 'js');
 
 /** 依序載入的檔案；相對順序與 index.html 一致。 */
 const LOAD_ORDER = Object.freeze([
+    'theme-init.js',               // index.html 在 <head> 載入；頂層只在有 document 時才動 DOM
     'form-utils.js',
     'protein.js',
     'sample-prep-calculations.js',
@@ -60,4 +61,5 @@ module.exports = {
     Liposome: window.LiposomeCalculations,
     LiposomeParsers: window.LiposomeFileParsers,
     LiposomeTable: window.LiposomeResultsTable,
+    ThemeInit: window.ThemeInit,
 };

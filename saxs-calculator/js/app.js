@@ -24,6 +24,7 @@ const safeSession = FormUtils.safeSession;
 // Initialize Application
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
+    ThemeToggle.init();
     initFormPersistence();
     initNavigation();
     initProteinSection();

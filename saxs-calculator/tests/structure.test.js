@@ -223,3 +223,19 @@ test('[structure] tests/load.js 的載入順序與 index.html 的相對順序一
     const outOfOrder = LOAD_ORDER.filter((file, i) => i > 0 && positions[i] < positions[i - 1]);
     assert.deepEqual(outOfOrder, [], `這些檔在 load.js 裡排得比 index.html 早：${outOfOrder.join(', ')}`);
 });
+
+// ---------------------------------------------------------------- v5.0 主題
+test('[structure] theme-init.js：<head> 唯一的本地 script、同步載入、在 CSP 之後與所有 stylesheet 之前', () => {
+    const head = INDEX_HTML.slice(0, INDEX_HTML.indexOf('</head>'));
+    const headLocal = [...head.matchAll(/<script\s+src="(js\/[^"?]+)/g)].map(m => m[1]);
+    assert.deepEqual(headLocal, ['js/theme-init.js']);
+
+    const tags = [...head.matchAll(/<script\s[^>]*>/g)].map(m => m[0]);
+    const blocking = tags.filter(tag => !/\b(?:defer|async)\b/.test(tag));
+    assert.equal(blocking.length, 1, `<head> 只能有一個同步 script：${blocking.join(' ')}`);
+    assert.match(blocking[0], /js\/theme-init\.js/);
+
+    const at = head.indexOf('js/theme-init.js');
+    assert.ok(head.indexOf('Content-Security-Policy') < at, 'theme-init.js 必須在 CSP meta 之後');
+    assert.ok(at < head.indexOf('rel="stylesheet"'), 'theme-init.js 必須在第一個 stylesheet 之前（避免深色使用者看到淺色閃一下）');
+});
