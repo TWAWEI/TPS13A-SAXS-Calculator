@@ -1,35 +1,35 @@
 /* =============================================
    TPS13A SAXS Calculator — Components
-   mode toggle、表單、按鈕、tabs、表格、圖表容器、序列顯示、loading、alert
+   分段控制、表單（含分組列表）、按鈕、tabs、表格、圖表容器與通道膠囊、結果項目、alert、徽章
    ============================================= */
 
-/* ===== Mode Toggle ===== */
+/* ===== Mode Toggle（蘋果分段控制） ===== */
 .mode-toggle {
     display: flex;
-    gap: 1px;
+    gap: 2px;
+    padding: 2px;
     margin-bottom: var(--spacing-md);
-    background: var(--color-border);
+    background: var(--color-bg-tertiary);
     border-radius: var(--radius-md);
-    overflow: hidden;
 }
 
 .mode-toggle .btn {
     flex: 1;
     padding: var(--spacing-sm);
     font-size: 0.8125rem;
-    border-radius: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-secondary);
+}
+
+.mode-toggle .btn:not(.active):hover {
+    background: var(--color-bg-hover);
 }
 
 .mode-toggle .btn.active {
-    background: var(--color-accent-primary);
-    color: var(--color-text-on-accent);
-    border: none;
-}
-
-.mode-toggle .btn:not(.active) {
-    background: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    border: none;
+    background: var(--color-bg-raised);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-sm);
 }
 
 /* ===== Form Elements ===== */
@@ -59,26 +59,37 @@
 .form-select {
     width: 100%;
     padding: 0.625rem 0.75rem;
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    background: var(--color-bg-tertiary);
+    border: 0;
+    border-radius: var(--radius-sm);
     color: var(--color-text-primary);
     font-family: var(--font-body);
     font-size: 0.875rem;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    transition: background var(--transition-fast);
 }
 
-.form-input:focus,
-.form-textarea:focus,
-.form-select:focus {
-    outline: none;
-    border-color: var(--color-accent-primary);
-    box-shadow: 0 0 0 3px rgba(168, 85, 85, 0.15);
+.form-input[type="number"] {
+    font-variant-numeric: tabular-nums;
+}
+
+.form-input:focus-visible,
+.form-textarea:focus-visible,
+.form-select:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
 }
 
 .form-input::placeholder,
 .form-textarea::placeholder {
     color: var(--color-text-muted);
+}
+
+/* 檔案上傳：虛線外框標出「可放檔案」的區域 */
+.form-input[type="file"] {
+    background: var(--color-bg-card);
+    border: 1px dashed var(--color-border);
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
 }
 
 .form-textarea {
@@ -89,15 +100,16 @@
     line-height: 1.6;
 }
 
+/* 數字＋單位：單位是輸入框右邊的淡色文字（不再與輸入框合成一個框） */
 .form-input-group {
     display: flex;
-    gap: 0;
+    align-items: center;
+    gap: var(--spacing-sm);
 }
 
 .form-input-group .form-input {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-    border-right: none;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .form-input--inline {
@@ -114,26 +126,92 @@
 }
 
 .form-input--inline:focus-visible {
-    border: 1px solid var(--color-accent-primary);
+    border-color: transparent;
     border-radius: var(--radius-sm);
-    outline: 2px solid var(--color-accent-primary);
+    outline: 2px solid var(--color-focus);
     outline-offset: 1px;
 }
 
 .input-unit {
-    display: flex;
-    align-items: center;
-    padding: 0 0.75rem;
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border);
-    border-left: none;
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    flex: 0 0 auto;
+    min-width: 3.5em;              /* 空單位也佔位，同一卡片的數字才對得齊 */
     color: var(--color-text-muted);
     font-size: 0.75rem;
     font-weight: 500;
-    min-width: 52px;
-    justify-content: center;
     white-space: nowrap;
+}
+
+/* ===== Grouped form list（macOS 設定式分組列表，v5.0） =====
+   index.html 把連續的「數字＋單位」欄位包進 .form-list。label、id、for、aria 一律不變。 */
+.form-list {
+    margin-bottom: var(--spacing-md);
+    padding-left: 14px;            /* 分隔線左側內縮 14px（iOS 樣式） */
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-lg);
+}
+
+/* :not(.hidden)：偵測器頁的 MW／Rg 兩列靠 .hidden 輪流顯示，而 .form-list > .form-group
+   的特異性比 .hidden 高——不排除的話兩列會同時出現。 */
+.form-list > .form-group:not(.hidden) {
+    display: flex;
+    flex-wrap: wrap;               /* 窄螢幕放不下時，輸入框換到下一行靠右 */
+    align-items: center;
+    column-gap: var(--spacing-md);
+    row-gap: var(--spacing-xs);
+    min-height: 44px;
+    margin: 0;
+    padding: 6px 14px 6px 0;
+}
+
+/* 分隔線只畫在「兩個可見列之間」：隱藏列不留空線 */
+.form-list > .form-group:not(.hidden) ~ .form-group:not(.hidden) {
+    border-top: 1px solid var(--color-separator);
+}
+
+.form-list .form-label {
+    flex: 1 1 9rem;
+    min-width: 0;
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--color-text-primary);
+}
+
+.form-list .form-input-group {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.form-list .form-input {
+    flex: 0 0 auto;
+    width: 8.5rem;                 /* 約 9ch；中文 placeholder（例：「輸入分子量...」）也放得下 */
+    padding: 0.4375rem 0.625rem;
+    text-align: right;
+}
+
+/* 手機（390px 寬時列內約 264px）：標籤基準 5rem＋間距 0.5rem＋輸入框 6rem＋單位 ≈ 249px，
+   短標籤與輸入框留在同一列；長標籤在標籤內換行 */
+@media (max-width: 480px) {
+    .form-list > .form-group:not(.hidden) {
+        column-gap: var(--spacing-sm);
+    }
+
+    .form-list .form-label {
+        flex-basis: 5rem;
+    }
+
+    .form-list .form-input {
+        width: 6rem;
+    }
+}
+
+.form-list-foot {
+    margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-md);
+    padding: 0 14px;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
 }
 
 /* ===== Buttons ===== */
@@ -145,16 +223,15 @@
     padding: 0.625rem var(--spacing-lg);
     border: none;
     border-radius: var(--radius-md);
-    font-family: var(--font-body), var(--font-en);
-    font-size: 0.8125rem;
+    font-family: var(--font-body);
+    font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: background var(--transition-fast), box-shadow var(--transition-fast);
-    letter-spacing: 0.01em;
+    transition: background var(--transition-fast);
 }
 
 .btn:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -163,25 +240,23 @@
     color: var(--color-text-on-accent);
 }
 
+/* 淺色變暗、深色變亮（token 已依主題定好）；不位移、不縮放 */
 .btn-primary:hover {
-    background: var(--color-accent-primary-light);
+    background: var(--color-accent-primary-hover);
 }
 
 .btn-secondary {
     background: var(--color-bg-tertiary);
     color: var(--color-text-primary);
-    border: 1px solid var(--color-border);
 }
 
 .btn-secondary:hover {
     background: var(--color-bg-hover);
-    border-color: var(--color-accent-primary);
-    color: var(--color-accent-primary);
 }
 
 /* disabled：暫時無法操作（例如檔案尚未載入）——壓淡並取消 hover 變化 */
 .btn:disabled {
-    opacity: 0.55;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
@@ -191,37 +266,24 @@
 
 .btn-secondary:disabled:hover {
     background: var(--color-bg-tertiary);
-    border-color: var(--color-border);
-    color: var(--color-text-primary);
-}
-
-.btn-success {
-    background: var(--color-accent-secondary);
-    color: var(--color-text-on-accent);
-}
-
-.btn-icon {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border-radius: var(--radius-md);
 }
 
 .btn-sm {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.6875rem;
-    letter-spacing: 0.04em;
+    min-height: 1.875rem;          /* ≈32px */
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
 }
 
 .btn-lg {
     padding: 0.75rem var(--spacing-xl);
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
 }
 
-/* Minimum comfortable target for the primary controls. .btn-sm / .copy-btn /
-   .btn-icon stay compact on purpose (they sit inside table rows and cards) but
-   still clear the 24px WCAG 2.2 AA floor. */
-.btn:not(.btn-sm):not(.btn-icon),
+/* 主要操作 44px；.btn-sm 刻意較小（放在表格列與卡片裡），仍高於 WCAG 2.2 AA 的 24px 下限 */
+.btn:not(.btn-sm) {
+    min-height: 2.625rem;
+}
+
 .nav-item {
     min-height: 2.5rem;
 }
@@ -230,43 +292,33 @@
     width: 100%;
 }
 
-/* ===== Tabs ===== */
+/* ===== Tabs（蘋果分段控制，與 .mode-toggle 同一套外觀） ===== */
 .tabs {
     display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--color-border);
+    gap: 2px;
+    padding: 2px;
     margin-bottom: var(--spacing-lg);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
 }
 
 .tabs--inline {
     margin: 0;
-    border-bottom: none;
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-md);
-    padding: 2px;
-    gap: 2px;
 }
 
 .tab {
-    padding: var(--spacing-sm) var(--spacing-md);
+    flex: 1;
+    padding: 0.3125rem var(--spacing-md);
     background: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--color-text-muted);
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color var(--transition-fast), border-color var(--transition-fast);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.tabs--inline .tab {
-    border-bottom: none;
     border-radius: var(--radius-sm);
-    flex: 1;
+    color: var(--color-text-secondary);
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 600;
     text-align: center;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .tab:hover {
@@ -274,46 +326,27 @@
 }
 
 .tab:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
-    outline-offset: -2px;
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
 }
 
 .tab.active {
-    color: var(--color-accent-primary);
-    border-bottom-color: var(--color-accent-primary);
-}
-
-.tabs--inline .tab.active {
-    background: var(--color-bg-secondary);
-    color: var(--color-accent-primary);
+    background: var(--color-bg-raised);
+    color: var(--color-text-primary);
     box-shadow: var(--shadow-sm);
 }
 
 /* ===== Tables ===== */
-/* Flow-rate switch points: the rows a scientist actually has to act on.
-   Replaces inline styles that referenced the undefined --color-primary(-rgb). */
-.flow-rate-row--note {
-    background: rgba(168, 85, 85, 0.1);
-}
-
-.flow-rate-row--note td {
-    font-weight: 600;
-}
-
-.flow-rate-row--note td:last-child {
-    color: var(--color-accent-primary-deep);
-}
-
 .table-wrapper {
     overflow-x: auto;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
 }
 
 /* tabindex="0" makes the overflow area reachable (Safari has no built-in
    scroll-container focus); it needs a matching focus ring. */
 .table-wrapper:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -327,15 +360,14 @@
 .table td {
     padding: 0.625rem var(--spacing-md);
     text-align: left;
-    border-bottom: 1px solid var(--color-border-light);
+    border-bottom: 1px solid var(--color-separator);
 }
 
 .table th {
-    background: var(--color-bg-tertiary);
     font-weight: 600;
     color: var(--color-text-muted);
-    font-size: 0.6875rem;
-    letter-spacing: 0.06em;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
 }
 
 .table caption {
@@ -353,8 +385,9 @@
     text-align: center;
 }
 
+/* hover 用 tertiary 而不是 --color-bg-hover：淺色 success-text 在 #E8E8ED 上只有 4.49:1 */
 .table tbody tr:hover {
-    background: var(--color-bg-hover);
+    background: var(--color-bg-tertiary);
 }
 
 .table tbody tr:last-child td {
@@ -368,6 +401,42 @@
     color: var(--color-text-primary);
 }
 
+/* Flow-rate switch points: the rows a scientist actually has to act on. */
+.table tbody tr.flow-rate-row--note,
+.table tbody tr.flow-rate-row--note:hover {
+    background: var(--color-accent-tint);
+}
+
+.flow-rate-row--note td {
+    font-weight: 600;
+}
+
+.flow-rate-row--note td:last-child {
+    color: var(--color-accent-text);
+}
+
+/* Detector Setting 表（section-hplc.js）：第 4 步是主要收數據的步驟。
+   :hover 也要寫：.table tbody tr:hover 的特異性比單一 class 高，會把底色蓋掉。 */
+.table tbody tr.is-main-step,
+.table tbody tr.is-main-step:hover {
+    background: var(--color-warning-bg);
+}
+
+.table td.frame-main {
+    color: var(--color-warning-text);
+    font-weight: 700;
+}
+
+.table td.mode-tm {
+    color: var(--color-accent-text);
+    font-weight: 600;
+}
+
+.table td.mode-other {
+    color: var(--color-success-text);
+    font-weight: 600;
+}
+
 /* ===== Charts ===== */
 .chart-container {
     position: relative;
@@ -375,8 +444,49 @@
     width: 100%;
 }
 
-.chart-container-lg {
-    height: 400px;
+/* HPLC dn/dc 全通道預覽的通道開關（dndc-hplc-results.js）。
+   --chip-color 由 JS 依目前主題設定（ChartTheme.seriesColor）；文字一律用文字 token，
+   顏色只出現在與圖線同色同線型的小樣本上。 */
+.channel-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.channel-chip::before {
+    content: '';
+    width: 14px;
+    border-top: 2px solid var(--chip-color, var(--color-text-muted));
+}
+
+/* 第 9 個以後的通道重用系列色，改用虛線區分（與圖線一致） */
+.channel-chip--dashed::before {
+    border-top-style: dashed;
+}
+
+.channel-chip input {
+    margin: 0;
+}
+
+.channel-chip.is-on {
+    border-color: var(--chip-color, var(--color-border));
+    background: var(--color-bg-tertiary);
+}
+
+/* color-mix() 需要 Chrome 111／Safari 16.2／Firefox 113。宣告裡有 var()，不支援的瀏覽器不會
+   跳過這行而是在繪製時整個變透明，所以一定要包在 @supports 裡，外面的 tertiary 是後備。 */
+@supports (background: color-mix(in srgb, red 50%, transparent)) {
+    .channel-chip.is-on {
+        background: color-mix(in srgb, var(--chip-color) 12%, transparent);
+    }
 }
 
 /* ===== Result Display ===== */
@@ -390,7 +500,6 @@
     background: var(--color-bg-tertiary);
     padding: var(--spacing-sm) var(--spacing-md);
     border-radius: var(--radius-sm);
-    border-left: 2px solid var(--color-accent-primary);
 }
 
 .result-label {
@@ -405,28 +514,22 @@
     font-size: 1rem;
     font-weight: 600;
     color: var(--color-text-primary);
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-variant-numeric: tabular-nums;
 }
 
-/* 數值下方的一行說明（單位別名、適用場合）。#5a5a78 on #eef0f2 = 5.8:1 */
+/* 該頁的關鍵數值（dn/dc 理論頁的最終值與 Lorentz-Lorenz 值） */
+.result-value--key {
+    font-size: 1.25rem;
+    color: var(--color-accent-text);
+}
+
+/* 數值下方的一行說明（單位別名、適用場合） */
 .result-note {
     font-size: 0.6875rem;
     color: var(--color-text-muted);
     line-height: 1.4;
     margin-top: 0.25rem;
-}
-
-/* ===== Sequence Display ===== */
-.sequence-display {
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
-    line-height: 2;
-    background: var(--color-bg-tertiary);
-    padding: var(--spacing-lg);
-    border-radius: var(--radius-md);
-    word-break: break-all;
-    letter-spacing: 0.5px;
 }
 
 /* ===== Sequence Meta Row ===== */
@@ -436,65 +539,10 @@
     margin-top: var(--spacing-sm);
 }
 
-/* ===== Copy Button ===== */
-.copy-wrapper {
-    position: relative;
-}
-
-.copy-btn {
-    position: absolute;
-    top: var(--spacing-sm);
-    right: var(--spacing-sm);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    color: var(--color-text-muted);
-    cursor: pointer;
-    font-size: 0.6875rem;
-    transition: color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.copy-btn:hover {
-    color: var(--color-accent-primary);
-    border-color: var(--color-accent-primary);
-}
-
-.copy-btn:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
-    outline-offset: 2px;
-}
-
-.copy-btn.copied {
-    color: var(--color-accent-secondary);
-    border-color: var(--color-accent-secondary);
-}
-
-/* ===== Loading State ===== */
-.loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-xl);
-}
-
-.spinner {
-    width: 32px;
-    height: 32px;
-    border: 2px solid var(--color-border);
-    border-top-color: var(--color-accent-primary);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
 /* ===== Alerts ===== */
 .alert {
-    padding: var(--spacing-md);
-    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    border-radius: var(--radius-lg);
     margin-bottom: var(--spacing-md);
     display: flex;
     align-items: flex-start;
@@ -504,32 +552,29 @@
 }
 
 .alert--compact {
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: var(--spacing-sm) 12px;
     font-size: 0.75rem;
 }
 
+/* 一般提示用中性灰底與主要文字色，不跟強調色搶 */
 .alert-info {
-    background: rgba(168, 85, 85, 0.06);
-    border: 1px solid rgba(168, 85, 85, 0.25);
-    color: var(--color-accent-primary-deep);
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
 }
 
 .alert-success {
-    background: rgba(124, 188, 150, 0.1);
-    border: 1px solid rgba(93, 166, 157, 0.25);
-    color: #2a7a5a;
+    background: var(--color-success-bg);
+    color: var(--color-success-text);
 }
 
 .alert-warning {
-    background: rgba(180, 83, 9, 0.06);
-    border: 1px solid rgba(180, 83, 9, 0.15);
-    color: var(--color-accent-tertiary-text);
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
 }
 
 .alert-error {
-    background: rgba(196, 43, 28, 0.06);
-    border: 1px solid rgba(196, 43, 28, 0.15);
-    color: var(--color-accent-danger-text);   /* 5.9:1 on the tint; #dc2626 was 4.38:1 */
+    background: var(--color-danger-bg);
+    color: var(--color-danger-text);
 }
 
 /* .alert 設了 display:flex，會蓋掉瀏覽器預設的 [hidden]{display:none} —— 不補這條，
@@ -549,7 +594,7 @@
     font-size: 0.6875rem;
     font-weight: 600;
     padding: 1px 6px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     margin-left: 6px;
     vertical-align: middle;
     white-space: nowrap;
@@ -561,7 +606,6 @@
 }
 
 .info-panel-badge--warn {
-    background: #fef3c7;                        /* amber-100 */
-    color: var(--color-accent-tertiary-text);   /* #92400e — 6.4:1 */
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
 }
-
