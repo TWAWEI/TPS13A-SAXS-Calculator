@@ -16,7 +16,6 @@ const EXEMPT = Object.freeze(['css/tokens.css', 'js/chart-theme.js']);
 
 const PENDING_LITERAL_FILES = Object.freeze([
     'css/components.css',
-    'css/layout.css',
     'css/panels.css',
     'css/sections.css',
     'js/charts.js',

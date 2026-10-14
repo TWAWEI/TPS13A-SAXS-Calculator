@@ -18,7 +18,6 @@ const { read, readCode, CSS_FILES, JS_FILES, parseCustomProperties, cssRules } =
 
 const PENDING_TOKEN_FILES = Object.freeze([
     'css/components.css',
-    'css/layout.css',
     'css/panels.css',
     'css/sections.css',
     'js/dndc-hplc-results.js',
