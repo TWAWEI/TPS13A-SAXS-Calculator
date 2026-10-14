@@ -2053,7 +2053,7 @@
          const safeStorage = FormUtils.safeLocal 需要 form-utils.js 已執行）；
          (2) app.js 永遠最後——它只有 DOMContentLoaded 啟動點；
          (3) 拆檔群組：負責匯出命名空間的原檔（calculations.js、dndc-calculations.js）
-             在載入期讀取分檔的頂層函式，所以分檔排在原檔之前。
+             在載入期讀取分檔的頂層宣告（函式與常數），所以分檔排在原檔之前。
          tests/structure.test.js 會盯著這三條與「跨檔重複宣告」。 -->
 
     <!-- 共用工具與純計算模組（無 DOM 相依） -->

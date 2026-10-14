@@ -1,8 +1,9 @@
 /**
  * TPS13A SAXS Calculator - UV／RI 時間延遲估計與對齊，含 _resolveAlignment（對應 Python alignment.py）
  *
- * 2026-10-14 從 dndc-calculations.js 純搬移拆出。函式宣告在全域作用域，由 dndc-calculations.js 結尾的匯出區塊
+ * 2026-10-14 從 dndc-calculations.js 純搬移拆出。頂層宣告（函式與常數）在全域作用域，由 dndc-calculations.js 結尾的匯出區塊
  * 在載入期讀取，所以本檔必須排在 dndc-calculations.js 之前（tests/structure.test.js 檢查）。
+ * 注意：私有函式 _resolveAlignment 由 dndc-calculations.js 直接呼叫（共用全域作用域），改名或移動時要一起改。
  */
 
 // ============================================================

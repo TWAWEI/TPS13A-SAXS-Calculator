@@ -1,7 +1,7 @@
 /**
  * TPS13A SAXS Calculator - dn/dc 理論值、溫度／波長校正、Lorentz-Lorenz、Gladstone-Dale（對應 Python theoretical.py）
  *
- * 2026-10-14 從 dndc-calculations.js 純搬移拆出。函式宣告在全域作用域，由 dndc-calculations.js 結尾的匯出區塊
+ * 2026-10-14 從 dndc-calculations.js 純搬移拆出。頂層宣告（函式與常數）在全域作用域，由 dndc-calculations.js 結尾的匯出區塊
  * 在載入期讀取，所以本檔必須排在 dndc-calculations.js 之前（tests/structure.test.js 檢查）。
  */
 

@@ -1,7 +1,7 @@
 /**
  * TPS13A SAXS Calculator - HPLC-SAXS 步驟設定、fraction collector、10 μL pre-run 建議值
  *
- * 2026-10-14 從 calculations.js 純搬移拆出。函式宣告在全域作用域，由 calculations.js 結尾的匯出區塊
+ * 2026-10-14 從 calculations.js 純搬移拆出。頂層宣告（函式與常數）在全域作用域，由 calculations.js 結尾的匯出區塊
  * 在載入期讀取，所以本檔必須排在 calculations.js 之前（tests/structure.test.js 檢查）。
  */
 

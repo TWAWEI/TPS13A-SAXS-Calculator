@@ -28,7 +28,7 @@ const MAX_LINES = 800;
 // dndc-calculations.js 後清空。
 const PENDING_SPLIT = Object.freeze([]);
 
-// 拆檔群組：負責匯出命名空間的原檔，在載入期讀取分檔的頂層函式，所以分檔必須先載入。
+// 拆檔群組：負責匯出命名空間的原檔，在載入期讀取分檔的頂層宣告（函式與常數），所以分檔必須先載入。
 const SPLIT_GROUPS = Object.freeze({
     'calculations.js': Object.freeze(['sample-prep-calculations.js', 'hplc-calculations.js', 'detector-calculations.js']),
     'dndc-calculations.js': Object.freeze(['dndc-theory-calculations.js', 'dndc-signal-calculations.js', 'dndc-alignment-calculations.js']),

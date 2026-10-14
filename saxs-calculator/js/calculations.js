@@ -4,7 +4,7 @@
  *
  * 2026-10-14 拆檔（純搬移）：離心／樣品／SEC → sample-prep-calculations.js；HPLC-SAXS 步驟與
  * fraction collector → hplc-calculations.js；偵測器距離 → detector-calculations.js。
- * 結尾的匯出區塊在載入期讀取那三個檔的頂層函式，所以它們必須排在本檔之前。
+ * 結尾的匯出區塊在載入期讀取那三個檔的頂層宣告（函式與常數），所以它們必須排在本檔之前。
  */
 
 // ========================

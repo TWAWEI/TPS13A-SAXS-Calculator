@@ -3,7 +3,7 @@
  * Load the browser-global calculation modules into Node for testing.
  *
  * 瀏覽器裡的 classic <script> 共用同一個全域作用域；require() 卻讓每個檔各有自己的模組作用域。
- * 拆檔後，分檔（例如 hplc-calculations.js）的頂層函式要在原檔（calculations.js）結尾的匯出區塊
+ * 拆檔後，分檔（例如 hplc-calculations.js）的頂層宣告（函式與常數）要在原檔（calculations.js）結尾的匯出區塊
  * 被讀到，require() 之下會 ReferenceError。所以這裡用 vm.runInThisContext 逐檔執行，
  * 語意與瀏覽器相同。順序必須與 index.html 一致（tests/structure.test.js 會檢查拆檔群組）。
  *
