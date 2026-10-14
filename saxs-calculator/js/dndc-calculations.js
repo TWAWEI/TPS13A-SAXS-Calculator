@@ -326,6 +326,8 @@ function computeSliceDndc(time, uvSignal, riSignal, params, minUvFraction = 0.05
     const uvCorrected = baselineCorrect(time, uvSignal, baselineMode, bl1Mask, bl2Mask);
     const riBaselineCorrected = baselineCorrect(time, riCorrected, baselineMode, bl1Mask, bl2Mask);
 
+    // Slice 不像 HPLC 單次那樣拒絕負 UV 峰：峰邊緣切片的 UV 本來就可能因雜訊略低於 0，
+    // 逐片拒絕會讓整次計算失敗（規格 §6.3）。最終斜率為負時由 negativeDndcWarnings 提醒。
     // Concentration array from UV (mg/mL)
     const concArrayMgml = _computeConcentration(uvCorrected, epsilon, pathLen);
     // dn/dc in mL/g requires concentration in g/mL
