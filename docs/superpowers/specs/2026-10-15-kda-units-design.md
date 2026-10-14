@@ -1,7 +1,7 @@
 # 分子量單位改 kDa ＋ 手機寬度溢出修正（v5.1）— 設計規格
 
 - 日期：2026-10-15
-- 狀態：設計已與使用者確認（2026-10-15）。使用者要求直接開工，本規格末節的步驟清單即實作計畫
+- 狀態：設計已與使用者確認（2026-10-15）。使用者要求直接開工，本規格末節的步驟清單即實作計畫。規格審查（同日）無阻擋項，採納的建議已併入各節
 - 目標產品：`saxs-calculator/`，v5.0 → v5.1
 - 與改版規格的關係：原本排在 v5.1 的結果磚（`2026-10-14-apple-redesign-design.md` §7）順延到 v5.2，見 §9
 
@@ -29,7 +29,7 @@
 | 問題 | 決定 |
 |---|---|
 | 上線順序 | 先做 kDa 與溢出修正（v5.1），結果磚順延到 v5.2 |
-| kDa 小數位數 | 一律 2 位，例如 69.29 kDa、± 3.50 kDa |
+| kDa 小數位數 | 顯示一律 2 位，例如 69.29 kDa、± 3.50 kDa。例外：自動帶入**欄位**的值用 3 位（1 Da 精度，見 §4），2 位小數（10 Da 一格）會讓帶入值與序列 MW 差到 5 Da |
 | Da 保留在哪裡 | 只有蛋白質頁：合併成一項「分子量 69.29 kDa」，下方小字「69,293.82 Da」。其餘只顯示 kDa，輸入欄位與 IUCr 表也一樣 |
 | 誤輸入 | 只提示、照樣計算。超過 10,000 kDa 時欄位下方出現琥珀色提示：「超過 10,000 kDa（10 MDa），是不是輸入了 Da？例：66500 Da 請輸入 66.5」 |
 
@@ -44,12 +44,12 @@
 | `INPUT_IDS` | `theoreticalMWInput`、`inputMw`、`mwInput`、`centrifugeMw`、`targetProteinMW` |
 | `STATE_UNIT` | `'kDa'`：存檔裡的單位標記 |
 | `daToKDa(da)`／`kDaToDa(kDa)` | 純換算 |
-| `formatKDa(da)` | Da → kDa 字串，固定 2 位、`en-US` 千分位；非有限值回 `'-'` |
-| `formatDa(da)` | Da 字串，固定 2 位、`en-US` 千分位（只給蛋白質頁用） |
+| `formatKDa(da)` | Da → kDa 字串，固定 2 位、`en-US` 千分位；非有限值回 `'-'`。只回數字，單位寫在標記裡（沿用現有的 `<span>` 單位） |
+| `formatDa(da)` | Da 字串，固定 2 位、`en-US` 千分位，只回數字（只給蛋白質頁用） |
 | `toInputValue(da)` | 自動帶入用：kDa、最多 3 位小數（1 Da 精度），去掉尾端 0，例如 69293.82 → `"69.294"`、66500 → `"66.5"`；非有限值回 `''` |
 | `isLikelyDa(kDa)` | `kDa > WARN_ABOVE_KDA` |
-| `migrateSavedValues(values)` | 回傳新物件：`INPUT_IDS` 裡有數值字串的欄位 ÷ 1000（經 `toInputValue`），其餘原樣；不修改傳入物件 |
-| `writeInput(el, da)` | 自動帶入：寫入 `toInputValue(da)` 並更新提示 |
+| `migrateSavedValues(values)` | 回傳新物件：`INPUT_IDS` 裡 ≥ 1,000 的數值字串 ÷ 1000（經 `toInputValue`），其餘原樣；不修改傳入物件。小於 1,000 的見 §8 |
+| `writeInput(el, da)` | 自動帶入：寫入 `toInputValue(da)` 並更新提示。不派發 input／change 事件（與現行帶入行為相同：不觸發自動存檔與重算） |
 | `initInputHints(doc)` | 為 5 個欄位建立提示元素、綁定事件，並依目前的值（可能是剛還原的）顯示提示 |
 
 載入順序：`index.html` 放在 `form-utils.js` 之後；`tests/load.js` 的 `LOAD_ORDER` 同步加入。
@@ -65,7 +65,8 @@
 | `targetProteinMW` | 偵測器距離 | 單位 `kDa`、預設 `66.5`、`min="1" max="10000" step="any"`（原 1000／10,000,000 Da） | `section-detector.js` × 1000 |
 
 - 自動帶入（`section-protein.js` 3 個、`section-saxs.js` 1 個）一律走 `MassUnits.writeInput`。原本 `inputMw`／`mwInput` 帶 0.01 Da、另兩個帶整數 Da；統一成 1 Da 精度後，`inputMw`／`mwInput` 最多差 0.5 Da（相對 < 10⁻⁵），不影響任何顯示位數。
-- `section-saxs.js` 的 `getTheoreticalOpts` 以 1 Da 容差判斷「面板 MW 是否就是序列 MW」：kDa 三位小數最多差 0.5 Da，容差不變，只更新註解。
+- `section-saxs.js` 的 `getTheoreticalOpts` 判斷「面板 MW 是否就是序列 MW」，容差從 1 Da 放寬為 5 Da（常數 `SEQUENCE_MW_TOLERANCE_DA`）。序列帶入最多差 0.5 Da；使用者照結果的 2 位小數重打（69.29 kDa）會差 3.8 Da，1 Da 容差會讓它悄悄退回經驗式。
+- `section-saxs.js` 的 × 1000 只套在欄位讀到的值；欄位空白時退回的 `AppState.proteinData.molecularWeight` 本來就是 Da。
 
 ## 5. 顯示
 
@@ -94,11 +95,12 @@
 - `index.html` 偵測器頁公式說明（0.69 × MW^1/3）與其下的 0.251 × MW^0.43 附註
 - `detector-rg-panel.js` 的預測來源說明
 - `section-saxs.js` 的 *I*(0) 方法標籤（`c×MW×7.9×10⁻⁷`）
+- `section-protein.js` 的 *ε*<sub>mass</sub> = *ε* / MW 說明（MW 以 g/mol 計；代 kDa 會大 1000 倍）
 
 ## 7. 誤輸入提示
 
-- `initInputHints` 在每個欄位後面建立 `<p class="field-warning" id="<欄位id>UnitHint" aria-live="polite">`，並把 id 加進欄位的 `aria-describedby`。元素一直存在、內容空白時不佔位（`.field-warning:empty { display: none }`），螢幕閱讀器才會讀出後來填入的文字。
-- 位置：表單列表裡放在 `.form-input-group` 之後（該列是 flex-wrap，提示佔滿一行）；理論值面板放在 `.info-panel-header` 之後。
+- `initInputHints` 在每個欄位後面建立 `<p class="field-warning" id="<欄位id>UnitHint" aria-live="polite">`，並把 id 加進欄位的 `aria-describedby`。元素一直存在；內容空白時用視覺隱藏（絕對定位、1px、clip），**不用 `display: none`**——live 區域必須留在無障礙樹裡，後來填入的文字才會被讀出。絕對定位也讓空提示不參與表單列的 flex 換行，列高不變。
+- 位置：表單列表裡放在 `.form-input-group` 之後（該列是 flex-wrap，提示以 `flex: 1 0 100%` 自成一行）；理論值面板放在 `.info-panel-header` 之後。
 - 觸發：欄位的 `input`／`change` 事件、`writeInput`、`initInputHints` 當下（涵蓋剛還原的值）。
 - 樣式：`--color-warning-text`、0.75rem。表單列表是卡片底、理論值面板是 tertiary 底，兩者都是 `contrast.test.js` 已涵蓋的組合。
 - 只提示，不擋計算、不改值。
@@ -109,6 +111,8 @@
 - `readFormState`：存檔沒有 `massUnit: 'kDa'`（v5.0 以前，含 v4.6 前的扁平格式）時，`values` 經 `MassUnits.migrateSavedValues` 換算，並立刻寫回（帶標記），之後不會再換算第二次。寫回與既有的「清掉密碼欄位」合併成一次。
 - 有欄位被換算時，還原提示條多一句「分子量已由 Da 換算為 kDa」。
 - 只存「偏離預設值」的欄位：`centrifugeMw`／`targetProteinMW` 的舊預設 66500 本來就不會被存，不受影響。
+- 小於 1,000 的舊值不換算：SAXS 不會量到 1 kDa 以下的蛋白質（偵測器欄位原本的下限就是 1,000 Da），這種值是使用者在 v5.0 照 kDa 習慣打進 Da 欄位的；原樣保留，正好就是他要的 kDa。
+- 寫回失敗時存檔維持舊的 Da 值，下次開頁再換算一次仍然正確；還開著的 v5.0 分頁自動存檔不帶標記，也會在下次開頁時正確換算。
 
 ## 9. 手機寬度溢出
 
@@ -125,7 +129,7 @@
 ## 11. 測試與驗證
 
 **自動測試**（`node --test saxs-calculator/tests/*.test.js`）
-1. `tests/mass-units.test.js`：`formatKDa`／`formatDa`（位數、千分位、非有限值）、`toInputValue`（3 位、去尾端 0、非有限值）、`isLikelyDa`（10,000 不提示、10,000.01 提示）、`migrateSavedValues`（只換 5 個欄位、空字串與非數值原樣、不修改傳入物件）、`kDaToDa(daToKDa(x)) === x`。
+1. `tests/mass-units.test.js`：`formatKDa`／`formatDa`（位數、千分位、非有限值）、`toInputValue`（3 位、去尾端 0、非有限值）、`isLikelyDa`（10,000 不提示、10,000.01 提示）、`migrateSavedValues`（只換 5 個欄位、空字串與非數值原樣、不修改傳入物件）、`kDaToDa(daToKDa(x))` 與 `x` 相差在浮點誤差內（不能用 `===`：例如 3.97 → 3.9700000000000006）。
 2. 同檔的靜態掃描：去掉註解後，`index.html` 與所有 `js/section-*.js`、`js/detector-rg-panel.js` 不得出現當作單位的 `Da`。允許的只有「MW 以 Da 代入」與蛋白質頁 `formatDa` 那一處。
 3. `tests/markup.test.js`：允許 `aria-label=分子量 MW (Da)` 改名為 `(kDa)`（以改名對照表處理，不重產 fixture）。
 4. 既有 210 個測試全過。

@@ -502,3 +502,9 @@
     - `ThemeToggle` 的系統外觀監聽在 `MediaQueryList.addEventListener` 不存在時（Safari 14 以前）改用 `addListener`，不讓 App 啟動流程中斷。
     - `.alert` 改成一般區塊（原本是 flex）：內文的 `<strong>`、`<br>`、`<i>`、`<sub>` 會被 flex 拆成並排的欄。`.mode-toggle` 的按鈕同理改成一般排版（*R*<sub>g</sub> 不再被拆開）。這兩個是 v4.15 就有的排版問題，屬於本次改版的元件，一併修正。
     - `.formula-note` 移出左右對齊名單：等寬字公式屬於使用者排版規則的「程式碼區塊」例外，justify 會把中文拉開。
+
+## 14. 版本重新編號（2026-10-15）
+
+- 使用者要求分子量全站改 kDa，排在結果磚之前：v5.1 ＝ 分子量改 kDa ＋ 390px 溢出修正（規格 `2026-10-15-kda-units-design.md`），**本規格 §7 的結果磚改稱 v5.2**。§1、§9、§10 等處的「v5.1」一律讀作 v5.2。
+- §7.2 SAXS 主角磚的格式「`toFixed(0)` Da」改為 `MassUnits.formatKDa` 的 kDa（2 位小數）；§7.1「數字、位數、單位照舊」的原則以 v5.1 上線後的格式為準。
+- §7.2 蛋白質頁主角「分子量」：數值是 kDa，磚的 `.tile-sub` 放 v5.1 的 Da 精確值。
