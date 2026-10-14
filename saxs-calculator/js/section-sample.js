@@ -17,7 +17,7 @@ function initSampleSection() {
             absorbance = FormUtils.readPositiveField('uvAbsorbance', 'UV 吸光值');
             pathLength = FormUtils.readPositiveField('pathLength', '光徑長度');
             epsilon = FormUtils.readPositiveField('inputEpsilon', '消光係數 ε (莫耳)');
-            mw = FormUtils.readPositiveField('inputMw', '分子量');
+            mw = MassUnits.kDaToDa(FormUtils.readPositiveField('inputMw', '分子量'));
         } catch (err) {
             showAlert('sampleResults', 'error', err.message);
             return;
@@ -98,7 +98,7 @@ function displaySampleResults(data) {
             </div>
             <div class="result-item">
                 <div class="result-label">分子量</div>
-                <div class="result-value">${data.mw.toFixed(2)} Da</div>
+                <div class="result-value">${MassUnits.formatKDa(data.mw)} kDa</div>
             </div>
         </div>
     `;

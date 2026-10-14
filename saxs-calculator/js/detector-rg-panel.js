@@ -45,7 +45,7 @@
         els.chip.textContent = SOURCE_LABEL[source];
         els.chip.className = `info-panel-chip info-panel-chip--${source}`;
         els.chip.title = source === 'predicted'
-            ? 'Rg = 0.6906 × MW^⅓（球狀蛋白，Excel 偵測器表校正：BSA 28 Å ↔ 1900 mm）'
+            ? 'Rg = 0.6906 × MW^⅓（MW 以 Da 代入；球狀蛋白，Excel 偵測器表校正：BSA 28 Å ↔ 1900 mm）'
             : source === 'manual' ? '使用者輸入的 Rg' : '來自下方「Rg from Guinier」欄位';
     }
 

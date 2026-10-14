@@ -2,11 +2,11 @@
 /**
  * 標記不變測試（改版規格 §8.2）：JS 與測試都靠 id、for、aria-*、data-section 取元素。
  * 改版只能換 class 與包裝層，這四類屬性必須與 v4.15 的 index.html 完全相同；
- * 唯一允許的新增是側欄的主題切換控制。
+ * 唯一允許的新增是側欄的主題切換控制，唯一允許的改名是 v5.1 分子量改 kDa 的 aria-label。
  *
  * fixture（tests/fixtures/markup-v4.15.json）由 v4.15（commit 6b02fbe）的 index.html 產生：
  *   node -e "const {markupCounts}=require('./saxs-calculator/tests/style-scan.js');const html=require('child_process').execSync('git show 6b02fbe:saxs-calculator/index.html').toString();require('fs').writeFileSync('saxs-calculator/tests/fixtures/markup-v4.15.json', JSON.stringify(markupCounts(html), null, 2)+'\n')"
- * v5.1 補 aria-live 時要更新 fixture，並在 commit 訊息說明。
+ * v5.2（結果磚）補 aria-live 時要更新 fixture，並在 commit 訊息說明。
  *
  * Run: node --test saxs-calculator/tests/*.test.js
  */
@@ -26,8 +26,21 @@ const ALLOWED_ADDITIONS = Object.freeze({
     'for=themeDark': 1,
 });
 
-test('[markup] id／for／aria-*／data-section 與 v4.15 相同（只多了主題切換控制）', () => {
-    const current = markupCounts(read('index.html'));
+// v5.1：分子量單位改 kDa（docs/superpowers/specs/2026-10-15-kda-units-design.md §4）
+const ALLOWED_RENAMES = Object.freeze({
+    'aria-label=分子量 MW (kDa)': 'aria-label=分子量 MW (Da)',
+});
+
+/** 把改名後的鍵換回 fixture 裡的舊名再比對 */
+function undoRenames(counts) {
+    return Object.entries(counts).reduce((acc, [key, n]) => {
+        const original = ALLOWED_RENAMES[key] || key;
+        return { ...acc, [original]: (acc[original] || 0) + n };
+    }, {});
+}
+
+test('[markup] id／for／aria-*／data-section 與 v4.15 相同（只多了主題切換控制、改了分子量單位）', () => {
+    const current = undoRenames(markupCounts(read('index.html')));
     const keys = new Set([...Object.keys(FIXTURE), ...Object.keys(current)]);
     const problems = [];
     for (const key of keys) {

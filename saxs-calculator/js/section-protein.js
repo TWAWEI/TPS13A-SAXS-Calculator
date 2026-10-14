@@ -124,11 +124,8 @@ function displayProteinResults(result, name) {
             </div>
             <div class="result-item">
                 <div class="result-label">分子量</div>
-                <div class="result-value">${result.molecularWeight.toFixed(2)} <span style="font-size: 0.75rem;">Da</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">分子量 (kDa)</div>
-                <div class="result-value">${result.molecularWeightKDa.toFixed(3)} <span style="font-size: 0.75rem;">kDa</span></div>
+                <div class="result-value">${MassUnits.formatKDa(result.molecularWeight)} <span style="font-size: 0.75rem;">kDa</span></div>
+                <div class="result-note">${MassUnits.formatDa(result.molecularWeight)} Da</div>
             </div>
         </div>
         
@@ -206,8 +203,8 @@ function displayProteinStats(result) {
         <div class="stat-card">
             <div class="stat-content">
                 <div class="stat-label">分子量</div>
-                <div class="stat-value">${result.molecularWeightKDa.toFixed(2)}<span class="stat-unit">kDa</span></div>
-                <div class="stat-sub">${result.molecularWeight.toFixed(0)} Da</div>
+                <div class="stat-value">${MassUnits.formatKDa(result.molecularWeight)}<span class="stat-unit">kDa</span></div>
+                <div class="stat-sub">${MassUnits.formatDa(result.molecularWeight)} Da</div>
             </div>
         </div>
         <div class="stat-card">
@@ -286,18 +283,18 @@ function updateFormsWithProteinData(result) {
     const epsilonInput = document.getElementById('inputEpsilon');
     const mwInput = document.getElementById('inputMw');
     if (epsilonInput) epsilonInput.value = result.extinction.epsilon;
-    if (mwInput) mwInput.value = result.molecularWeight.toFixed(2);
+    MassUnits.writeInput(mwInput, result.molecularWeight);
 
     // Update Centrifuge form
     // 注意: 不要把序列算出的 v̄ (= V_dry/M，晶體殘基體積推得) 填進離心頁。
     // Svedberg 方程需要的是熱力學偏比容 (BSA 0.733 cm³/g)，兩者不同，
     // 離心頁維持 0.73 的預設值。
     const centrifugeMw = document.getElementById('centrifugeMw');
-    if (centrifugeMw) centrifugeMw.value = result.molecularWeight.toFixed(0);
+    MassUnits.writeInput(centrifugeMw, result.molecularWeight);
 
     // Update MW Resolution form
     const mwResolutionInput = document.getElementById('mwInput');
-    if (mwResolutionInput) mwResolutionInput.value = result.molecularWeight.toFixed(2);
+    MassUnits.writeInput(mwResolutionInput, result.molecularWeight);
 
     // HPLC dn/dc 頁的質量消光係數（mL·mg⁻¹cm⁻¹）。
     // 由 dndc-hplc-ui.js 決定要不要覆蓋——使用者手動改過的值不動。

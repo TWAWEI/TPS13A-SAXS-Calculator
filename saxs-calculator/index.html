@@ -286,8 +286,8 @@
                                     <div class="info-panel-header-right">
                                         <span class="info-panel-header-label">MW:</span>
                                         <input type="number" id="theoreticalMWInput" class="info-panel-mw-input"
-                                            aria-label="分子量 MW (Da)" placeholder="--" step="1" min="0">
-                                        <span class="info-panel-header-label">Da</span>
+                                            aria-label="分子量 MW (kDa)" placeholder="--" step="any" min="0">
+                                        <span class="info-panel-header-label">kDa</span>
                                     </div>
                                 </div>
 
@@ -317,7 +317,7 @@
                                 </div>
 
                                 <div class="info-panel-formula">
-                                    公式: <i>I</i>(0)=<i>c</i>×MW×7.9×10⁻⁷ | <span class="info-panel-label--highlight"><i>R</i><sub>g</sub>=0.2508×MW<sup>0.4301</sup>（TPS13A Excel 校正）</span> | <i>D</i><sub>max</sub>≈2.8×<i>R</i><sub>g</sub>
+                                    公式（MW 以 Da 代入）: <i>I</i>(0)=<i>c</i>×MW×7.9×10⁻⁷ | <span class="info-panel-label--highlight"><i>R</i><sub>g</sub>=0.2508×MW<sup>0.4301</sup>（TPS13A Excel 校正）</span> | <i>D</i><sub>max</sub>≈2.8×<i>R</i><sub>g</sub>
                                 </div>
                             </div>
 
@@ -326,7 +326,7 @@
                                 <div class="info-panel-header">
                                     <div class="info-panel-title">偵測器距離建議</div>
                                     <div class="info-panel-header-right">
-                                        <span class="info-panel-chip info-panel-chip--predicted" id="detectorRgSource" title="Rg = 0.6906 × MW^⅓（球狀蛋白，Excel 偵測器表校正）">序列預測</span>
+                                        <span class="info-panel-chip info-panel-chip--predicted" id="detectorRgSource" title="Rg = 0.6906 × MW^⅓（MW 以 Da 代入；球狀蛋白，Excel 偵測器表校正）">序列預測</span>
                                         <span class="info-panel-header-label"><i>R</i><sub>g</sub></span>
                                         <input type="number" id="detectorRgInput" class="info-panel-mw-input info-panel-mw-input--rg"
                                             aria-label="偵測器距離建議使用的 Rg (Å)" placeholder="--" step="0.1" min="0.1" inputmode="decimal">
@@ -701,9 +701,9 @@
                                 <div class="form-group">
                                     <label class="form-label" for="inputMw">分子量</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="inputMw" step="0.01"
+                                        <input type="number" class="form-input" id="inputMw" step="any"
                                             placeholder="自動從蛋白質序列計算">
-                                        <span class="input-unit">Da</span>
+                                        <span class="input-unit">kDa</span>
                                     </div>
                                 </div>
                             </div>
@@ -787,9 +787,9 @@
                                 <div class="form-group">
                                     <label class="form-label" for="mwInput">分子量 (Input protein Mw)</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="mwInput" step="0.01"
+                                        <input type="number" class="form-input" id="mwInput" step="any"
                                             placeholder="來自序列分析或手動輸入">
-                                        <span class="input-unit">Da</span>
+                                        <span class="input-unit">kDa</span>
                                     </div>
                                 </div>
 
@@ -907,8 +907,8 @@
                                 <div class="form-group">
                                     <label class="form-label" for="centrifugeMw">分子量</label>
                                     <div class="form-input-group">
-                                        <input type="number" class="form-input" id="centrifugeMw" value="66500" step="100">
-                                        <span class="input-unit">Da</span>
+                                        <input type="number" class="form-input" id="centrifugeMw" value="66.5" step="any">
+                                        <span class="input-unit">kDa</span>
                                     </div>
                                 </div>
 
@@ -1126,14 +1126,14 @@
                                         <td>MW from sequence</td>
                                         <td id="iucr-mw-seq">-</td>
                                         <td></td>
-                                        <td>Da</td>
+                                        <td>kDa</td>
                                     </tr>
                                     <tr>
                                         <td></td>
                                         <td>MW from Porod volume</td>
                                         <td id="iucr-mw-porod">-</td>
                                         <td></td>
-                                        <td>Da</td>
+                                        <td>kDa</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -1163,7 +1163,7 @@
                                     <thead>
                                         <tr>
                                             <th>蛋白質</th>
-                                            <th class="text-right">MW (Da)</th>
+                                            <th class="text-right">MW (kDa)</th>
                                             <th class="text-right"><i>R</i><sub>g</sub> (Å)</th>
                                             <th class="text-right"><i>q</i><sub>min</sub> (Å⁻¹)</th>
                                             <th class="text-right">9M SD (mm)</th>
@@ -1172,21 +1172,21 @@
                                     <tbody id="referenceProteinsTable">
                                         <tr>
                                             <td>BSA monomer</td>
-                                            <td class="text-right">66,500</td>
+                                            <td class="text-right">66.50</td>
                                             <td class="text-right">28.00</td>
                                             <td class="text-right">0.0080</td>
                                             <td class="text-right">1,900</td>
                                         </tr>
                                         <tr>
                                             <td>BSA dimer</td>
-                                            <td class="text-right">130,000</td>
+                                            <td class="text-right">130.00</td>
                                             <td class="text-right">35.01</td>
                                             <td class="text-right">0.0064</td>
                                             <td class="text-right">2,376</td>
                                         </tr>
                                         <tr>
                                             <td>Cytochrome c</td>
-                                            <td class="text-right">12,700</td>
+                                            <td class="text-right">12.70</td>
                                             <td class="text-right">16.12</td>
                                             <td class="text-right">0.0139</td>
                                             <td class="text-right">1,094</td>
@@ -1197,10 +1197,10 @@
 
                             <div class="formula-note mt-md">
                                 <strong>公式說明：</strong><br>
-                                • <i>R</i><sub>g</sub> = 0.69 × MW<sup>1/3</sup> (TPS13A BSA 實測校正，僅用於偵測器距離估算)<br>
+                                • <i>R</i><sub>g</sub> = 0.69 × MW<sup>1/3</sup>（MW 以 Da 代入；TPS13A BSA 實測校正，僅用於偵測器距離估算）<br>
                                 • <i>q</i><sub>min</sub> = 0.224 / <i>R</i><sub>g</sub><br>
                                 • 9M SD = 67.86 × <i>R</i><sub>g</sub><br>
-                                <small style="color: var(--color-text-muted);">※ SAXS 理論頁面使用 Excel 校正公式 <i>R</i><sub>g</sub> = 0.251 × MW<sup>0.43</sup>，兩者用途不同</small>
+                                <small style="color: var(--color-text-muted);">※ SAXS 理論頁面使用 Excel 校正公式 <i>R</i><sub>g</sub> = 0.251 × MW<sup>0.43</sup>（MW 以 Da 代入），兩者用途不同</small>
                             </div>
                         </div>
                     </div>
@@ -1227,8 +1227,8 @@
                                     <label class="form-label" for="targetProteinMW">目標蛋白質分子量 (MW)</label>
                                     <div class="form-input-group">
                                         <input type="number" id="targetProteinMW" class="form-input"
-                                            placeholder="輸入分子量..." value="66500" min="1000" max="10000000" step="100">
-                                        <span class="input-unit">Da</span>
+                                            placeholder="輸入分子量..." value="66.5" min="1" max="10000" step="any">
+                                        <span class="input-unit">kDa</span>
                                     </div>
                                 </div>
 
@@ -1253,8 +1253,8 @@
                                     <!-- MW Result (shown in Rg mode) -->
                                     <div id="mwResultCard" class="result-card hidden">
                                         <div class="result-card-label">預測 MW</div>
-                                        <div class="result-card-value" id="detectorMwResult">66,500</div>
-                                        <div class="result-card-unit">Da</div>
+                                        <div class="result-card-value" id="detectorMwResult">66.50</div>
+                                        <div class="result-card-unit">kDa</div>
                                     </div>
 
                                     <!-- Rg Result (shown in MW mode) -->
@@ -2096,6 +2096,7 @@
 
     <!-- 共用工具與純計算模組（無 DOM 相依） -->
     <script src="js/form-utils.js?v=5.0"></script>
+    <script src="js/mass-units.js?v=5.0"></script>
     <script src="js/a11y-utils.js?v=5.0"></script>
     <script src="js/chart-theme.js?v=5.0"></script>
     <script src="js/theme-toggle.js?v=5.0"></script>

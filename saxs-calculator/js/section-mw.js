@@ -17,7 +17,7 @@ function initMWSection() {
 
     // 自動計算函數 (MW → RT)
     function autoCalculateMwToRt() {
-        const baseMw = parseFloat(mwInput.value);
+        const baseMw = MassUnits.kDaToDa(parseFloat(mwInput.value));
         if (isNaN(baseMw) || baseMw <= 0) return;
 
         const poreSize = poreSizeSelect.value;
@@ -105,7 +105,7 @@ function displayMWResults(data) {
                 ${data.massResolution ? `
                 <div class="result-item">
                     <div class="result-label">質量解析度</div>
-                    <div class="result-value">± ${data.massResolution.toFixed(0)} <span style="font-size: 0.75rem;">Da</span></div>
+                    <div class="result-value">± ${MassUnits.formatKDa(data.massResolution)} <span style="font-size: 0.75rem;">kDa</span></div>
                 </div>
                 ` : ''}
             </div>
@@ -115,7 +115,7 @@ function displayMWResults(data) {
             <div class="result-grid">
                 <div class="result-item">
                     <div class="result-label">實際分子量${oligomerText}</div>
-                    <div class="result-value">${data.mw.toLocaleString()} <span style="font-size: 0.75rem;">Da</span></div>
+                    <div class="result-value">${MassUnits.formatKDa(data.mw)} <span style="font-size: 0.75rem;">kDa</span></div>
                 </div>
                 <div class="result-item">
                     <div class="result-label">管柱孔徑</div>
@@ -130,7 +130,7 @@ function displayMWResults(data) {
             <div class="alert alert-success" style="margin-top: 1rem;">
                 <strong>✓ 計算完成</strong><br>
                 流速 ${data.flowRate} mL/min 條件下<br>
-                分子量 ${(data.mw / 1000).toFixed(2)} kDa 預期在 <strong>${data.retentionTime.toFixed(3)} min</strong> 出峰
+                分子量 ${MassUnits.formatKDa(data.mw)} kDa 預期在 <strong>${data.retentionTime.toFixed(3)} min</strong> 出峰
             </div>
         `;
     } else {
@@ -139,12 +139,12 @@ function displayMWResults(data) {
             <div class="result-grid">
                 <div class="result-item">
                     <div class="result-label">估算分子量</div>
-                    <div class="result-value">${data.estimatedMw.toFixed(0)} <span style="font-size: 0.75rem;">Da</span></div>
+                    <div class="result-value">${MassUnits.formatKDa(data.estimatedMw)} <span style="font-size: 0.75rem;">kDa</span></div>
                 </div>
                 ${data.massResolution ? `
                 <div class="result-item">
                     <div class="result-label">質量解析度</div>
-                    <div class="result-value">± ${data.massResolution.toFixed(0)} <span style="font-size: 0.75rem;">Da</span></div>
+                    <div class="result-value">± ${MassUnits.formatKDa(data.massResolution)} <span style="font-size: 0.75rem;">kDa</span></div>
                 </div>
                 ` : ''}
             </div>
@@ -169,8 +169,8 @@ function displayMWResults(data) {
             ${proteinMw ? `
             <div class="alert ${Math.abs(data.estimatedMw - proteinMw) / proteinMw < 0.3 ? 'alert-success' : 'alert-warning'}" style="margin-top: 1rem;">
                 <strong>與序列 MW 比較：</strong><br>
-                序列 MW: ${proteinMw.toFixed(0)} Da<br>
-                SEC MW: ${data.estimatedMw.toFixed(0)} Da<br>
+                序列 MW: ${MassUnits.formatKDa(proteinMw)} kDa<br>
+                SEC MW: ${MassUnits.formatKDa(data.estimatedMw)} kDa<br>
                 比值: ${(data.estimatedMw / proteinMw).toFixed(2)}
             </div>
             ` : ''}

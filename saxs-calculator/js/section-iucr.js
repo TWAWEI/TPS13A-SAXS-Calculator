@@ -81,7 +81,7 @@ function updateIUCrTable() {
         setText('iucr-protein', protein.name || '-');
         setText('iucr-dryvol', fmt(protein.dryVolume, 1));
         setText('iucr-vbar', fmt(protein.partialSpecificVolume, 6));
-        setText('iucr-mw-seq', fmt(protein.molecularWeight, 2));
+        setText('iucr-mw-seq', MassUnits.formatKDa(protein.molecularWeight));
     }
 
     // Update SAXS data
@@ -97,7 +97,7 @@ function updateIUCrTable() {
         // 且千分位格式不應隨瀏覽器語系變動
         setText('iucr-porod', Number.isFinite(saxs.porodVolume)
             ? saxs.porodVolume.toLocaleString('en-US') : '-');
-        setText('iucr-mw-porod', fmt(saxs.mwFromPorod, 0));
+        setText('iucr-mw-porod', MassUnits.formatKDa(saxs.mwFromPorod));
     }
 
     // Hide warning if data is available

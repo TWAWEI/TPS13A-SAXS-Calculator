@@ -12,7 +12,7 @@ function initCentrifugeSection() {
     calculateBtn.addEventListener('click', () => {
         const rpm = parseFloat(document.getElementById('rpm').value);
         const radius = parseFloat(document.getElementById('rotorRadius').value);
-        const mw = parseFloat(document.getElementById('centrifugeMw').value);
+        const mw = MassUnits.kDaToDa(parseFloat(document.getElementById('centrifugeMw').value));
         const viscosity = parseFloat(document.getElementById('viscosity').value);
         const vbar = parseFloat(document.getElementById('vbar').value);
         const rho = parseFloat(document.getElementById('solventDensity').value);

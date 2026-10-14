@@ -62,7 +62,7 @@ function initDetectorSection() {
         let result;
 
         if (currentMode === 'mw') {
-            const mw = parseFloat(targetMwInput.value);
+            const mw = MassUnits.kDaToDa(parseFloat(targetMwInput.value));
             if (isNaN(mw) || mw <= 0) { clearResults(); return; }
             result = SAXSCalculations.calculateDetectorDistance(mw, 'mw');
         } else {
@@ -76,7 +76,7 @@ function initDetectorSection() {
         document.getElementById('detectorQminResult').textContent = result.qmin.toFixed(4);
         document.getElementById('detectorSDResult').textContent = result.suggestedSD.toLocaleString();
         document.getElementById('detectorSDMeters').textContent = result.suggestedSDMeters.toFixed(2);
-        document.getElementById('detectorMwResult').textContent = result.mw.toLocaleString();
+        document.getElementById('detectorMwResult').textContent = MassUnits.formatKDa(result.mw);
         renderLimitNotice(result);
     }
 

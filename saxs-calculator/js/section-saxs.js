@@ -41,7 +41,7 @@ function renderTheoreticalI0(result, valueEl, concentrationState) {
     if (Number.isFinite(result.exactI0)) {
         methodEl.textContent = `經驗式（BSA 校正）· Excel 精確式（序列）${result.exactI0.toExponential(2)}`;
     } else {
-        methodEl.textContent = '經驗式 c×MW×7.9×10⁻⁷（BSA 校正）';
+        methodEl.textContent = '經驗式 c×MW×7.9×10⁻⁷（BSA 校正，MW 以 Da 代入）';
     }
 }
 
@@ -66,7 +66,7 @@ function getTheoreticalOpts(mwUsed) {
     const protein = AppState.proteinData;
     if (!protein || !Number.isFinite(protein.molecularWeight)) return {};
     if (!Number.isFinite(mwUsed)) return {};
-    // MW 欄位以整數顯示，容許 1 Da 的四捨五入誤差
+    // MW 欄位以 kDa 三位小數（1 Da）顯示，容許 1 Da 的四捨五入誤差
     if (Math.abs(mwUsed - protein.molecularWeight) > 1) return {};
 
     const opts = {};
@@ -97,7 +97,7 @@ function initSAXSSection() {
         // Rg / Predicted Rg / Dmax 不依賴濃度，照常顯示；只有 I(0) 需要濃度
         const concentration = concentrationState.valid ? concentrationState.value : NaN;
         // Use manual MW input if available, otherwise use protein data MW
-        let proteinMw = parseFloat(theoreticalMWInput?.value);
+        let proteinMw = MassUnits.kDaToDa(parseFloat(theoreticalMWInput?.value));
         if (isNaN(proteinMw) || proteinMw <= 0) {
             proteinMw = AppState.proteinData?.molecularWeight;
         }
@@ -240,9 +240,7 @@ function updateTheoreticalValuesFromProtein() {
             theoreticalDmaxDisplay.textContent = result.theoreticalDmax.toFixed(0);
         }
         // Update MW input field with protein MW from sequence analysis
-        if (theoreticalMWInput) {
-            theoreticalMWInput.value = proteinMw.toFixed(0);
-        }
+        MassUnits.writeInput(theoreticalMWInput, proteinMw);
 
         // 偵測器距離建議：只更新「序列預測」Rg，面板若在手動／實測來源不會被覆蓋
         window.DetectorRgPanel?.setPredictedFromMw(proteinMw);
@@ -369,19 +367,19 @@ function displaySAXSResults(data) {
             </div>
             <div class="result-item">
                 <div class="result-label">MW from Porod</div>
-                <div class="result-value">${data.mwFromPorod ? data.mwFromPorod.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
+                <div class="result-value">${data.mwFromPorod ? MassUnits.formatKDa(data.mwFromPorod) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
             </div>
             <div class="result-item">
                 <div class="result-label">MW from 序列</div>
-                <div class="result-value">${proteinMw ? proteinMw.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
+                <div class="result-value">${proteinMw ? MassUnits.formatKDa(proteinMw) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
             </div>
             <div class="result-item">
                 <div class="result-label">MW from <i>I</i>(0) Guinier</div>
-                <div class="result-value">${mwFromI0Guinier ? mwFromI0Guinier.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
+                <div class="result-value">${mwFromI0Guinier ? MassUnits.formatKDa(mwFromI0Guinier) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
             </div>
             <div class="result-item">
                 <div class="result-label">MW from <i>I</i>(0) <i>P</i>(<i>r</i>)</div>
-                <div class="result-value">${mwFromI0Pr ? mwFromI0Pr.toFixed(0) : '-'} <span style="font-size: 0.75rem;">Da</span></div>
+                <div class="result-value">${mwFromI0Pr ? MassUnits.formatKDa(mwFromI0Pr) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
             </div>
         </div>
 
