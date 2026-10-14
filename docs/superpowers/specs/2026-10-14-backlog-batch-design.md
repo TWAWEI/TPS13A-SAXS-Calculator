@@ -136,7 +136,7 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 ### 5.4 測試（新檔 `tests/fraction-collector.test.js`）
 
 - **Excel 逐格轉寫當標準答案**：在測試裡逐字轉寫 Excel 的 `B10`、`B12` 兩串 IF 與所有輔助儲存格（`D4…Q4`、`E10…E32`、`M10…M32`），當作 oracle。
-- **格點比對**：目標 ∈ {0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.50}、初始 ∈ {0.20, 0.35, 0.50}、注射體積 ∈ {10, 50, 100} µL（校正範圍是 3–100 µL，超出會丟錯，見既有測試 [47]），峰中心 10.937、FWHM 1。新函式在取位前與 oracle 差 < 1e-9（審查以 48 個範圍內格點試算，差 < 4e-15）。若某個格點不一致（例如 Excel 的相等判斷在邊界挑了不同分支），停下來回報，不自行決定。
+- **格點比對**：目標 ∈ {0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.50}、初始 ∈ {0.20, 0.35, 0.50}、注射體積 ∈ {10, 50, 100} µL（校正範圍是 3–100 µL，超出會丟錯，見既有測試 [47]），峰中心 10.937、FWHM 1。新函式在取位前與 oracle 差 < 1e-9（審查以全部 72 個格點試算，最大差 3.6e-15）。若某個格點不一致（例如 Excel 的相等判斷在邊界挑了不同分支），停下來回報，不自行決定。
 - **Excel 快取值**：0.35／0.35 → 10.28／19.72（沿用既有斷言）。
 - **§5.1 表格各列**當回歸值，連同報告結束時間：0.35／0.35 → 24、0.30／0.35 → 24、0.20／0.35 → 26、0.15／0.35 → 27、0.10／0.35 → 29、0.05／0.35 → 36、0.35／0.50 → 24。
 - `batch1.test.js:256-261` 的測試 [46] 用的是網頁舊公式（Stop − Start = 2.8 + 收集時間 + 2.8），不是 Excel 的值。改成斷言 0.20／0.35 的 Excel 值 12.53／21.79。這個期望值改變是因為舊期望值本身由錯誤公式推得；commit 訊息要寫明理由與 Excel 出處。（CLAUDE.md「不要改期望值」指的是 Python 以 xfail 鎖定的已知 bug，不適用這裡。）
@@ -162,7 +162,7 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 - **Slice**（最終回報的 dn/dc）
   - Python：`SliceResult`（`calculator.py:392`，不在 `models.py`）新增同樣的 `warnings` 欄位，由 `compute_slice_dndc` 填入。
   - JS：`computeSliceDndc` 的回傳值加 `warnings: []`。
-- **手動多注射擬合**（只有 JS；Python 沒有手動多注射路徑）：在 `dndc-multi-ui.js` 的 `displayMultiFitResults` 裡檢查斜率 < 0。不改通用的 `linearFit`，因為 Slice 與 ASTRA 也用它。
+- **手動多注射擬合**（只有 JS；Python 沒有手動多注射路徑）：在 `displayMultiFitResults` 裡檢查斜率 < 0。這個函式由手動（`dndc-multi-ui.js:61`，傳 `'manual'`）與 ASTRA（`dndc-astra-ui.js:386`，傳 `'astra'`）共用，檢查只在 `source === 'manual'` 時執行。不改通用的 `linearFit`，因為 Slice 與 ASTRA 也用它。
 - **不在範圍內**：ASTRA 單次（`AstraSingleResult`，`astra.py:46`，取 `abs(area)` 並設 `is_negative_peak`）與 ASTRA 多注射（`AstraMultiResult`，`astra.py:59`；`dndc-astra-ui.js`）維持各自現有的慣例。
 - 顯示：
   - Streamlit 頁面（`web/pages/hplc_page.py`、slice 頁）用 `st.warning`；CLI（`__main__.py`）印出。CSV 不加欄位。
@@ -219,14 +219,14 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 - 單位：主值 `doxConc` 內部是 M（畫面 ×1000 顯示 mM，`section-liposome.js:378`）；`lipoPureConc` 輸入是 mM，計算前換成 M，顯示時兩者都用 mM。
 - 在面板 3 的 [DOX] 結果旁顯示「標準液法對照：x.xxx mM（差 ±y%）」。|差| > 10% 時加 `alert-warning`：「標準液法與 ε 法的 [DOX] 相差超過 10%，請檢查 ε、光徑或標準液濃度」。
 - 不顯示對照值的情況：k < 0（沿用 Task 11b 的 k < 0 警告）；吸光度是手動輸入的（`absSource === 'manual'`，此時 k 與 ε 法的吸光度不是來自同一條光譜）。
-- `lipoPureConc` **不加入** `INVALIDATING_IDS`（`section-liposome.js:30-33`）：它不影響 D/L，不該因此停用「加入結果表」。改這個欄位時即時重算對照值。
+- `lipoPureConc` **不加入** `INVALIDATING_IDS`（`section-liposome.js:30-33`）：它不影響 D/L，不該因此停用「加入結果表」。改這個欄位時即時重算，但只更新對照那一行，不呼叫 `renderDlResults`／`A11y.focusResults`，打字中不能搶走焦點（比照 `onWavelengthInput` 的做法）。
 - D/L 主值、結果表、CSV 都不變。
 - 規格 §10 補一列記錄這個決定。
 
 ### 7.3 測試
 
 - `tests/liposome.test.js`：SEM 計算（含 n）；`[DOX]_std` 計算與 mM／M 換算；差 > 10% 的判斷；沒有濃度、沒有純 DOX 檔、k < 0、吸光度手動輸入時都不產生對照值。
-- `tests/liposome-section.test.js`（stub DOM）：欄位存在；SEM 小字只出現在面板 1；對照值的顯示與隱藏；改 `lipoPureConc` 不會停用「加入結果表」（`INVALIDATING_IDS` 維持現有十個欄位）。
+- `tests/liposome-section.test.js`（stub DOM，`IDS` 清單加入 `lipoPureConc`）：欄位存在；SEM 小字只出現在面板 1；對照值的顯示與隱藏；改 `lipoPureConc` 不會停用「加入結果表」（`INVALIDATING_IDS` 維持現有十個欄位）。
 
 ## 8. 上線
 
