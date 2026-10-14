@@ -304,7 +304,7 @@
 
 **主題切換**：由 `app.js` 的 `DOMContentLoaded` 區塊呼叫 `ChartTheme.init()` 註冊 `tps:themechange` 監聽（此時 defer 的 Chart.js 已執行）。事件觸發時走訪 `Chart.instances`（Chart.js 4 自己維護的存活實例表）對每個實例執行 `applyTo`。不重建圖表，所以 zoom 範圍保留。實作時先確認 4.5.1 有 `Chart.instances`；沒有的話改成在 `ChartTheme` 內建登記表，並在 destroy 時移除。
 
-**非圖表的通道標籤**：`dndc-hplc-results.js`（約 160 行）的通道切換 `<label>` 膠囊目前用 `color.replace('0.85','0.1')` 從圖表色推出底色，換成 hex 色表後會失效，而且不是圖表、不會被 `applyTo` 換色。改成：JS 在執行時用 `style.setProperty('--chip-color', palette.series[i])` 設定（原始碼裡沒有色碼字面值），CSS 用 `color-mix(in srgb, var(--chip-color) 12%, transparent)` 當底色，並在它前一行先宣告 `background: var(--color-bg-tertiary)` 當後備（`color-mix()` 需要 Chrome 111、Safari 16.2、Firefox 113 以上，不支援的瀏覽器會忽略該行、沿用後備）；監聽 `tps:themechange` 重設。
+**非圖表的通道標籤**：`dndc-hplc-results.js`（約 160 行）的通道切換 `<label>` 膠囊目前用 `color.replace('0.85','0.1')` 從圖表色推出底色，換成 hex 色表後會失效，而且不是圖表、不會被 `applyTo` 換色。改成：JS 在執行時用 `style.setProperty('--chip-color', palette.series[i])` 設定（原始碼裡沒有色碼字面值），CSS 先宣告 `background: var(--color-bg-tertiary)` 當後備，再把 `background: color-mix(in srgb, var(--chip-color) 12%, transparent)` 放進 `@supports (background: color-mix(in srgb, red 50%, transparent))` 區塊。`color-mix()` 需要 Chrome 111、Safari 16.2、Firefox 113 以上；因為宣告裡含 `var()`，不支援的瀏覽器不會跳過該行，而是在繪製時丟掉整個值變成透明，所以一定要用 `@supports` 包起來。監聽 `tps:themechange` 重設。
 
 ### 6.2 匯出 PNG
 
