@@ -20,7 +20,7 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: var(--color-border);
+    background: var(--color-separator);
 }
 
 .section-divider span {
@@ -47,7 +47,7 @@
     margin-top: var(--spacing-md);
     padding: 0.75rem var(--spacing-md);
     background: var(--color-bg-tertiary);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     display: flex;
     align-items: baseline;
     gap: var(--spacing-sm);
@@ -55,10 +55,11 @@
 }
 
 .report-stoptime-value {
-    color: var(--color-accent-primary);
+    color: var(--color-accent-text);
     font-size: 1.125rem;
-    font-weight: 700;
-    font-family: var(--font-mono);
+    font-weight: 600;
+    font-family: var(--font-body);
+    font-variant-numeric: tabular-nums;
 }
 
 /* ===== Quick Reference ===== */
@@ -66,14 +67,13 @@
     margin-top: var(--spacing-lg);
     padding: var(--spacing-md);
     background: var(--color-bg-tertiary);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
 }
 
 .quick-ref-title {
     font-size: 0.6875rem;
     font-weight: 700;
     color: var(--color-text-muted);
-    text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-bottom: var(--spacing-sm);
 }
@@ -125,9 +125,9 @@
 }
 
 [tabindex="-1"]:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
+    outline: 2px solid var(--color-focus);
     outline-offset: 3px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
 }
 
 /* ===== Utility Classes ===== */
@@ -146,7 +146,11 @@
 .mt-sm { margin-top: var(--spacing-sm); }
 .mt-md { margin-top: var(--spacing-md); }
 .mt-lg { margin-top: var(--spacing-lg); }
+.mb-md { margin-bottom: var(--spacing-md); }
 .hidden { display: none; }
+
+/* 數字等寬（結果值、表格數字欄）；--font-mono 只留給序列、檔案預覽與公式 */
+.num { font-variant-numeric: tabular-nums; }
 
 .mobile-menu-btn {
     display: none;
@@ -156,8 +160,9 @@
     z-index: 101;
     width: 40px;
     height: 40px;
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
+    background: var(--color-bg-card);
+    border: 0;
+    box-shadow: var(--shadow-sm);
     border-radius: var(--radius-md);
     align-items: center;
     justify-content: center;
@@ -167,7 +172,7 @@
 }
 
 .mobile-menu-btn:focus-visible {
-    outline: 2px solid var(--color-accent-primary);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
@@ -176,7 +181,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(80, 20, 20, 0.4);
+    background: var(--color-backdrop);
     z-index: 99;
     opacity: 0;
     visibility: hidden;
@@ -219,13 +224,12 @@
 
 /* ===== IUCr Table Style ===== */
 .iucr-table {
-    font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
+    font-family: var(--font-body);
     font-size: 0.875rem;
 }
 
 .iucr-table th {
     font-style: italic;
-    font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
 }
 
 /* ===== Reduced Motion ===== */
@@ -248,21 +252,21 @@
     width: 100%;
     padding: var(--spacing-sm) 0;
     border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    border-top: 1px solid var(--color-separator);
     background: transparent;
-    color: #ffffff;
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 1rem;
     transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .sidebar-toggle:hover {
-    background: rgba(0, 0, 0, 0.12);
-    color: #ffffff;
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
 }
 
 .sidebar-toggle:focus-visible {
-    outline: 2px solid #ffffff;
+    outline: 2px solid var(--color-focus);
     outline-offset: -2px;
 }
 
@@ -286,18 +290,19 @@
     overflow: visible;
 }
 
+/* ::backdrop 從 Chrome 122／Safari 17.4／Firefox 120 起才繼承自訂屬性；更舊的瀏覽器遮罩色會變透明，
+   blur 仍在，對話框照常可用 */
 .modal-dialog::backdrop {
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--color-backdrop);
     backdrop-filter: blur(4px);
 }
 
 .modal-content {
-    background: var(--color-bg-primary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    background: var(--color-bg-card);
+    border-radius: var(--radius-dialog);
     padding: 1.5rem;
     width: 100%;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-md);
 }
 
 /* h2 for correct outline order; keeps the previous h3 visual weight */
@@ -328,6 +333,7 @@
 }
 
 /* ===== Print Styles ===== */
+/* tokens.css 的深色區塊限定 screen，列印時 token 一律是淺色值 */
 @media print {
     .sidebar,
     .mobile-menu-btn,
@@ -343,11 +349,11 @@
 
     body {
         background: white;
-        color: #0d2137;
+        color: var(--color-text-primary);
     }
 
     .card {
-        border: 1px solid #ccc;
+        border: 1px solid var(--color-border);
         background: white;
         break-inside: avoid;
     }

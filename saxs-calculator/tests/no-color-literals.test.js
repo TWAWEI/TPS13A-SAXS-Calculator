@@ -15,7 +15,6 @@ const { readCode, CSS_FILES, JS_FILES } = require('./style-scan.js');
 const EXEMPT = Object.freeze(['css/tokens.css', 'js/chart-theme.js']);
 
 const PENDING_LITERAL_FILES = Object.freeze([
-    'css/sections.css',
     'js/charts.js',
     'js/dndc-astra-ui.js',
     'js/dndc-charts.js',
