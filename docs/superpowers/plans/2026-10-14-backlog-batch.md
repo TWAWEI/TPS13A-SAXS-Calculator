@@ -404,7 +404,7 @@ EOF
 wc -l saxs-calculator/js/*calculations.js
 ```
 
-Expected: 印出 `split done`；八個檔都 ≤ 450 行（約：sample-prep 225、hplc 341、detector 122、calculations 395、dndc-theory 205、dndc-signal 284、dndc-alignment 265、dndc-calculations 410）。
+Expected: 印出 `split done`；八個新／縮小的檔都 ≤ 450 行：sample-prep 219、hplc 340、detector 121、calculations 391、dndc-theory 204、dndc-signal 282、dndc-alignment 264、dndc-calculations 405。（`wc` 也會列出不相干的 `liposome-calculations.js` 400 行，忽略它。）
 
 - [ ] **Step 4: 核對是純搬移**
 
@@ -1568,8 +1568,8 @@ def test_validate_params_rejects_non_positive_ri_factor(ri_factor):
 
 - [ ] **Step 2: 跑測試，確認失敗**
 
-Run: `cd "/Users/hsutingwei/Desktop/TPS13A/dndc calculator" && .venv_mac/bin/python -m pytest -q tests/test_calculator.py tests/test_io_validation.py`
-Expected: ImportError（`NEGATIVE_DNDC_WARNING` 不存在）導致 `test_calculator.py` 整檔收集失敗；`test_validate_params_rejects_non_positive_ri_factor[-1.0]` 失敗。
+Run: `cd "/Users/hsutingwei/Desktop/TPS13A/dndc calculator" && .venv_mac/bin/python -m pytest -q --continue-on-collection-errors tests/test_calculator.py tests/test_io_validation.py`
+Expected: `ERROR tests/test_calculator.py`（ImportError：`NEGATIVE_DNDC_WARNING` 不存在，整檔收集失敗）、`FAILED …test_validate_params_rejects_non_positive_ri_factor[-1.0]`，摘要約為 `1 failed, 59 passed, 1 error`。
 
 - [ ] **Step 3: `models.py`**
 
@@ -2203,14 +2203,16 @@ git commit -m "docs: record liposome SEM and standard-check decisions; pytest ba
 
 - [ ] **Step 1: science-reviewer**
 
-派 `science-reviewer` agent，提供：規格路徑、`git -C /Users/hsutingwei/Desktop/TPS13A diff 947bd9f..HEAD -- saxs-calculator/js` 與 `git -C "/Users/hsutingwei/Desktop/TPS13A/dndc calculator" diff HEAD~2..HEAD -- src`。請它檢查：
+先取得拆檔 commit：`SPLIT=$(git -C /Users/hsutingwei/Desktop/TPS13A log --grep='refactor: split calculations.js' --format=%H -1)`。拆檔本身是純搬移，已由 Task 3 Step 4 驗證，不必再審；邏輯變更是 `git -C /Users/hsutingwei/Desktop/TPS13A diff "$SPLIT"..HEAD -- saxs-calculator/js`。
+
+派 `science-reviewer` agent，提供：規格路徑、上面那段 diff，以及 `git -C "/Users/hsutingwei/Desktop/TPS13A/dndc calculator" diff HEAD~2..HEAD -- src`。請它檢查：
 - fraction collector 的分段換算與 Excel `Fraction_collector_high_c` 的等價性與物理意義（規格 §5.2）；
 - 峰值符號與負 dn/dc 警告、負 UV 拒絕在 Python 與 JS 是否一致（規格 §6）；
 - `compareWithStandard` 與 `computeDrugToLipid` 的 [DOX] 是否同一基準、單位換算是否正確（規格 §7.2）。
 
 - [ ] **Step 2: code-reviewer**
 
-派 `code-reviewer` agent 審同樣兩段 diff，加上 `saxs-calculator/tests` 與 `dndc calculator/tests` 的變更。重點：拆檔確為純搬移、CSP／`escapeHtml`、不可變、CRLF、測試是否真的驗證行為。
+派 `code-reviewer` agent 審 `git -C /Users/hsutingwei/Desktop/TPS13A diff 947bd9f..HEAD`（含拆檔，請它重跑 Task 3 Step 4 的純搬移比對）與 dndc repo 的 `HEAD~2..HEAD`。重點：拆檔確為純搬移、CSP／`escapeHtml`、不可變、CRLF、測試是否真的驗證行為。
 
 - [ ] **Step 3: 修正**
 
