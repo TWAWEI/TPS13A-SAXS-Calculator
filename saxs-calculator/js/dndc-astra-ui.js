@@ -329,8 +329,8 @@ function displayAstraResults(parsedFiles, intStart, intEnd) {
                 <td>${sampleName}</td>
                 <td><input type="number" class="form-input" value="${concentration}" step="0.0001" data-astra-idx="${i}" data-field="conc" aria-label="${sampleName} 濃度 (g/mL)"></td>
                 <td><input type="number" class="form-input" value="${inj.injectionVolumeMl || ''}" step="0.001" data-astra-idx="${i}" data-field="vol" placeholder="mL" aria-label="${sampleName} 注射體積 (mL)"></td>
-                <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.riAreaVolume.toExponential(2)}</td>
-                <td style="font-family: var(--font-mono); white-space: nowrap;">${inj.kCal ? inj.kCal.toExponential(2) : '-'}</td>
+                <td class="num" style="white-space: nowrap;">${inj.riAreaVolume.toExponential(2)}</td>
+                <td class="num" style="white-space: nowrap;">${inj.kCal ? inj.kCal.toExponential(2) : '-'}</td>
             </tr>
         `;
     });

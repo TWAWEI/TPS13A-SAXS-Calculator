@@ -98,7 +98,7 @@ function displayMWResults(data) {
         const oligomerText = data.oligomer > 1 ? ` (${data.oligomer}mer)` : '';
         resultsDiv.innerHTML = `
             <div class="result-grid">
-                <div class="result-item" style="border-left-color: var(--color-accent-tertiary);">
+                <div class="result-item">
                     <div class="result-label">預期滯留時間</div>
                     <div class="result-value">${data.retentionTime.toFixed(3)} <span style="font-size: 0.75rem;">min</span></div>
                 </div>
@@ -137,7 +137,7 @@ function displayMWResults(data) {
         // 反向計算：從滯留時間估算 MW
         resultsDiv.innerHTML = `
             <div class="result-grid">
-                <div class="result-item" style="border-left-color: var(--color-accent-secondary);">
+                <div class="result-item">
                     <div class="result-label">估算分子量</div>
                     <div class="result-value">${data.estimatedMw.toFixed(0)} <span style="font-size: 0.75rem;">Da</span></div>
                 </div>

@@ -71,11 +71,11 @@ function displaySampleResults(data) {
 
     resultsDiv.innerHTML = `
         <div class="result-grid">
-            <div class="result-item" style="border-left-color: var(--color-accent-secondary);">
+            <div class="result-item">
                 <div class="result-label">濃度</div>
                 <div class="result-value">${data.concentration.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
             </div>
-            <div class="result-item" style="border-left-color: var(--color-accent-secondary);">
+            <div class="result-item">
                 <div class="result-label">濃度 (μM)</div>
                 <div class="result-value">${data.concentrationMolar.toFixed(2)} <span style="font-size: 0.75rem;">μM</span></div>
             </div>
@@ -115,7 +115,7 @@ function displayDilutionFactorResults(data) {
 
     resultsDiv.innerHTML = `
         <div class="result-grid">
-            <div class="result-item" style="border-left-color: #f59e0b;">
+            <div class="result-item">
                 <div class="result-label">稀釋因子 (DF)</div>
                 <div class="result-value">${data.dilutionFactor.toFixed(2)}</div>
             </div>
@@ -127,11 +127,11 @@ function displayDilutionFactorResults(data) {
         ${onColumnConc !== null ? `
         <div class="section-divider"><span>On-column 濃度估算</span></div>
         <div class="result-grid">
-            <div class="result-item" style="border-left-color: #10b981;">
+            <div class="result-item">
                 <div class="result-label">UV 量測濃度</div>
                 <div class="result-value">${data.uvConcentration.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
             </div>
-            <div class="result-item" style="border-left-color: #10b981;">
+            <div class="result-item">
                 <div class="result-label">On-column 濃度</div>
                 <div class="result-value">${onColumnConc.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
             </div>

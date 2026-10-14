@@ -67,11 +67,11 @@ function displayCentrifugeResults(data) {
 
     resultsDiv.innerHTML = `
         <div class="result-grid">
-            <div class="result-item" style="border-left-color: var(--color-accent-danger);">
+            <div class="result-item">
                 <div class="result-label">相對離心力 (RCF)</div>
                 <div class="result-value">${data.rcf.toFixed(0)} <span style="font-size: 0.75rem;">× g</span></div>
             </div>
-            <div class="result-item" style="border-left-color: var(--color-accent-danger);">
+            <div class="result-item">
                 <div class="result-label">沉降係數</div>
                 <div class="result-value">${data.sedimentationCoeffSvedberg.toFixed(2)} <span style="font-size: 0.75rem;">S</span></div>
             </div>

@@ -43,7 +43,7 @@ function initDndcTheorySection() {
                     </div>
                     <div class="result-item">
                         <div class="result-label">最終 d<i>n</i>/d<i>c</i></div>
-                        <div class="result-value" style="font-size: 1.25rem; color: var(--color-accent-primary);">${result.finalDndc.toFixed(4)}</div>
+                        <div class="result-value result-value--key">${result.finalDndc.toFixed(4)}</div>
                     </div>
                     <div class="result-item">
                         <div class="result-label">波長貢獻</div>
@@ -92,7 +92,7 @@ function initDndcTheorySection() {
                 <div class="result-grid">
                     <div class="result-item">
                         <div class="result-label">Lorentz-Lorenz d<i>n</i>/d<i>c</i></div>
-                        <div class="result-value" style="font-size: 1.25rem; color: var(--color-accent-primary);">${llResult.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
+                        <div class="result-value result-value--key">${llResult.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
                     </div>
                     <div class="result-item">
                         <div class="result-label">Gladstone-Dale (近似)</div>

@@ -91,7 +91,7 @@ function displayHplcDndcResults(result, params, warnings = []) {
 
     resultsDiv.innerHTML = `
         ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
-        <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
+        <div class="stat-card mb-md">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i></div>
                 <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dndc)} <span class="stat-unit">mL/g</span></div>

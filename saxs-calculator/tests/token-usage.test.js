@@ -18,14 +18,6 @@ const { read, readCode, CSS_FILES, JS_FILES, parseCustomProperties, cssRules } =
 
 const PENDING_TOKEN_FILES = Object.freeze([
     'js/dndc-hplc-results.js',
-    'js/dndc-multi-ui.js',
-    'js/dndc-slice-ui.js',
-    'js/dndc-theory-ui.js',
-    'js/section-centrifuge.js',
-    'js/section-hplc.js',
-    'js/section-mw.js',
-    'js/section-sample.js',
-    'js/section-saxs.js',
 ]);
 
 // 執行時才由 JS 設定的自訂屬性（不在 tokens.css）

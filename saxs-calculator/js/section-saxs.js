@@ -30,14 +30,14 @@ function renderTheoreticalI0(result, valueEl, concentrationState) {
         if (valueEl) valueEl.textContent = '--';
         if (methodEl) {
             methodEl.textContent = concentrationState.message;
-            methodEl.style.color = concentrationState.isError ? 'var(--color-accent-danger)' : '';
+            methodEl.classList.toggle('is-error', Boolean(concentrationState.isError));
         }
         return;
     }
 
     if (valueEl) valueEl.textContent = result.theoreticalI0.toExponential(2);
     if (!methodEl) return;
-    methodEl.style.color = '';
+    methodEl.classList.remove('is-error');
     if (Number.isFinite(result.exactI0)) {
         methodEl.textContent = `經驗式（BSA 校正）· Excel 精確式（序列）${result.exactI0.toExponential(2)}`;
     } else {

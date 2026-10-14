@@ -123,7 +123,7 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
 
     resultsDiv.innerHTML = `
         ${renderWarningsHtml(signWarnings)}
-        <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
+        <div class="stat-card mb-md">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
                 <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dnDc)} <span class="stat-unit">mL/g</span></div>

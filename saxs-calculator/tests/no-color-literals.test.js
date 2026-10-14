@@ -20,8 +20,6 @@ const PENDING_LITERAL_FILES = Object.freeze([
     'js/dndc-charts.js',
     'js/dndc-hplc-results.js',
     'js/liposome-charts.js',
-    'js/section-hplc.js',
-    'js/section-sample.js',
 ]);
 
 // #hex（前面不能是 & 或字母數字，排除 &#10; 這類 HTML 實體）與顏色函式。transparent／currentColor／inherit 允許。

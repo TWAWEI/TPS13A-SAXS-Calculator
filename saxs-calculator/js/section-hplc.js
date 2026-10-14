@@ -101,17 +101,14 @@ function displayHPLCSAXSResults(result, suggested) {
     const detectorTableBody = document.getElementById('detectorSettingsTableBody');
     if (detectorTableBody) {
         detectorTableBody.innerHTML = result.detectorSettings.map(row => {
-            // Highlight step 4 (main data collection)
+            // Highlight step 4 (main data collection)；顏色在 components.css（tests/contrast.test.js 驗過兩個主題）
             const isMainStep = row.step === 4;
-            const rowStyle = isMainStep ? 'background: rgba(245, 158, 11, 0.15);' : '';
-            // Text colours chosen for ≥4.5:1 on the light row backgrounds (WCAG AA)
-            const frameStyle = isMainStep ? 'color: #92400e; font-weight: 700;' : '';
 
             return `
-                <tr style="${rowStyle}">
+                <tr class="${isMainStep ? 'is-main-step' : ''}">
                     <td>${row.step}</td>
-                    <td style="color: ${row.mode === 'TM' ? '#1d4ed8' : '#047857'}; font-weight: 600;">${row.mode}</td>
-                    <td style="${frameStyle}">${row.frame}</td>
+                    <td class="${row.mode === 'TM' ? 'mode-tm' : 'mode-other'}">${row.mode}</td>
+                    <td class="${isMainStep ? 'frame-main' : ''}">${row.frame}</td>
                     <td>${row.wait}</td>
                     <td>${row.exposure}</td>
                     <td>${row.hold}</td>
