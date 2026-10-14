@@ -62,6 +62,7 @@ const IDS = [
     'lipoFitMin', 'lipoFitMax', 'lipoEpsilon', 'lipoPathLength', 'lipoLipidConc',
     'lipoResultsBody', 'lipoResultsWrapper', 'lipoResultsEmpty', 'lipoResultsAbsHeader', 'lipoResultsCount', 'lipoExportCsv',
     'lipoClearResults', 'lipoClearDialog', 'lipoClearCancel', 'lipoResultsAlert', 'lipoDilutionChart', 'lipoSpectraChart', 'lipoFitChart',
+    'lipoPureConc', 'lipoStdCompare',
 ];
 IDS.forEach(makeElement);
 const $ = id => elements.get(id);
@@ -568,4 +569,41 @@ test('[lipo-section] S10 INVALIDATING_IDS：十個欄位任一 input 都作廢�
     await click('lipoComputeDl');
     $('lipoQMin').dispatch('input');
     assert.ok(S.getState().dl, 'q 視窗不在作廢名單（快照的 q 取自 state.dilution）');
+});
+
+// ---------------------------------------------------------------- S11／S12（2026-10-14 待辦批次 §7）
+test('[lipo-section] S11 標準液對照：同基準差 0%；> 10% 加警告；改濃度不作廢快照；手動吸光度不顯示', async () => {
+    const S = section();
+    resetInputs();
+    $('lipoPureConc').value = '';
+    setSpectraFiles(syntheticSpectra(0.8), { pure: true });
+    await click('lipoComputeSpectra');
+    input('lipoDilutionFactor', '0.45');
+    await click('lipoComputeDl');
+    assert.equal($('lipoStdCompare').hidden, true, '沒填標準液濃度 → 不顯示');
+
+    // 合成純 DOX 在 495 nm 的 A = 1；ε 9250、光徑 0.2 cm → c_pure = 1/1850 M = 0.54054 mM 時兩法一致
+    input('lipoPureConc', '0.54054');
+    assert.equal($('lipoStdCompare').hidden, false);
+    assert.match($('lipoStdCompare').innerHTML, /標準液法對照/);
+    assert.doesNotMatch($('lipoStdCompare').innerHTML, /alert-warning/);
+    assert.ok(S.getState().dl, '改標準液濃度不作廢快照');
+    assert.equal($('lipoAddResult').disabled, false, '改標準液濃度不停用加入鈕');
+
+    input('lipoPureConc', '0.7');   // 0.8 × 0.7 mM = 0.56 mM vs ε 法 0.4324 mM → +29.50%
+    assert.match($('lipoStdCompare').innerHTML, /\+29\.50%/);
+    assert.match($('lipoStdCompare').innerHTML, /alert-warning/);
+
+    setManualAbs(0.8, 0.8, 0.8);
+    await click('lipoComputeDl');
+    assert.equal($('lipoStdCompare').hidden, true, '手動吸光度 → 不顯示對照');
+    $('lipoPureConc').value = '';
+});
+
+test('[lipo-section] S12 面板 1 顯示 SEM 對照（n 與 SD 同一行）', async () => {
+    section();
+    resetInputs();
+    setSaxsFiles(fileOf('solution.dat', saxsText(1)), fileOf('bypass.dat', saxsText(0.44)));
+    await click('lipoComputeDilution');
+    assert.match($('lipoDilutionResults').innerHTML, /SEM \d+\.\d{2}%（僅供對照，D\/L 誤差用 SD）/);
 });

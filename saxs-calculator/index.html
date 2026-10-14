@@ -1350,6 +1350,14 @@
                                     <label class="form-label" for="lipoPureFile">純 DOX 光譜（選填，用於濃度一致性檢查）</label>
                                     <input type="file" class="form-input" id="lipoPureFile" accept=".csv,.txt,.tsv,.dat">
                                 </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="lipoPureConc">純 DOX 標準液濃度（選填，對照用）</label>
+                                    <div class="form-input-group">
+                                        <input type="number" class="form-input" id="lipoPureConc" min="0" step="0.001" placeholder="例如 0.05">
+                                        <span class="input-unit">mM</span>
+                                    </div>
+                                    <div class="stat-sub">標準液與樣品須用同一光徑，且在線性範圍內量測（建議 A &lt; 1.5）。Excel 工作表2 的 4.6 mM 光譜 A(495) = 7.25，已飽和，不能用。</div>
+                                </div>
                                 <div class="grid grid-2">
                                     <div class="form-group">
                                         <label class="form-label" for="lipoFitMin">擬合下限</label>
@@ -1465,6 +1473,7 @@
                             </div>
                             <div>
                                 <div id="lipoDlResults" class="mt-sm"></div>
+                                <div id="lipoStdCompare" class="mt-sm" aria-live="polite" hidden></div>
                             </div>
                         </div>
                     </div>

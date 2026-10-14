@@ -78,6 +78,7 @@
     function invalidateDl() {
         if (state.dl) setState({ dl: null });
         setAddEnabled(false);
+        updateStdCompare();
     }
 
     function warningRow(text) {
@@ -157,12 +158,14 @@
 
     function renderDilutionResults(r, qMin, qMax) {
         const excluded = r.excluded.outOfRange + r.excluded.nonPositive;
+        const sem = Calc().standardErrorOfMean(r.sd, r.n);
+        const semText = sem === null ? '' : `；SEM ${pct(sem / r.factor)}（僅供對照，D/L 誤差用 SD）`;
         els.dilutionResults.innerHTML = `
             <div class="stat-card">
                 <div class="stat-content">
                     <div class="stat-label">稀釋因子（I_bypass / I_solution 逐點平均）</div>
                     <div class="stat-value">${r.factor.toPrecision(4)} <span class="stat-unit">± ${r.sd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">q 視窗 ${qMin}–${qMax} Å⁻¹，實際涵蓋 ${r.qCovered[0].toFixed(3)}–${r.qCovered[1].toFixed(3)}，n = ${r.n}，相對離散 ${pct(r.sd / r.factor)}</div>
+                    <div class="stat-sub">q 視窗 ${qMin}–${qMax} Å⁻¹，實際涵蓋 ${r.qCovered[0].toFixed(3)}–${r.qCovered[1].toFixed(3)}，n = ${r.n}，相對離散 ${pct(r.sd / r.factor)}${semText}</div>
                 </div>
             </div>
             <div class="result-grid mt-sm">
@@ -382,6 +385,35 @@
             </div>
             ${dlWarnings(snap)}`;
         global.A11y.focusResults('lipoDlResults');
+        updateStdCompare();
+    }
+
+    /**
+     * 標準液法 [DOX] 對照（面板 3 結果下方）。只改這一行，不重繪結果、不搬焦點（打字中呼叫也安全）。
+     * 不顯示的情況：沒有 D/L 快照、沒有純 DOX 擬合、吸光度是手動輸入的、濃度未填或非正、k < 0。
+     */
+    function updateStdCompare() {
+        const el = els.stdCompare;
+        if (!el) return;
+        const snap = state.dl;
+        const fit = state.spectra && state.spectra.fit;
+        const pureMM = parseFloat(els.pureConc ? els.pureConc.value : '');
+        const cmp = (snap && fit && snap.params.absSource !== 'manual')
+            ? Calc().compareWithStandard({ k: fit.k, pureConcMolar: pureMM / 1000, doxConcMolar: snap.doxConc })
+            : null;
+        if (!cmp) {
+            el.hidden = true;
+            el.innerHTML = '';
+            return;
+        }
+        const sign = cmp.relDiff >= 0 ? '+' : '−';
+        const line = `標準液法對照：[DOX] = ${(cmp.doxConcStd * 1000).toPrecision(4)} mM（與 ε 法相差 ${sign}${pct(Math.abs(cmp.relDiff))}）`;
+        const limit = (Calc().DEFAULTS.STD_COMPARE_WARN_REL * 100).toFixed(0);
+        const warn = cmp.exceedsWarn
+            ? warningRow(`標準液法與 ε 法的 [DOX] 相差超過 ${limit}%，請檢查 ε、光徑或標準液濃度`)
+            : '';
+        el.innerHTML = `<div class="stat-sub">${esc(line)}</div>${warn}`;
+        el.hidden = false;
     }
 
     function onComputeDl() {
@@ -472,6 +504,8 @@
         wlEls().forEach(el => el.addEventListener('input', onWavelengthInput));
         absEls().forEach(el => el.addEventListener('input', onAbsInput));
         INVALIDATING_IDS.forEach(id => $(id)?.addEventListener('input', invalidateDl));
+        // 標準液濃度不影響 D/L：不作廢快照，只即時更新對照那一行（規格 §7.2）
+        els.pureConc.addEventListener('input', updateStdCompare);
 
         els.dilutionPng.addEventListener('click', () => {
             const chart = Charts().getChart('lipoDilutionChart');
@@ -496,6 +530,7 @@
         wl1: 'lipoWl1', wl2: 'lipoWl2', wl3: 'lipoWl3', abs1: 'lipoAbs1', abs2: 'lipoAbs2', abs3: 'lipoAbs3',
         absChip: 'lipoAbsChip', absSummary: 'lipoAbsSummary',
         sampleName: 'lipoSampleName', computeDl: 'lipoComputeDl', dlResults: 'lipoDlResults', addResult: 'lipoAddResult',
+        pureConc: 'lipoPureConc', stdCompare: 'lipoStdCompare',
     });
 
     function init() {
