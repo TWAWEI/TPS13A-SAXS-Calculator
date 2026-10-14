@@ -17,7 +17,6 @@ const assert = require('node:assert/strict');
 const { read, readCode, CSS_FILES, JS_FILES, parseCustomProperties, cssRules } = require('./style-scan.js');
 
 const PENDING_TOKEN_FILES = Object.freeze([
-    'css/panels.css',
     'css/sections.css',
     'js/dndc-hplc-results.js',
     'js/dndc-multi-ui.js',

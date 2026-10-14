@@ -1,21 +1,26 @@
 /* =============================================
    TPS13A SAXS Calculator — Stat & Info Panels
-   數值卡、漸層卡、理論值／偵測器建議面板、Rg 來源 chip、結果卡
+   數值磚（stat-card／gradient-stat／result-card）、理論值與偵測器建議面板、資料來源 chip
+   v5.0：拿掉漸層與色條，改成中性磚；v5.1 再換成 .tile 結果磚。
    ============================================= */
 
 /* ===== Stat Cards ===== */
+/* 直接放在頁面底上（#proteinStats）時是白色磚 */
 .stat-card {
-    background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    background: var(--color-bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     padding: var(--spacing-md) var(--spacing-lg);
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
 }
 
-/* .stat-icon removed in v4.8: 6697dd9 emptied the emoji but left four 40x40
-   colour blocks (40px + 17px gap) squeezing the monospace .stat-value. */
+/* 放在卡片裡（dn/dc、脂質體結果區）時白底疊白底看不出磚，改淺灰底、不加陰影 */
+.card .stat-card {
+    background: var(--color-bg-tertiary);
+    box-shadow: none;
+}
 
 .stat-content {
     flex: 1;
@@ -32,10 +37,10 @@
 
 .stat-value {
     font-size: 1.375rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
+    font-weight: 600;
+    color: var(--color-accent-text);
     line-height: 1.2;
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-variant-numeric: tabular-nums;
 }
 
@@ -53,45 +58,20 @@
     margin-top: 0.125rem;
 }
 
-/* ===== Gradient Stat Cards ===== */
+/* ===== Gradient Stat（HPLC 頁的 Fraction Collector 與 pre-run 建議值；名稱沿用，已無漸層） ===== */
 .gradient-stat {
-    border-radius: var(--radius-md);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-lg);
     padding: var(--spacing-md) var(--spacing-lg);
 }
 
-.gradient-stat .stat-label {
-    color: var(--color-text-on-accent-muted);
-}
-
-.gradient-stat .stat-value {
-    color: var(--color-text-on-accent);
-}
-
-.gradient-stat .stat-sub {
-    color: var(--color-text-on-accent-muted);
-}
-
-.gradient-stat--purple {
-    background: linear-gradient(135deg, #A85555 0%, #8F4646 100%);
-}
-
-.gradient-stat--pink {
-    background: linear-gradient(135deg, #9A5252 0%, #7E4040 100%);
-}
-
-/* ===== Info Panels (Theory / Detector Suggestion) ===== */
+/* ===== Info Panels（理論預測值／偵測器距離建議） ===== */
+/* 兩個面板都用中性灰底：顏色只留在資料來源 chip 與警告上（理論值不是「成功」） */
 .info-panel {
     padding: var(--spacing-md);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     margin-top: var(--spacing-sm);
-}
-
-.info-panel--success {
-    background: linear-gradient(135deg, #A85555 0%, #8F4646 100%);
-}
-
-.info-panel--warning {
-    background: linear-gradient(135deg, #b45309 0%, #92400e 100%);
+    background: var(--color-bg-tertiary);
 }
 
 .info-panel-header {
@@ -102,10 +82,9 @@
 }
 
 .info-panel-title {
-    color: var(--color-text-on-accent);
+    color: var(--color-text-secondary);
     font-size: 0.75rem;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.04em;
 }
 
@@ -116,26 +95,27 @@
 }
 
 .info-panel-header-label {
-    color: var(--color-text-on-accent-muted);
+    color: var(--color-text-muted);
     font-size: 0.75rem;
 }
 
+/* 面板是 tertiary 底，輸入框改用卡片色才看得出來 */
 .info-panel-mw-input {
     width: 80px;
     padding: 0.2rem 0.4rem;
     font-size: 0.75rem;
-    font-family: var(--font-mono);
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    font-family: var(--font-body);
+    font-variant-numeric: tabular-nums;
+    background: var(--color-bg-card);
+    border: 0;
     border-radius: var(--radius-sm);
-    color: var(--color-text-on-accent);
+    color: var(--color-text-primary);
     text-align: right;
 }
 
 .info-panel-mw-input:focus-visible {
-    outline: 2px solid #ffffff;
+    outline: 2px solid var(--color-focus);
     outline-offset: 1px;
-    border-color: #ffffff;
 }
 
 .info-panel-grid {
@@ -145,33 +125,36 @@
 }
 
 .info-panel-item {
-    background: rgba(0, 0, 0, 0.15);
+    background: var(--color-bg-card);
     padding: var(--spacing-sm);
     border-radius: var(--radius-sm);
     text-align: center;
 }
 
+/* 淡珊瑚疊在卡片色上（單層色，不是視覺漸層）：直接疊在 tertiary 面板上，深色模式的
+   灰色單位字只剩 4.3:1 */
 .info-panel-item--highlight {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+    background-color: var(--color-bg-card);
+    background-image: linear-gradient(var(--color-accent-tint), var(--color-accent-tint));
 }
 
 .info-panel-label {
-    color: var(--color-text-on-accent-dim);
+    color: var(--color-text-muted);
     font-size: 0.6875rem;
     font-weight: 600;
     letter-spacing: 0.03em;
 }
 
 .info-panel-label--highlight {
-    color: var(--color-text-on-accent);
+    color: var(--color-accent-text);
 }
 
 .info-panel-value {
-    color: var(--color-text-on-accent);
+    color: var(--color-text-primary);
     font-size: 1rem;
-    font-weight: 700;
-    font-family: var(--font-mono);
+    font-weight: 600;
+    font-family: var(--font-body);
+    font-variant-numeric: tabular-nums;
 }
 
 .info-panel-value--sm {
@@ -179,47 +162,44 @@
 }
 
 .info-panel-unit {
-    color: var(--color-text-on-accent-faint);
+    color: var(--color-text-muted);
     font-size: 0.75rem;
 }
 
+/* 理論 I(0) 的濃度錯誤訊息（section-saxs.js 切換） */
+.info-panel-unit.is-error {
+    color: var(--color-danger-text);
+}
+
 .info-panel-formula {
-    color: var(--color-text-on-accent-faint);
+    color: var(--color-text-muted);
     font-size: 0.75rem;
     margin-top: var(--spacing-sm);
     line-height: 1.4;
 }
 
-.info-panel-source {
-    color: var(--color-text-on-accent-muted);
-    font-size: 0.6875rem;
-    font-family: var(--font-mono);
-}
-
 /* ===== Detector-distance panel: Rg source chip / inline input / links ===== */
+/* 序列預測（預設）＝強調色淡底；手動＝警告色；Guinier 實測＝成功色 */
 .info-panel-chip {
     display: inline-block;
     font-size: 0.625rem;
     font-weight: 600;
     letter-spacing: 0.05em;
     padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    color: var(--color-text-on-accent);
+    border-radius: var(--radius-pill);
+    background: var(--color-accent-tint);
+    color: var(--color-accent-text);
     white-space: nowrap;
 }
 
 .info-panel-chip--manual {
-    background: #ffffff;
-    border-color: #ffffff;
-    color: #92400e;
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
 }
 
 .info-panel-chip--measured {
-    background: var(--color-text-primary);
-    border-color: var(--color-text-primary);
-    color: #ffffff;
+    background: var(--color-success-bg);
+    color: var(--color-success-text);
 }
 
 /* display:inline-block 蓋掉了瀏覽器預設的 [hidden]{display:none}——
@@ -228,21 +208,10 @@
     display: none;
 }
 
-/* 表單標籤旁的來源 chip（HPLC dn/dc 頁的 ε）。
-   面板版是「白字 + 半透明白底」，靠珊瑚漸層當背景才看得見；
-   白色卡片上要換成淺底深字，否則整顆 chip 消失。 */
+/* 表單標籤旁的來源 chip（HPLC dn/dc 頁的 ε）：配色與面板版相同，只調位置 */
 .form-label .info-panel-chip {
     vertical-align: middle;
     margin-left: 6px;
-    background: rgba(168, 85, 85, 0.1);
-    border-color: rgba(168, 85, 85, 0.3);
-    color: var(--color-accent-purple);           /* #A83737 — 5.3:1 於 chip 底色 */
-}
-
-.form-label .info-panel-chip--manual {
-    background: #fef3c7;                         /* amber-100 */
-    border-color: #fde68a;
-    color: var(--color-accent-tertiary-text);    /* #92400e — 6.4:1 */
 }
 
 .info-panel-mw-input--rg {
@@ -252,18 +221,17 @@
 
 .info-panel-hint {
     font-size: 0.6875rem;
-    color: var(--color-text-on-accent);
-    background: rgba(0, 0, 0, 0.22);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-card);
     border-radius: var(--radius-sm);
     padding: 0.2rem 0.5rem;
     margin: -0.25rem 0 0.5rem;
 }
 
-/* 行程警告：面板本身就是琥珀漸層，深色警告字必須自帶淺底才讀得到。
-   #fef3c7 (amber-100) 上的 #92400e = 6.4:1。 */
+/* 行程警告 */
 .info-panel-hint--warn {
-    background: #fef3c7;
-    color: var(--color-accent-tertiary-text);
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
     margin: var(--spacing-sm) 0 0;   /* 這一則掛在數值格線「之下」，不沿用 hint 的負上邊距 */
 }
 
@@ -287,7 +255,7 @@
     padding: 0;
     font: inherit;
     font-weight: 600;
-    color: var(--color-text-on-accent);
+    color: var(--color-accent-text);
     text-decoration: underline;
     text-underline-offset: 2px;
     cursor: pointer;
@@ -299,42 +267,21 @@
 }
 
 .info-panel-link:focus-visible {
-    outline: 2px solid #ffffff;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
     border-radius: 2px;
 }
 
-/* ===== Result Cards (Detector Section) ===== */
+/* ===== Result Cards（偵測器距離頁；放在卡片裡，用淺灰磚） ===== */
 .result-card {
     padding: var(--spacing-md);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-tertiary);
     text-align: center;
 }
 
-.result-card--primary {
-    background: linear-gradient(135deg, #A85555 0%, #8F4646 100%);
-}
-
-.result-card--success {
-    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
-}
-
-.result-card--pink {
-    background: linear-gradient(135deg, #9A5252 0%, #7E4040 100%);
-}
-
-.result-card--warning {
-    background: var(--color-accent-tertiary-dark);
-}
-
-/* #b45309 leaves no headroom: .92 white is 4.49:1 and .85 white is 4.08:1 */
-.result-card--warning .result-card-label,
-.result-card--warning .result-card-unit {
-    color: var(--color-text-on-accent);
-}
-
 .result-card-label {
-    color: var(--color-text-on-accent-muted);
+    color: var(--color-text-muted);
     font-size: 0.6875rem;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -342,14 +289,15 @@
 }
 
 .result-card-value {
-    color: var(--color-text-on-accent);
+    color: var(--color-accent-text);
     font-size: 1.375rem;
-    font-weight: 700;
-    font-family: var(--font-mono);
+    font-weight: 600;
+    font-family: var(--font-body);
+    font-variant-numeric: tabular-nums;
 }
 
 .result-card-unit {
-    color: var(--color-text-on-accent-dim);
+    color: var(--color-text-muted);
     font-size: 0.6875rem;
     margin-top: 0.125rem;
 }
@@ -370,4 +318,3 @@
 .result-card--lg .result-card-unit {
     font-size: 0.75rem;
 }
-
