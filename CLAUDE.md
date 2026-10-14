@@ -7,29 +7,31 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 **Modern, Helpful, Smart** — A friendly yet technically competent scientific tool. It should feel like a capable assistant that understands the domain, not a cold instrument panel or a toy.
 
 ### Aesthetic Direction
-> 2026-08-21 v4.6「muted coral」(palette C)。上一版 v4.4 coral-to-ice 的亮 coral 白字只有 3.6:1，使用者要求整體柔和；改動配色時請同步更新本節與 `css/styles.css` 的 `:root` tokens。
+> 2026-10 v5.0 Apple-style redesign（規格 `docs/superpowers/specs/2026-10-14-apple-redesign-design.md`）：macOS 原生骨架（毛玻璃側欄、分組圓角輸入列、系統字）＋ muted coral 強調色，淺色與深色兩個主題；v5.1 再加大數字結果磚。改動配色時同步更新本節、`css/tokens.css` 與 `js/chart-theme.js`。
 
-- **Theme:** Light "Precision Editorial" — ice blue-gray page background (#E5E9EB), white cards (#ffffff), no dark mode
-- **Primary accent:** Muted coral (#A85555) — solid sidebar background, primary buttons, gradient panels (#A85555 → #8F4646); white text on it is 5.1:1. Hover goes one step **darker** (#8F4646), never lighter
-- **Accent text on light surfaces:** #A83737 (6.4:1 on white) for values, card-title modifiers; #902F2F for info alerts on tinted backgrounds. Bright brand coral #F04E4E survives only as `--color-accent-brand` for chart lines
-- **Secondary accents:** Emerald (#10b981) fills / #047857 text, Amber #f59e0b fills only — amber **text** is #92400e, amber panels #b45309 → #92400e; Red (#dc2626) for errors
-- **Text:** Deep warm slate, never pure black — primary #1a1a2e, secondary #3d3d5c, muted #5a5a78; sidebar nav is pure white at 0.9375rem (≈16px) with a 3px white inset bar on the active item
-- **Typography:** Inter + Noto Sans TC for UI text (Google Fonts), JetBrains Mono with `tabular-nums` for scientific values and sequences; `html { font-size: 17px }`
+- **Theme:** Light + dark. Follows the system (`prefers-color-scheme`) with a manual 自動／淺色／深色 control in the sidebar (localStorage `tps13a-theme`). `js/theme-init.js` sets `<html data-theme>` synchronously in `<head>`, before any stylesheet. Dark tokens live in two byte-identical blocks (`:root:not([data-theme="light"])` and `:root[data-theme="dark"]`), both inside `@media screen`, so printing always uses the light values
+- **Surfaces:** page #F5F5F7 / #121214; cards #FFFFFF / #1E1E21, borderless with the `--shadow-sm` 0.5px hairline; tertiary #F0F0F3 / #2A2A2E for inputs, info panels, result items, secondary buttons and segmented-control tracks. Tiles that sit inside a card use tertiary (never white on white)
+- **Accent:** Muted coral #A85555. `--color-accent-primary` / `-hover` are **fills only** (primary buttons, the selected nav pill). Hover goes darker in light (#8F4646) and lighter in dark (#B05A5A) — darkening in dark mode would drop the button to 2.5:1 against the card. Coral **text** is always `--color-accent-text` (#A83737 / #EE9090)
+- **Semantic colours:** success / warning / danger each have a fill, a `-text` and a `-bg` token. Text uses only the `-text` token, on its own `-bg`, a card, or tertiary
+- **Text:** primary #1D1D1F / #F5F5F7, secondary #424245 / #D1D1D6, muted #636366 / #A1A1A6 (Apple's #6E6E73 is only 4.2:1 on input backgrounds). Sidebar nav stays 0.9375rem (≈16px, requested 2026-08)
+- **Typography:** System font stack (-apple-system / SF Pro / PingFang TC, falling back to Inter + Noto Sans TC from Google Fonts); numbers use `tabular-nums`; JetBrains Mono only for sequences, file previews and formula notes; multi-line prose is justified by the zero-specificity `:where(...)` rule in `tokens.css`; `html { font-size: 17px }`
 - **Icons:** No decorative icon system (scientific emoji removed in 6697dd9; section markers and export-button emoji removed in batch 3, 2026-08-22). Only state/semantic glyphs remain: 🔒/🔓 lock state, ☰ menu, ⚠️/✓ in result text — don't add new ones
-- **Visual effects:** Flat cards with 1px borders (#d4d8dc) and 3/6/8px radii; coral-tinted shadows (rgba(168,85,85,…)); fast transitions (120/200ms ease-out); `backdrop-filter: blur(4px)` only on the modal overlay — no glassmorphism on cards, no hover lifts
+- **Visual effects:** Frosted glass only on the sidebar (solid `--color-bg-sidebar` when unsupported or with reduced transparency) and the dialog backdrop; no left accent bars, no gradients, no hover lifts; radii 8 / 10 / 12 / 14 (dialog) / 18 (v5.1 tiles); fast transitions (120/200ms ease-out)
+- **Charts:** All colours come from `js/chart-theme.js`. Chart files only tag datasets / scales / annotations with `tpsRole` or `tpsSeries` and create charts with `new Chart(canvas, ChartTheme.colorize(config))`. A theme change recolours live charts in place (zoom is kept); PNG export is always light on white. The series palette has 8 colours (dataviz-validated); the doughnut shows the top 7 + Others; channels beyond 8 reuse a colour with a dashed line. Coloured axes colour only the axis line — tick labels and titles stay in the text colour
 - **Layout:** Fixed 240px sidebar (collapsible to 56px, state persisted), 4px spacing scale
-- **Contrast rule:** every text/background pair ≥ 4.5:1 (UI components ≥ 3:1). Never put white text on a tint lighter than #A85555; never use #f59e0b / #10b981 / #F04E4E as text
+- **Contrast rule:** Both themes: text ≥ 4.5:1, UI components ≥ 3:1 — `tests/contrast.test.js`. Fill tokens are never text and there are no left bars — `tests/token-usage.test.js`. Colour literals may appear only in `css/tokens.css` and `js/chart-theme.js` — `tests/no-color-literals.test.js`
+- **Chart.js load order:** The CDN scripts are `defer`, so `Chart` does not exist while local scripts run; touch `Chart` only at call time
 - **Anti-references:** Avoid looking like a generic dashboard template, overly playful consumer apps, or cluttered legacy lab software
 
 ### Design Principles
 
-1. **Clarity over decoration** — Every visual element must serve comprehension. Scientific data should be immediately readable with clear hierarchy: labels, values (monospace), and units.
+1. **Clarity over decoration** — Every visual element must serve comprehension. Scientific data should be immediately readable with clear hierarchy: labels, values (tabular figures), and units.
 
 2. **Trust through precision** — Use consistent spacing (8px base), aligned grids, and predictable patterns. Sloppy layout undermines confidence in calculations.
 
 3. **Speed of use** — Optimize for fast input-to-result workflows. Minimize clicks, keep related fields visible together, use smart defaults. Scientists are working under time pressure at the beamline.
 
-4. **Accessible by default** — WCAG AA compliance. High-contrast slate text on light surfaces (≥4.5:1 for body text, ≥3:1 for large text and UI components — check coral #F04E4E before using it for text), proper form labels, semantic HTML. Must stay readable in dim experimental hutches and over remote desktop.
+4. **Accessible by default** — WCAG AA compliance in both themes (≥4.5:1 for body text, ≥3:1 for large text and UI components — enforced by `tests/contrast.test.js`), proper form labels, semantic HTML. Must stay readable in dim experimental hutches and over remote desktop.
 
 5. **Progressive disclosure** — Show essential results prominently, keep advanced details available but not overwhelming. Use section organization and collapsible areas to manage complexity.
 
