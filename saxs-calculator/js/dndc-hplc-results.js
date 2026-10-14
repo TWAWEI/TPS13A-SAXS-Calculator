@@ -90,7 +90,7 @@ function displayHplcDndcResults(result, params, warnings = []) {
     const concUnit = isArea ? 'mg·min/mL' : 'mg/mL';
 
     resultsDiv.innerHTML = `
-        ${renderWarningsHtml(warnings)}
+        ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i></div>

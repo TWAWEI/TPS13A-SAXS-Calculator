@@ -73,7 +73,7 @@ function displaySliceResults(result, warnings = []) {
         rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
     resultsDiv.innerHTML = `
-        ${renderWarningsHtml(warnings)}
+        ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>

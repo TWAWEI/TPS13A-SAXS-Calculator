@@ -118,7 +118,11 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
     const r2Class = result.rSquared >= 0.99 ? 'alert-success' :
         result.rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
+    // 負斜率警告只給手動多注射；ASTRA 多注射（source === 'astra'）沿用它自己的慣例（規格 §6.2）
+    const signWarnings = source === 'manual' ? DndcCalculations.negativeDndcWarnings(result.dnDc) : [];
+
     resultsDiv.innerHTML = `
+        ${renderWarningsHtml(signWarnings)}
         <div class="stat-card" style="margin-bottom: 1rem; border-left: 3px solid var(--color-accent-primary);">
             <div class="stat-content">
                 <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
