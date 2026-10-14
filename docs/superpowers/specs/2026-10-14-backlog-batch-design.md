@@ -30,6 +30,7 @@
 | 純 DOX 標準液濃度 | 加欄位；k × c_pure 得到的 [DOX] 只當對照值，與主值差 > 10% 時提醒 | 可切換成主值；不加 |
 | Fraction collector 算法 | 照 Excel 的近似（爬升段用該段平均流速把體積換成時間） | 精確積分 |
 | Fraction collector 常數 | 先照 Excel：死體積 1050 µL、安全區 2.8 min、爬升 2 + 0.5 min、Time/Fraction = 1.2 ÷ 初始流速。使用者之後再確認，常數集中一處 | — |
+| 報告結束時間取整 | 四捨五入，與 Excel `A15` 的畫面顯示一致（公式本身不取整，儲存格格式 `0` 顯示四捨五入） | 維持無條件進位 |
 | 負 dn/dc | 照實顯示負值＋警告「dn/dc 為負：請檢查 RI 極性或峰／基線區間」 | 直接拒絕；顯示但不警告 |
 | 負 UV 峰 | 拒絕，訊息「UV 峰為負：基線區間落在峰上或極性反轉，請檢查 UV 峰範圍與基線範圍」 | 取絕對值 |
 
@@ -124,10 +125,10 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 
 - 新純函式（放在 `hplc-calculations.js`）：
   - `timeAtCumulativeVolume(volumeUl, segments)`：依序走過四段，每段用 Excel 的換算流速（第 1 段目標、第 2 段 `(目標+中值)/2`、第 3 段 `(中值+初始)/2`、第 4 段之後初始），回傳累積體積到達 `volumeUl` 的時刻。
-  - `fractionCollectorWindow({ times, targetFlowRate, initialFlowRate })` → `{ startTime, stopTime }`：`startTime = timeAtCumulativeVolume(1050) − 2.8`；`stopTime = timeAtCumulativeVolume(Q1 + 1050) + 2.8`。
+  - `fractionCollectorWindow({ times, targetFlowRate, initialFlowRate })` → `{ startTime, stopTime }`。`times` 是 `[A5, A6, A7, A8]`（即 `M21…M24`；`A4`／`M20` 不參與計算）。`startTime = timeAtCumulativeVolume(1050) − 2.8`；`stopTime = timeAtCumulativeVolume(Q1 + 1050) + 2.8`。
   - 這個統一寫法等價於 Excel 的 `B10` 與 `B12` 兩串 IF（用累積體積判斷所在段，而不是 Excel 用數值相等挑分支），也就避開了 Excel 裡「依值相等挑分支」與永遠走不到的 `M10` 這兩個脆弱處。等價性由 §5.4 的格點測試保證。
 - `calculateHPLCSAXSSettings` 改呼叫上述函式；輸出物件的欄位、`toFixed(2)` 取位、`timePerFraction` 都不變。
-- 報告結束時間 `reportStoptime = ceil(Stop + 1 + 3)` 維持現況。程式註解寫明 Excel `A15 = B22+1+3` 之後取整；實作時找出引用 `A15` 的儲存格確認取整方式，若不符就停下來回報，不自行改。
+- 報告結束時間改成 `reportStoptime = Math.round(Stop + 1 + 3)`，`Stop` 用取位前的值（Excel `A15 = B22+1+3`，`B22` 是未取位的 Stop）。原本的 `Math.ceil` 與 Excel 畫面在多數流速下差 1 分鐘。Excel 裡沒有任何儲存格引用 `A15`；它的整數是儲存格格式 `[$-404]0`（四捨五入顯示）造成的，程式註解要寫明這點。
 - 常數集中成一個凍結物件（死體積 1050 µL、安全區 2.8 min、爬升 2 min 與 0.5 min、每管 1.2），註解寫明「2026-10-14 決定先照 Excel，待使用者確認」。既有匯出 `SAXS.DEAD_VOLUME_UL`、`SAXS.SAFE_ZONE_MIN` 保留，數值不變。
 - 程式註解註明 Excel 的近似：爬升段用該段平均流速把體積換成時間，體積正確、時間是近似（目標 0.10、初始 0.35 時，與線性爬升精確積分差約 0.16 min）。
 - `section-hplc.js` 只顯示數值，不需要改。
@@ -135,9 +136,9 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 ### 5.4 測試（新檔 `tests/fraction-collector.test.js`）
 
 - **Excel 逐格轉寫當標準答案**：在測試裡逐字轉寫 Excel 的 `B10`、`B12` 兩串 IF 與所有輔助儲存格（`D4…Q4`、`E10…E32`、`M10…M32`），當作 oracle。
-- **格點比對**：目標 ∈ {0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.50}、初始 ∈ {0.20, 0.35, 0.50}、注射體積 ∈ {50, 100, 200} µL，峰中心 10.937、FWHM 1。新函式在取位前與 oracle 差 < 1e-9。若某個格點不一致（例如 Excel 的相等判斷在邊界挑了不同分支），停下來回報，不自行決定。
+- **格點比對**：目標 ∈ {0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.50}、初始 ∈ {0.20, 0.35, 0.50}、注射體積 ∈ {10, 50, 100} µL（校正範圍是 3–100 µL，超出會丟錯，見既有測試 [47]），峰中心 10.937、FWHM 1。新函式在取位前與 oracle 差 < 1e-9（審查以 48 個範圍內格點試算，差 < 4e-15）。若某個格點不一致（例如 Excel 的相等判斷在邊界挑了不同分支），停下來回報，不自行決定。
 - **Excel 快取值**：0.35／0.35 → 10.28／19.72（沿用既有斷言）。
-- **§5.1 表格各列**當回歸值。
+- **§5.1 表格各列**當回歸值，連同報告結束時間：0.35／0.35 → 24、0.30／0.35 → 24、0.20／0.35 → 26、0.15／0.35 → 27、0.10／0.35 → 29、0.05／0.35 → 36、0.35／0.50 → 24。
 - `batch1.test.js:256-261` 的測試 [46] 用的是網頁舊公式（Stop − Start = 2.8 + 收集時間 + 2.8），不是 Excel 的值。改成斷言 0.20／0.35 的 Excel 值 12.53／21.79。這個期望值改變是因為舊期望值本身由錯誤公式推得；commit 訊息要寫明理由與 Excel 出處。（CLAUDE.md「不要改期望值」指的是 Python 以 xfail 鎖定的已知 bug，不適用這裡。）
 
 ## 6. 負峰與 FWHM
@@ -155,18 +156,28 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 ### 6.2 負 dn/dc 警告
 
 - 共用判斷：最終 dn/dc < 0 時附上警告「dn/dc 為負：請檢查 RI 極性或峰／基線區間」。
-- 適用範圍：HPLC 單次（height／area／SPI）、Slice、多注射擬合（斜率 < 0），Python 與 JS 都要。
-- Python：`CalculationResult`（`models.py:77-88`）新增 `warnings: tuple[str, ...] = ()`。Slice 與多注射的結果型別同樣加上。Streamlit 頁面（`web/pages/hplc_page.py` 等）用 `st.warning` 顯示；CLI（`__main__.py`）印出。CSV 不加欄位。
-- JS：`computeHplcDndc`、`computeSliceDndc`、多注射擬合的回傳值加 `warnings: []`；結果畫面（`dndc-hplc-results.js`、`dndc-slice-ui.js`、`dndc-multi-ui.js`）用 `alert-warning` 顯示，文字與 Python 相同。
+- **HPLC 單次（height／area／SPI）**
+  - Python：`CalculationResult`（`models.py:76`）新增 `warnings: tuple[str, ...] = ()`，由 `compute_hplc_dndc` 填入。
+  - JS：`computeHplcDndc` 的回傳值加 `warnings: []`。
+- **Slice**（最終回報的 dn/dc）
+  - Python：`SliceResult`（`calculator.py:392`，不在 `models.py`）新增同樣的 `warnings` 欄位，由 `compute_slice_dndc` 填入。
+  - JS：`computeSliceDndc` 的回傳值加 `warnings: []`。
+- **手動多注射擬合**（只有 JS；Python 沒有手動多注射路徑）：在 `dndc-multi-ui.js` 的 `displayMultiFitResults` 裡檢查斜率 < 0。不改通用的 `linearFit`，因為 Slice 與 ASTRA 也用它。
+- **不在範圍內**：ASTRA 單次（`AstraSingleResult`，`astra.py:46`，取 `abs(area)` 並設 `is_negative_peak`）與 ASTRA 多注射（`AstraMultiResult`，`astra.py:59`；`dndc-astra-ui.js`）維持各自現有的慣例。
+- 顯示：
+  - Streamlit 頁面（`web/pages/hplc_page.py`、slice 頁）用 `st.warning`；CLI（`__main__.py`）印出。CSV 不加欄位。
+  - JS 的 HPLC 與 Slice 畫面已有 UI 層的 `warnings` 陣列交給 `renderWarningsHtml`（`dndc-hplc-results.js:75-93`、`dndc-slice-ui.js:53-76`）。把 `result.warnings` 併進那個陣列，不另外加一個提示框。手動多注射用同樣的 `alert-warning` 樣式。文字與 Python 相同。
 
 ### 6.3 負 UV 峰拒絕
 
 - 用 UV 算濃度時（不是手動輸入濃度），UV 峰的值 < 0 就丟出錯誤：「UV 峰為負：基線區間落在峰上或極性反轉，請檢查 UV 峰範圍與基線範圍」。
 - Python 在 `_compute_concentration`（`calculator.py` 約 266–276 行）；JS 在對應的濃度計算處（約 958 行）。檢查要排在現有的「無法求得有效濃度」檢查之前，使用者才不會看到講錯原因的訊息。
+- 只適用 HPLC 單次。Slice 不套用：邊緣 slice 的 UV 本來就可能因雜訊略低於 0，逐片拒絕會讓整次計算失敗。
 
 ### 6.4 RI 因子負值
 
-- Python `validation.py:97-99` 目前只擋 0，負的 `ri_factor` 會悄悄翻轉 dn/dc 的符號。改成擋 ≤ 0，與 JS（`dndc-calculations.js:777`）一致。
+- Python `validation.py:97-99` 目前只擋 0，負的 `ri_factor` 會悄悄翻轉 dn/dc 的符號。改成擋 ≤ 0，與 JS（`dndc-calculations.js:777` 的 `_assertOpticalParams`）一致。
+- `validate_params` 只在 Streamlit HPLC 頁執行（`hplc_page.py:404`）；CLI（`__main__.py:83`）與直接呼叫 `compute_*` 都不經過它。所以 `compute_hplc_dndc` 與 `compute_slice_dndc` 內部也要加同樣的 ≤ 0 檢查，比照 JS 在計算函式裡把關。
 
 ### 6.5 FWHM 不再重複扣基線（只有 Python）
 
@@ -184,9 +195,9 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 ### 6.6 測試與文件
 
 - 三個 xfail 測試拿掉 `@pytest.mark.xfail` 與 `@pytest.mark.bug` 標記（比照 `895c18a` 修 wiener 時的做法），期望值不改。預期 329 passed／0 xfailed，加上新測試。
-- `test_calculator.py:602` 收緊成 `dn_dc ≈ −0.185`，並斷言 `warnings` 含負 dn/dc 警告。
+- `test_calculator.py:604` 的斷言收緊成 `dn_dc ≈ −0.185`，並斷言 `warnings` 含負 dn/dc 警告。
 - 新增：負 UV 峰丟出 §6.3 的訊息（Python、JS）；負 `ri_factor` 被擋（Python）；JS 峰高／面積保留符號、負 dn/dc 警告。
-- 更新過時的說明：`test_broadening.py` 模組 docstring 第 13–15 行（描述早已修好的 wiener xfail）、xfail 理由裡過時的 `calculator.py:381-383`、`test_peak.py:15`、`test_calculator.py:575-579`、`test_measure_fwhm_returns_none_for_flat_signal` 的 docstring（現在是因為沒有半高交叉點才回 None）。
+- 更新過時的說明：`test_broadening.py` 模組 docstring 第 13–15 行（描述早已修好的 wiener xfail）、xfail 理由裡過時的 `calculator.py:381-383`、`test_peak.py:14`、`test_calculator.py:575-579`、`test_measure_fwhm_returns_none_for_flat_signal` 的 docstring（現在是因為沒有半高交叉點才回 None）。
 - 刪除 `calculator.py:29` 沒被用到的 `detect_peak_direction` import。
 - dndc repo 的 `src/` 是 CRLF 換行，編輯後要維持 CRLF。
 
@@ -194,25 +205,28 @@ fractionStopTime  = fractionStartTime + 2.8 + (M22 − M21) + 2.8
 
 ### 7.1 稀釋因子的 SEM 對照
 
-- 顯示稀釋因子相對離散（SD）的地方，加一行小字：`SEM x.xx%（n = N）`，其中 SEM = SD ÷ √n，n 是 q 視窗內實際用到的點數。
+- 只加在**面板 1** 的「相對離散」小字旁（`section-liposome.js:164-165`），加一行 `SEM x.xx%（n = N）`，其中 SEM = SD ÷ √n，n 是 q 視窗內實際用到的點數。面板 1 只有用 SAXS 檔算出稀釋因子時才會顯示，所以手動輸入因子的情況自然不會出現。
+- 面板 3 的因子回顯（`:140`，「± sd（n = N）」）與 D/L 的「稀釋因子離散貢獻 relF」（`:372`）不變。
 - D/L 誤差仍用 SD（`√(relA² + relF²)` 不變）。結果表與 CSV 不加欄位。
-- 手動輸入稀釋因子時（relF = 0、沒有 n）不顯示。
 - 規格 `2026-09-05-liposome-dox-loading-design.md` §10 的決策表補一列：「稀釋因子誤差：主值 SD；SEM 只當對照（2026-10-14 使用者定案）。理由：相鄰 q 點的雜訊通常相關，比值也可能隨 q 漂移，兩者都會讓 SEM 低估」。
 
 ### 7.2 純 DOX 標準液濃度 → 對照 [DOX]
 
 - 面板 2 在「純 DOX 光譜」檔案欄位旁新增選填欄位 `lipoPureConc`（標籤「純 DOX 標準液濃度」，單位 mM，`min` > 0）。
 - 欄位說明：「標準液與樣品須用同一光徑，且在線性範圍內量測（建議 A < 1.5）。Excel 工作表2 的 4.6 mM 光譜 A(495) = 7.25，已飽和，不能用。」
-- 有純 DOX 光譜、縮放擬合得到 k（`fitPureDoxScale`）、且欄位有值時，算出 `[DOX]_std = k × c_pure`。與主值 [DOX]（ε 法）用同一個基準比較：實作時以 `liposome-calculations.js` 的 `computeDrugToLipid` 裡 [DOX] 的定義為準，確保兩者都是同一個比色槽、同樣的稀釋修正。
+- 有純 DOX 光譜、縮放擬合得到 k（`fitPureDoxScale`）、且欄位有值時，算出 `[DOX]_std = k × c_pure`。
+- 基準一致：`computeDrugToLipid` 的 [DOX] = A(主波長) ÷ (ε·l)，取自扣背景後的比色槽光譜、不含稀釋修正；k × c_pure 在光徑相同時是同一個基準（審查已核對）。
+- 單位：主值 `doxConc` 內部是 M（畫面 ×1000 顯示 mM，`section-liposome.js:378`）；`lipoPureConc` 輸入是 mM，計算前換成 M，顯示時兩者都用 mM。
 - 在面板 3 的 [DOX] 結果旁顯示「標準液法對照：x.xxx mM（差 ±y%）」。|差| > 10% 時加 `alert-warning`：「標準液法與 ε 法的 [DOX] 相差超過 10%，請檢查 ε、光徑或標準液濃度」。
-- k < 0 時不計算對照值（沿用 Task 11b 的 k < 0 警告）。
+- 不顯示對照值的情況：k < 0（沿用 Task 11b 的 k < 0 警告）；吸光度是手動輸入的（`absSource === 'manual'`，此時 k 與 ε 法的吸光度不是來自同一條光譜）。
+- `lipoPureConc` **不加入** `INVALIDATING_IDS`（`section-liposome.js:30-33`）：它不影響 D/L，不該因此停用「加入結果表」。改這個欄位時即時重算對照值。
 - D/L 主值、結果表、CSV 都不變。
 - 規格 §10 補一列記錄這個決定。
 
 ### 7.3 測試
 
-- `tests/liposome.test.js`：SEM 計算（含 n）；`[DOX]_std` 計算；差 > 10% 的判斷；沒有濃度、沒有純 DOX 檔、k < 0 時都不產生對照值。
-- `tests/liposome-section.test.js`（stub DOM）：欄位存在、SEM 小字與對照值的顯示與隱藏。
+- `tests/liposome.test.js`：SEM 計算（含 n）；`[DOX]_std` 計算與 mM／M 換算；差 > 10% 的判斷；沒有濃度、沒有純 DOX 檔、k < 0、吸光度手動輸入時都不產生對照值。
+- `tests/liposome-section.test.js`（stub DOM）：欄位存在；SEM 小字只出現在面板 1；對照值的顯示與隱藏；改 `lipoPureConc` 不會停用「加入結果表」（`INVALIDATING_IDS` 維持現有十個欄位）。
 
 ## 8. 上線
 
@@ -238,11 +252,10 @@ dndc repo：§6 的 Python 部分一個 commit（本地，不 push）。
 
 - `node --test saxs-calculator/tests/*.test.js` 全過（159 個既有加新測試）。
 - `cd "dndc calculator" && .venv_mac/bin/python -m pytest -q`：329 passed／0 xfailed 加新測試；同時更新 CLAUDE.md 裡的 pytest 基準數字。
-- 瀏覽器：`index.html` 無 console 錯誤；HPLC 頁輸入目標 0.20、初始 0.35 時顯示 12.53／21.79；脂質體頁用合成資料看到 SEM 小字與對照值；dn/dc 各頁正常資料的數字與修改前相同。
+- 瀏覽器：`index.html` 無 console 錯誤；HPLC 頁輸入目標 0.20、初始 0.35 時顯示 12.53／21.79，報告結束時間 26；脂質體頁用合成資料看到 SEM 小字與對照值；dn/dc 各頁正常資料的數字與修改前相同。
 - 更新記憶：`review_findings_2026_08_21.md` 剩餘清單（拆檔完成、fraction collector 完成、xfail 清零、「0.15 mL/min」的錯誤說法改正）。
 
 ## 9. 開放事項
 
 - Fraction collector 常數（死體積 1050 µL、爬升 2 + 0.5 min、每管 1.2）：使用者之後確認是否符合目前硬體與方法。
 - 脂質體 Excel 三欄波長：等資料提供者回覆。
-- `reportStoptime` 的取整：實作時對照 Excel 引用 `A15` 的儲存格（§5.3）。
