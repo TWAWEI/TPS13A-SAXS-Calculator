@@ -37,12 +37,16 @@ function downloadCsv(filename, csvContent) {
     triggerDownload(URL.createObjectURL(blob), filename, true);
 }
 
+/**
+ * 下載圖表 PNG：一律淺色白底（深色模式下也是），由 ChartTheme.exportPng 暫時換色取圖後還原。
+ * 脂質體頁（section-liposome.js）也呼叫這個函式。
+ */
 function downloadChartPng(chart, filename) {
     if (!chart) {
         showDndcAlert('hplcDndcResults', 'error', '尚未產生圖表，請先執行計算');
         return;
     }
-    triggerDownload(chart.toBase64Image('image/png', 1), filename, false);
+    triggerDownload(ChartTheme.exportPng(chart), filename, false);
 }
 
 function initChartControls() {

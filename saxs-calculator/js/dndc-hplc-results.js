@@ -137,19 +137,6 @@ function displayAllChannelsChart(parsed) {
     // Time 固定為 col 0
     const time = data.map(r => r[0]);
 
-    const colors = [
-        'rgba(240, 78, 78, 0.85)',
-        'rgba(16, 185, 129, 0.85)',
-        'rgba(236, 130, 130, 0.85)',
-        'rgba(5, 150, 105, 0.85)',
-        'rgba(234, 156, 156, 0.85)',
-        'rgba(52, 211, 153, 0.85)',
-        'rgba(232, 182, 182, 0.85)',
-        'rgba(200, 50, 50, 0.85)',
-        'rgba(236, 130, 130, 0.85)',
-        'rgba(16, 185, 129, 0.85)'
-    ];
-
     // 建立 checkbox toggles（跳過 Time 欄）
     const channelIndices = [];
     for (let i = 1; i < headers.length; i++) {
@@ -158,18 +145,23 @@ function displayAllChannelsChart(parsed) {
 
     // 預設顯示前 3 個通道
     const defaultVisible = new Set(channelIndices.slice(0, 3));
+    const seriesCount = ChartTheme.palette().series.length;
 
+    // 顏色跟著通道（series = 通道在 channelIndices 的位置），不跟著勾選順序；
+    // 系列色用完後重用同色、改虛線（與圖線一致）
     togglesDiv.innerHTML = channelIndices.map((colIdx, i) => {
-        const color = colors[i % colors.length];
-        const checked = defaultVisible.has(colIdx) ? 'checked' : '';
-        return `<label style="display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; cursor: pointer; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid ${color}; background: ${checked ? color.replace('0.85', '0.1') : 'transparent'};">
-            <input type="checkbox" class="dndc-channel-toggle" data-col="${colIdx}" ${checked} style="margin: 0;">
-            <span style="color: ${color}; font-weight: 500;">${escapeHtmlDndc(headers[colIdx])}</span>
+        const checked = defaultVisible.has(colIdx);
+        const classes = ['channel-chip', checked ? 'is-on' : '', i >= seriesCount ? 'channel-chip--dashed' : '']
+            .filter(Boolean).join(' ');
+        return `<label class="${classes}" data-series="${i}">
+            <input type="checkbox" class="dndc-channel-toggle" data-col="${colIdx}" ${checked ? 'checked' : ''}>
+            <span>${escapeHtmlDndc(headers[colIdx])}</span>
         </label>`;
     }).join('');
+    paintChannelChips();
 
     // 儲存供重繪用
-    DndcState.channelChartData = { time, headers, data, colors, channelIndices };
+    DndcState.channelChartData = { time, headers, data, channelIndices };
 
     // 繪製
     redrawChannelsChart();
@@ -177,19 +169,30 @@ function displayAllChannelsChart(parsed) {
     // 綁定 checkbox 事件
     togglesDiv.querySelectorAll('.dndc-channel-toggle').forEach(cb => {
         cb.addEventListener('change', () => {
-            // 更新 label 背景
-            const label = cb.closest('label');
-            const colIdx = parseInt(cb.dataset.col);
-            const i = channelIndices.indexOf(colIdx);
-            const color = colors[i % colors.length];
-            label.style.background = cb.checked ? color.replace('0.85', '0.1') : 'transparent';
+            cb.closest('label').classList.toggle('is-on', cb.checked);
             redrawChannelsChart();
         });
     });
 }
 
+/**
+ * 依主題設定每個通道膠囊的 --chip-color（原始碼裡沒有色碼；切換主題時由 initChannelChipTheme 重設）。
+ * @param {('light'|'dark')} [themeName] - 省略時用目前生效的主題
+ */
+function paintChannelChips(themeName) {
+    const palette = ChartTheme.palette(themeName);
+    document.querySelectorAll('#dndcChannelToggles .channel-chip').forEach(label => {
+        label.style.setProperty('--chip-color', ChartTheme.seriesColor(palette, Number(label.dataset.series)));
+    });
+}
+
+/** 由 dndc-ui.js 的 DOMContentLoaded 呼叫：主題切換時重設通道膠囊顏色（圖表本身由 ChartTheme.init 處理） */
+function initChannelChipTheme() {
+    document.addEventListener('tps:themechange', event => paintChannelChips(event.detail && event.detail.theme));
+}
+
 function redrawChannelsChart() {
-    const { time, headers, data, colors, channelIndices } = DndcState.channelChartData;
+    const { time, headers, data, channelIndices } = DndcState.channelChartData;
 
     if (DndcState.charts.chromatogram) {
         DndcState.charts.chromatogram.destroy();
@@ -205,29 +208,26 @@ function redrawChannelsChart() {
     toggles.forEach((cb) => {
         if (!cb.checked) return;
         const colIdx = parseInt(cb.dataset.col);
-        const i = channelIndices.indexOf(colIdx);
-        const color = colors[i % colors.length];
         const values = data.map(r => r[colIdx]);
 
         datasets.push({
             label: headers[colIdx],
             data: time.map((t, j) => ({ x: t, y: values[j] })),
-            borderColor: color,
-            backgroundColor: 'transparent',
-            borderWidth: 1.5,
+            tpsSeries: channelIndices.indexOf(colIdx),
+            borderWidth: 2,
             pointRadius: 0,
             showLine: true,
             yAxisID: `y${datasets.length}`
         });
     });
 
-    // 每個通道獨立 y 軸（因為量級可能差很多）
+    // 每個通道獨立 y 軸（因為量級可能差很多）；軸線用該通道的顏色，刻度與標題用文字色
     const scales = {
         x: {
             type: 'linear',
-            title: { display: true, text: 'Time (min)', color: 'rgba(13,33,55,0.65)', font: { family: "'Inter', sans-serif", size: 12, style: 'italic' } },
-            ticks: { color: 'rgba(13,33,55,0.65)', font: { size: 10 } },
-            grid: { color: 'rgba(26, 26, 46, 0.12)' }
+            title: { display: true, text: 'Time (min)', font: { family: ChartTheme.FONT, size: 12, style: 'italic' } },
+            ticks: { font: { size: 10 } },
+            grid: { display: false }
         }
     };
 
@@ -235,13 +235,14 @@ function redrawChannelsChart() {
         scales[`y${i}`] = {
             type: 'linear',
             position: i === 0 ? 'left' : 'right',
-            title: { display: i < 2, text: ds.label, color: ds.borderColor, font: { family: "'Inter', sans-serif", size: 11 } },
-            ticks: { color: ds.borderColor, font: { size: 9 } },
-            grid: { display: i === 0, color: 'rgba(26, 26, 46, 0.10)' }
+            tpsSeries: ds.tpsSeries,
+            title: { display: i < 2, text: ds.label, font: { family: ChartTheme.FONT, size: 11 } },
+            ticks: { font: { size: 9 } },
+            grid: { display: i === 0 }
         };
     });
 
-    DndcState.charts.chromatogram = new Chart(canvas, {
+    DndcState.charts.chromatogram = new Chart(canvas, ChartTheme.colorize({
         type: 'scatter',
         data: { datasets },
         options: {
@@ -250,13 +251,10 @@ function redrawChannelsChart() {
             interaction: { mode: 'nearest', intersect: false },
             plugins: {
                 legend: {
-                    labels: { color: 'rgba(13,33,55,0.65)', font: { family: "'Inter', sans-serif", size: 11 } }
+                    labels: { font: { family: ChartTheme.FONT, size: 12 } }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(0,50,100,0.92)',
-                    titleColor: '#fff',
-                    bodyColor: 'rgba(255,255,255,0.85)',
-                    cornerRadius: 4, padding: 8
+                    cornerRadius: 8, padding: 10
                 },
                 zoom: {
                     pan: { enabled: true, mode: 'xy' },
@@ -265,7 +263,7 @@ function redrawChannelsChart() {
             },
             scales
         }
-    });
+    }));
 }
 
 function displayChromatogram(time, uv, ri, params) {

@@ -405,17 +405,6 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
     const canvas = document.getElementById('astraChromatogramCanvas');
     if (!canvas) return;
 
-    const colors = [
-        'rgba(240, 78, 78, 0.8)',
-        'rgba(16, 185, 129, 0.8)',
-        'rgba(236, 130, 130, 0.8)',
-        'rgba(5, 150, 105, 0.8)',
-        'rgba(234, 156, 156, 0.8)',
-        'rgba(52, 211, 153, 0.8)',
-        'rgba(232, 182, 182, 0.8)',
-        'rgba(200, 50, 50, 0.8)'
-    ];
-
     const datasets = [];
     for (let i = 0; i < parsedFiles.length; i++) {
         const pf = parsedFiles[i];
@@ -427,9 +416,8 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
         datasets.push({
             label,
             data: pf.riChannel.time.map((t, j) => ({ x: t, y: pf.riChannel.values[j] })),
-            borderColor: colors[i % colors.length],
-            backgroundColor: 'transparent',
-            borderWidth: 1.5,
+            tpsSeries: i,              // 依檔案編號（沒有 RI 的檔被跳過也不改變其他檔的顏色）
+            borderWidth: 2,
             pointRadius: 0,
             showLine: true
         });
@@ -456,8 +444,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
             { x: intEnd, y: yMax + yPad },
             { x: intEnd, y: yMin - yPad }
         ],
-        backgroundColor: 'rgba(240, 78, 78, 0.07)',
-        borderColor: 'rgba(240, 78, 78, 0.3)',
+        tpsRole: 'region',
         borderWidth: 1,
         borderDash: [4, 4],
         pointRadius: 0,
@@ -470,7 +457,7 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
         `積分範圍 ${intStart.toFixed(1)}–${intEnd.toFixed(1)} 分鐘。` +
         '各注射的濃度、體積與 RI 面積見上方注射解析結果表');
 
-    DndcState.charts.astraChromatogram = new Chart(canvas, {
+    DndcState.charts.astraChromatogram = new Chart(canvas, ChartTheme.colorize({
         type: 'scatter',
         data: { datasets },
         options: {
@@ -479,16 +466,12 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
             plugins: {
                 legend: {
                     labels: {
-                        color: 'rgba(26, 26, 46, 0.65)',
-                        font: { family: "'Inter', sans-serif", size: 12 }
+                        font: { family: ChartTheme.FONT, size: 12 }
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(80, 20, 20, 0.92)',
-                    titleColor: '#fff',
-                    bodyColor: 'rgba(255, 255, 255, 0.85)',
-                    cornerRadius: 4,
-                    padding: 8
+                    cornerRadius: 8,
+                    padding: 10
                 },
                 zoom: {
                     pan: { enabled: true, mode: 'xy' },
@@ -501,26 +484,23 @@ function displayAstraChromatogramsWithRange(parsedFiles, intStart, intEnd) {
                     title: {
                         display: true,
                         text: 'Time (min)',
-                        color: 'rgba(26, 26, 46, 0.65)',
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
+                        font: { family: ChartTheme.FONT, size: 12, style: 'italic' }
                     },
-                    ticks: { color: 'rgba(26, 26, 46, 0.65)', font: { size: 10 } },
-                    grid: { color: 'rgba(26, 26, 46, 0.12)' }
+                    ticks: { font: { size: 10 } },
+                    grid: { display: false }
                 },
                 y: {
                     type: 'linear',
                     title: {
                         display: true,
                         text: 'dRI (RIU)',
-                        color: 'rgba(26, 26, 46, 0.65)',
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
+                        font: { family: ChartTheme.FONT, size: 12, style: 'italic' }
                     },
-                    ticks: { color: 'rgba(26, 26, 46, 0.65)', font: { size: 10 } },
-                    grid: { color: 'rgba(26, 26, 46, 0.12)' }
+                    ticks: { font: { size: 10 } }
                 }
             }
         }
-    });
+    }));
 }
 
 // 純文案函式對外（tests/ 在 Node 端直接測，不需要 DOM）

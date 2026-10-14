@@ -14,13 +14,7 @@ const { readCode, CSS_FILES, JS_FILES } = require('./style-scan.js');
 
 const EXEMPT = Object.freeze(['css/tokens.css', 'js/chart-theme.js']);
 
-const PENDING_LITERAL_FILES = Object.freeze([
-    'js/charts.js',
-    'js/dndc-astra-ui.js',
-    'js/dndc-charts.js',
-    'js/dndc-hplc-results.js',
-    'js/liposome-charts.js',
-]);
+const PENDING_LITERAL_FILES = Object.freeze([]);
 
 // #hex（前面不能是 & 或字母數字，排除 &#10; 這類 HTML 實體）與顏色函式。transparent／currentColor／inherit 允許。
 const COLOR_LITERAL = /(?<![&\w])#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/g;

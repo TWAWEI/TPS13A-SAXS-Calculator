@@ -16,9 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { read, readCode, CSS_FILES, JS_FILES, parseCustomProperties, cssRules } = require('./style-scan.js');
 
-const PENDING_TOKEN_FILES = Object.freeze([
-    'js/dndc-hplc-results.js',
-]);
+const PENDING_TOKEN_FILES = Object.freeze([]);
 
 // 執行時才由 JS 設定的自訂屬性（不在 tokens.css）
 const RUNTIME_PROPERTIES = Object.freeze(['--chip-color']);

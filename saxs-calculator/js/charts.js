@@ -1,57 +1,28 @@
 /**
  * TPS13A SAXS Calculator - Charts Module
- * 使用 Chart.js 產生視覺化圖表
+ * 使用 Chart.js 產生視覺化圖表。顏色由 ChartTheme 依 tpsRole／tpsSeries 決定（js/chart-theme.js）。
  */
 
-// 顏色配置 — light theme (coral-to-rose palette)
-const CHART_COLORS = {
-    primary: 'rgba(240, 78, 78, 1)',         // Coral red #F04E4E
-    primaryLight: 'rgba(240, 78, 78, 0.12)',
-    secondary: 'rgba(16, 185, 129, 1)',      // Emerald #10b981
-    secondaryLight: 'rgba(16, 185, 129, 0.12)',
-    tertiary: 'rgba(245, 158, 11, 1)',       // Amber (warning, unchanged)
-    tertiaryLight: 'rgba(245, 158, 11, 0.12)',
-    danger: 'rgba(220, 38, 38, 1)',          // Red (error)
-    dangerLight: 'rgba(220, 38, 38, 0.12)',
-    text: 'rgba(26, 26, 46, 0.65)',          // Deep warm slate muted
-    grid: 'rgba(26, 26, 46, 0.12)',          // Neutral slate: 1.09:1 coral tint was invisible
-    background: 'rgba(229, 233, 235, 1)'     // Ice blue-gray
-};
-
-// 通用圖表配置
-const commonOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-        legend: {
-            labels: {
-                color: CHART_COLORS.text,
-                font: { family: "'Inter', sans-serif", size: 11, weight: 500 }
+// 通用圖表配置（每次呼叫回傳新物件；顏色由 ChartTheme.colorize 填入）
+function commonOptions() {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: {
+                    font: { family: ChartTheme.FONT, size: 12, weight: 500 }
+                }
+            },
+            tooltip: {
+                cornerRadius: 8,
+                padding: 10,
+                titleFont: { family: ChartTheme.FONT, size: 12, weight: 600 },
+                bodyFont: { family: ChartTheme.MONO, size: 11 }
             }
-        },
-        tooltip: {
-            backgroundColor: 'rgba(80, 20, 20, 0.92)',
-            titleColor: '#fff',
-            bodyColor: 'rgba(255, 255, 255, 0.85)',
-            borderColor: 'rgba(240, 78, 78, 0.35)',
-            borderWidth: 1,
-            cornerRadius: 6,
-            padding: 10,
-            titleFont: { family: "'Inter', sans-serif", size: 12, weight: 600 },
-            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 }
         }
-    },
-    scales: {
-        x: {
-            ticks: { color: CHART_COLORS.text, font: { size: 11 } },
-            grid: { color: CHART_COLORS.grid }
-        },
-        y: {
-            ticks: { color: CHART_COLORS.text, font: { size: 11 } },
-            grid: { color: CHART_COLORS.grid }
-        }
-    }
-};
+    };
+}
 
 /**
  * 建立氨基酸組成圓餅圖
@@ -63,52 +34,48 @@ function createCompositionChart(canvasId, composition) {
     const sorted = Object.entries(composition)
         .sort((a, b) => b[1] - a[1]);
 
-    const top10 = sorted.slice(0, 10);
-    const others = sorted.slice(10).reduce((sum, [, count]) => sum + count, 0);
+    // 系列色只有 8 色：前 7 名各一色，其餘併成「Others」（reference 灰）
+    const topCount = ChartTheme.palette().series.length - 1;
+    const top = sorted.slice(0, topCount);
+    const others = sorted.slice(topCount).reduce((sum, [, count]) => sum + count, 0);
 
-    const labels = top10.map(([aa]) => aa);
-    const data = top10.map(([, count]) => count);
+    const labels = top.map(([aa]) => aa);
+    const data = top.map(([, count]) => count);
 
     if (others > 0) {
         labels.push('Others');
         data.push(others);
     }
 
-    // Muted, sophisticated palette
-    const colors = labels.map((_, i) => {
-        const hue = (i * 33 + 220) % 360;
-        return `oklch(0.6 0.12 ${hue})`;
-    });
-
-    return new Chart(ctx, {
+    const base = commonOptions();
+    return new Chart(ctx, ChartTheme.colorize({
         type: 'doughnut',
         data: {
             labels: labels,
             datasets: [{
                 data: data,
-                backgroundColor: colors,
-                borderColor: '#ffffff',
+                tpsSeries: 'byIndex',
+                tpsOthersIndex: others > 0 ? labels.length - 1 : -1,
                 borderWidth: 2,
                 hoverOffset: 6
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            ...base,
             cutout: '65%',
             plugins: {
+                ...base.plugins,
                 legend: {
                     position: 'right',
                     labels: {
-                        color: CHART_COLORS.text,
                         padding: 10,
                         usePointStyle: true,
                         pointStyle: 'circle',
-                        font: { family: "'Inter', sans-serif", size: 11 }
+                        font: { family: ChartTheme.FONT, size: 12 }
                     }
                 },
                 tooltip: {
-                    backgroundColor: 'rgba(80, 20, 20, 0.92)',
+                    ...base.plugins.tooltip,
                     callbacks: {
                         label: function (context) {
                             const total = context.dataset.data.reduce((a, b) => a + b, 0);
@@ -119,7 +86,7 @@ function createCompositionChart(canvasId, composition) {
                 }
             }
         }
-    });
+    }));
 }
 
 /**
@@ -133,47 +100,44 @@ function createCompositionBarChart(canvasId, composition) {
     const labels = aaOrder;
     const data = aaOrder.map(aa => composition[aa] || 0);
 
-    return new Chart(ctx, {
+    const base = commonOptions();
+    return new Chart(ctx, ChartTheme.colorize({
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
                 label: 'Count',
                 data: data,
-                backgroundColor: 'rgba(240, 78, 78, 0.7)',
-                hoverBackgroundColor: 'rgba(240, 78, 78, 0.9)',
-                borderColor: 'transparent',
-                borderRadius: 3,
+                tpsRole: 'primary',
+                borderWidth: 0,
+                borderRadius: 4,
                 borderSkipped: false
             }]
         },
         options: {
-            ...commonOptions,
+            ...base,
             plugins: {
-                ...commonOptions.plugins,
+                ...base.plugins,
                 legend: { display: false }
             },
             scales: {
                 x: {
                     ticks: {
-                        color: CHART_COLORS.text,
-                        font: { family: "'JetBrains Mono', monospace", size: 10, weight: 500 }
+                        font: { family: ChartTheme.MONO, size: 10, weight: 500 }
                     },
                     grid: { display: false }
                 },
                 y: {
                     beginAtZero: true,
-                    ticks: { color: CHART_COLORS.text, font: { size: 10 } },
-                    grid: { color: CHART_COLORS.grid }
+                    ticks: { font: { size: 10 } }
                 }
             }
         }
-    });
+    }));
 }
 
 // 導出函數
 window.SAXSCharts = {
-    CHART_COLORS,
     createCompositionChart,
     createCompositionBarChart
 };

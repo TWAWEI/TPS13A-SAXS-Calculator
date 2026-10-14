@@ -131,4 +131,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initDndcSections();
     initExportButtons();
     initChartControls();
+    initChannelChipTheme();
 });

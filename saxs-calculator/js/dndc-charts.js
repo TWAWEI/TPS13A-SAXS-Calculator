@@ -1,53 +1,44 @@
 /**
  * TPS13A SAXS Calculator - dn/dc Charts Module
- * 使用 Chart.js 產生 dn/dc 相關圖表
+ * 使用 Chart.js 產生 dn/dc 相關圖表。顏色由 ChartTheme 依 tpsRole 決定（js/chart-theme.js）。
  */
 
-const DNDC_CHART_COLORS = {
-    uv: 'rgba(240, 78, 78, 0.85)',           // Coral red #F04E4E
-    ri: 'rgba(16, 185, 129, 0.85)',          // Emerald #10b981
-    baseline: 'rgba(245, 158, 11, 0.6)',     // Amber (unchanged)
-    fit: 'rgba(220, 38, 38, 0.85)',          // Deep red
-    scatter: 'rgba(240, 78, 78, 0.7)',
-    peakRegion: 'rgba(240, 78, 78, 0.07)',
-    grid: 'rgba(26, 26, 46, 0.12)',   // neutral slate, readable in dim beamline light
-    text: 'rgba(26, 26, 46, 0.65)'
-};
-
-const dndcChartDefaults = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-        legend: {
-            labels: {
-                color: DNDC_CHART_COLORS.text,
-                font: { family: "'Inter', sans-serif", size: 12 }
-            }
-        },
-        tooltip: {
-            backgroundColor: 'rgba(80, 20, 20, 0.92)',
-            titleColor: '#fff',
-            bodyColor: 'rgba(255, 255, 255, 0.85)',
-            borderColor: 'rgba(240, 78, 78, 0.35)',
-            borderWidth: 1,
-            cornerRadius: 4,
-            padding: 8,
-            titleFont: { family: "'Inter', sans-serif", size: 12 },
-            bodyFont: { family: "'JetBrains Mono', monospace", size: 11 }
-        },
-        zoom: {
-            pan: {
-                enabled: true,
-                mode: 'xy'
+// dn/dc 圖表共用設定（每次呼叫回傳新物件；顏色由 ChartTheme.colorize 填入）
+function dndcChartDefaults() {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: {
+                    font: { family: ChartTheme.FONT, size: 12 }
+                }
+            },
+            tooltip: {
+                cornerRadius: 8,
+                padding: 10,
+                titleFont: { family: ChartTheme.FONT, size: 12 },
+                bodyFont: { family: ChartTheme.MONO, size: 11 }
             },
             zoom: {
-                wheel: { enabled: true },
-                pinch: { enabled: true },
-                mode: 'xy'
+                pan: {
+                    enabled: true,
+                    mode: 'xy'
+                },
+                zoom: {
+                    wheel: { enabled: true },
+                    pinch: { enabled: true },
+                    mode: 'xy'
+                }
             }
         }
-    }
-};
+    };
+}
+
+/** 座標軸標題（斜體、系統字） */
+function dndcAxisTitle(text) {
+    return { display: true, text, font: { family: ChartTheme.FONT, size: 12, style: 'italic' } };
+}
 
 /**
  * 建立色譜圖（UV + RI 雙軸）
@@ -66,18 +57,16 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
         {
             label: 'UV (280 nm)',
             data: time.map((t, i) => ({ x: t, y: uvSignal[i] })),
-            borderColor: DNDC_CHART_COLORS.uv,
-            backgroundColor: 'transparent',
-            borderWidth: 1.5,
+            tpsRole: 'primary',
+            borderWidth: 2,
             pointRadius: 0,
             yAxisID: 'y'
         },
         {
             label: 'dRI',
             data: time.map((t, i) => ({ x: t, y: riSignal[i] })),
-            borderColor: DNDC_CHART_COLORS.ri,
-            backgroundColor: 'transparent',
-            borderWidth: 1.5,
+            tpsRole: 'model',
+            borderWidth: 2,
             pointRadius: 0,
             yAxisID: 'y1'
         }
@@ -87,23 +76,23 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
     if (options && options.peakStart != null && options.peakEnd != null) {
         annotations.peakRegion = {
             type: 'box',
+            tpsRole: 'region',
             xMin: options.peakStart,
             xMax: options.peakEnd,
-            backgroundColor: DNDC_CHART_COLORS.peakRegion,
             borderWidth: 0
         };
         annotations.peakStartLine = {
             type: 'line',
+            tpsRole: 'marker',
             xMin: options.peakStart, xMax: options.peakStart,
-            borderColor: 'rgba(99, 102, 241, 0.6)',
             borderWidth: 1.5,
             borderDash: [4, 4],
-            label: { display: true, content: 'Peak', position: 'start', font: { size: 9 }, color: 'rgba(99, 102, 241, 0.8)' }
+            label: { display: true, content: 'Peak', position: 'start', font: { size: 10 } }
         };
         annotations.peakEndLine = {
             type: 'line',
+            tpsRole: 'marker',
             xMin: options.peakEnd, xMax: options.peakEnd,
-            borderColor: 'rgba(99, 102, 241, 0.6)',
             borderWidth: 1.5,
             borderDash: [4, 4]
         };
@@ -111,83 +100,71 @@ function createChromatogramChart(canvasId, time, uvSignal, riSignal, options) {
     if (options && options.bl1Start != null) {
         annotations.bl1Region = {
             type: 'box',
+            tpsRole: 'regionAlt',
             xMin: options.bl1Start, xMax: options.bl1End,
-            backgroundColor: 'rgba(180, 83, 9, 0.08)',
             borderWidth: 0
         };
         annotations.bl1Line = {
             type: 'line',
+            tpsRole: 'residual',
             xMin: options.bl1Start, xMax: options.bl1Start,
-            borderColor: DNDC_CHART_COLORS.baseline,
             borderWidth: 1, borderDash: [3, 3],
-            label: { display: true, content: 'BL1', position: 'start', font: { size: 9 }, color: DNDC_CHART_COLORS.baseline }
+            label: { display: true, content: 'BL1', position: 'start', font: { size: 10 } }
         };
     }
     if (options && options.bl2Start != null) {
         annotations.bl2Region = {
             type: 'box',
+            tpsRole: 'regionAlt',
             xMin: options.bl2Start, xMax: options.bl2End,
-            backgroundColor: 'rgba(180, 83, 9, 0.08)',
             borderWidth: 0
         };
         annotations.bl2Line = {
             type: 'line',
+            tpsRole: 'residual',
             xMin: options.bl2Start, xMax: options.bl2Start,
-            borderColor: DNDC_CHART_COLORS.baseline,
             borderWidth: 1, borderDash: [3, 3],
-            label: { display: true, content: 'BL2', position: 'start', font: { size: 9 }, color: DNDC_CHART_COLORS.baseline }
+            label: { display: true, content: 'BL2', position: 'start', font: { size: 10 } }
         };
     }
 
-    return new Chart(ctx, {
+    const base = dndcChartDefaults();
+    return new Chart(ctx, ChartTheme.colorize({
         type: 'scatter',
         data: { datasets },
         options: {
-            ...dndcChartDefaults,
+            ...base,
             showLine: true,
             plugins: {
-                ...dndcChartDefaults.plugins,
+                ...base.plugins,
                 annotation: { annotations }
             },
             scales: {
                 x: {
                     type: 'linear',
-                    title: {
-                        display: true,
-                        text: 'Time (min)',
-                        color: DNDC_CHART_COLORS.text,
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
-                    },
-                    ticks: { color: DNDC_CHART_COLORS.text, font: { size: 10 } },
-                    grid: { color: DNDC_CHART_COLORS.grid }
+                    title: dndcAxisTitle('Time (min)'),
+                    ticks: { font: { size: 10 } },
+                    grid: { display: false }
                 },
+                // 雙軸：軸線用該訊號的顏色，刻度與標題用文字色（標題寫明是哪個訊號）
                 y: {
                     type: 'linear',
                     position: 'left',
-                    title: {
-                        display: true,
-                        text: 'UV (AU)',
-                        color: DNDC_CHART_COLORS.uv,
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
-                    },
-                    ticks: { color: DNDC_CHART_COLORS.uv, font: { size: 10 } },
-                    grid: { color: DNDC_CHART_COLORS.grid }
+                    tpsRole: 'primary',
+                    title: dndcAxisTitle('UV (AU)'),
+                    ticks: { font: { size: 10 } }
                 },
                 y1: {
                     type: 'linear',
                     position: 'right',
-                    title: {
-                        display: true,
-                        text: 'dRI (RIU)',
-                        color: DNDC_CHART_COLORS.ri,
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
-                    },
-                    ticks: { color: DNDC_CHART_COLORS.ri, font: { size: 10 } },
+                    tpsRole: 'model',
+                    title: dndcAxisTitle('dRI (RIU)'),
+                    ticks: { font: { size: 10 } },
                     grid: { display: false }
                 }
             }
         }
-    });
+    }));
 }
 
 /**
@@ -217,8 +194,7 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
         {
             label: 'Data',
             data: xData.map((x, i) => ({ x, y: yData[i] })),
-            backgroundColor: DNDC_CHART_COLORS.scatter,
-            borderColor: DNDC_CHART_COLORS.scatter,
+            tpsRole: 'primary',
             pointRadius: 4,
             pointHoverRadius: 6
         }
@@ -238,8 +214,7 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
         datasets.push({
             label: `Fit (dn/dc = ${fitResult.dnDc.toFixed(4)}, R² = ${r2Text})`,
             data: fitLine,
-            borderColor: DNDC_CHART_COLORS.fit,
-            backgroundColor: 'transparent',
+            tpsRole: 'fit',
             borderWidth: 2,
             pointRadius: 0,
             showLine: true,
@@ -247,41 +222,29 @@ function createLinearFitChart(canvasId, xData, yData, fitResult, labels) {
         });
     }
 
-    return new Chart(ctx, {
+    return new Chart(ctx, ChartTheme.colorize({
         type: 'scatter',
         data: { datasets },
         options: {
-            ...dndcChartDefaults,
+            ...dndcChartDefaults(),
             scales: {
                 x: {
                     type: 'linear',
-                    title: {
-                        display: true,
-                        text: xLabel,
-                        color: DNDC_CHART_COLORS.text,
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
-                    },
-                    ticks: { color: DNDC_CHART_COLORS.text, font: { size: 10 } },
-                    grid: { color: DNDC_CHART_COLORS.grid }
+                    title: dndcAxisTitle(xLabel),
+                    ticks: { font: { size: 10 } },
+                    grid: { display: false }
                 },
                 y: {
                     type: 'linear',
-                    title: {
-                        display: true,
-                        text: yLabel,
-                        color: DNDC_CHART_COLORS.text,
-                        font: { family: "'Inter', sans-serif", size: 12, style: 'italic' }
-                    },
-                    ticks: { color: DNDC_CHART_COLORS.text, font: { size: 10 } },
-                    grid: { color: DNDC_CHART_COLORS.grid }
+                    title: dndcAxisTitle(yLabel),
+                    ticks: { font: { size: 10 } }
                 }
             }
         }
-    });
+    }));
 }
 
 window.DndcCharts = {
-    DNDC_CHART_COLORS,
     createChromatogramChart,
     createLinearFitChart
 };

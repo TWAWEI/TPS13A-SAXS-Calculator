@@ -250,3 +250,14 @@ test('[structure] chart-theme.js 排在所有建立或匯出圖表的本地檔�
         assert.ok(pos('js/chart-theme.js') < pos(file), `chart-theme.js 必須排在 ${file} 之前`);
     }
 });
+
+test('[structure] 每個 new Chart(...) 都經過 ChartTheme.colorize（主題色與匯出白底外掛都靠它）', () => {
+    const offenders = [];
+    for (const file of JS_FILES) {
+        const source = fs.readFileSync(path.join(JS_DIR, file), 'utf8');
+        for (const m of source.matchAll(/new\s+(?:global\.)?Chart\(\s*[^,]+,\s*([^\n]*)/g)) {
+            if (!/^(?:global\.)?ChartTheme\.colorize\(/.test(m[1])) offenders.push(`${file}: ${m[0].trim()}`);
+        }
+    }
+    assert.deepEqual(offenders, []);
+});
