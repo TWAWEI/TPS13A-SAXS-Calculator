@@ -15,7 +15,7 @@
 const NEGATIVE_DNDC_WARNING = 'dn/dc 為負：請檢查 RI 極性或峰／基線區間';
 
 /** UV 峰為負時的錯誤訊息（與 Python dndc.calculator.NEGATIVE_UV_PEAK_MESSAGE 相同）。 */
-const NEGATIVE_UV_PEAK_MESSAGE = 'UV 峰為負：基線區間落在峰上或極性反轉，請檢查 UV 峰範圍與基線範圍';
+const NEGATIVE_UV_PEAK_MESSAGE = 'UV 峰為負：峰範圍內沒有 UV 峰、基線區間落在峰上，或極性反轉，請檢查 UV 峰範圍與基線範圍';
 
 /**
  * 最終 dn/dc 為負時回傳警告。蛋白質的 dn/dc 必為正，負值幾乎都是設定錯誤；

@@ -87,7 +87,7 @@ test('[sign] computeSliceDndc：負 RI 峰 → 負斜率＋警告', () => {
 
 test('[sign] negativeDndcWarnings：只有負值才警告；訊息與 Python 相同', () => {
     assert.equal(Dndc.NEGATIVE_DNDC_WARNING, 'dn/dc 為負：請檢查 RI 極性或峰／基線區間');
-    assert.equal(Dndc.NEGATIVE_UV_PEAK_MESSAGE, 'UV 峰為負：基線區間落在峰上或極性反轉，請檢查 UV 峰範圍與基線範圍');
+    assert.equal(Dndc.NEGATIVE_UV_PEAK_MESSAGE, 'UV 峰為負：峰範圍內沒有 UV 峰、基線區間落在峰上，或極性反轉，請檢查 UV 峰範圍與基線範圍');
     assert.deepEqual(Dndc.negativeDndcWarnings(-0.01), [Dndc.NEGATIVE_DNDC_WARNING]);
     assert.deepEqual(Dndc.negativeDndcWarnings(0.185), []);
     assert.deepEqual(Dndc.negativeDndcWarnings(0), []);
