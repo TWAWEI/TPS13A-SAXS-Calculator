@@ -74,12 +74,83 @@ function transitionFlowRate(initialFlowRate, targetFlowRate) {
 }
 
 /**
- * 系統死體積（μL）與收集安全區間（min）。
- * 來源：Excel `Fraction_collector_high_c`（偵測器到收集器之間的管路體積）。
- * @type {number}
+ * Fraction collector 與流速回升的常數（Excel `Fraction_collector_high_c`、`工作表1_(2)`、
+ * 'HPLC flow down data'）。2026-10-14 決定先照 Excel，待使用者確認是否符合目前硬體與方法；要改只改這裡。
  */
-const DEAD_VOLUME_UL = 1050;
-const SAFE_ZONE_MIN = 2.8;
+const FRACTION_COLLECTOR = Object.freeze({
+    deadVolumeUl: 1050,      // D2：偵測器到收集器之間的管路體積 (μL)
+    safeZoneMin: 2.8,        // C22：收集前後的安全區間 (min)
+    rampToMidMin: 2,         // 工作表1_(2) M23 = M22 + 2：目標流速 → (目標+初始)/2
+    rampToInitialMin: 0.5,   // M24 = M23 + 0.5：→ 初始流速
+    fractionVolumeMl: 1.2,   // 'HPLC flow down data'!B24 = 1.2 / 初始流速（每管體積）
+});
+
+/** 既有匯出名稱（測試與 UI 使用），值與 FRACTION_COLLECTOR 相同。 */
+const DEAD_VOLUME_UL = FRACTION_COLLECTOR.deadVolumeUl;
+const SAFE_ZONE_MIN = FRACTION_COLLECTOR.safeZoneMin;
+
+/**
+ * Fraction collector 的四段流速（Excel B5–B8），從 X 光收集開始（A5 = M21）算起：
+ * 段 1 [A5, A6] 目標流速；段 2 [A6, A7] 用 (目標 + 中值)/2；段 3 [A7, A8] 用 (中值 + 初始)/2；
+ * A8 之後回到初始流速。中值 = (目標 + 初始)/2（Excel B7）。
+ *
+ * 爬升段用「該段平均流速」把體積換成時間是 Excel 的近似：體積正確、時間近似（目標 0.10、
+ * 初始 0.35 mL/min 時與線性爬升的精確積分差約 0.16 min）。使用者 2026-10-14 決定照 Excel。
+ *
+ * @param {number[]} times - [A5, A6, A7, A8]（= M21、M22、M23、M24，min）
+ * @param {number} targetFlowRate - 目標流速 (mL/min)
+ * @param {number} initialFlowRate - 初始流速 (mL/min)
+ * @returns {ReadonlyArray<{start:number, end:number, flowRate:number}>}
+ */
+function fractionCollectorSegments(times, targetFlowRate, initialFlowRate) {
+    const [a5, a6, a7, a8] = times;
+    const mid = transitionFlowRate(initialFlowRate, targetFlowRate);
+    return Object.freeze([
+        Object.freeze({ start: a5, end: a6, flowRate: targetFlowRate }),
+        Object.freeze({ start: a6, end: a7, flowRate: (targetFlowRate + mid) / 2 }),
+        Object.freeze({ start: a7, end: a8, flowRate: (mid + initialFlowRate) / 2 }),
+        Object.freeze({ start: a8, end: Infinity, flowRate: initialFlowRate }),
+    ]);
+}
+
+/**
+ * 從第一段起點起算，累積流出體積到達 volumeUl 的時刻。
+ * 邊界與 Excel B10 一致：剛好在段尾到達時算在該段（`<=`）。
+ *
+ * @param {number} volumeUl - 累積體積 (μL)，≥ 0
+ * @param {ReadonlyArray<{start:number, end:number, flowRate:number}>} segments - 最後一段須為無限長
+ * @returns {number} 時刻 (min)
+ */
+function timeAtCumulativeVolume(volumeUl, segments) {
+    let remaining = volumeUl;
+    for (const segment of segments) {
+        const segmentVolume = (segment.end - segment.start) * segment.flowRate * 1000;   // μL；最後一段為 Infinity
+        if (remaining <= segmentVolume) {
+            return segment.start + remaining / (segment.flowRate * 1000);
+        }
+        remaining -= segmentVolume;
+    }
+    throw new Error('timeAtCumulativeVolume：最後一段應為無限長，不應走到這裡');
+}
+
+/**
+ * Fraction collector 收集時段（Excel `Fraction_collector_high_c` B10／B12 → A24／A27）。
+ * 起點：累積體積到達死體積的時刻（X 光收集窗開頭的樣品抵達收集器）− 安全區。
+ * 終點：累積體積到達「X 光收集窗體積 Q1 + 死體積」的時刻（收集窗尾端的樣品抵達）＋ 安全區。
+ * 等價於 Excel 用數值相等挑分支的兩串 IF（tests/fraction-collector.test.js 以逐格轉寫比對）。
+ *
+ * @param {{times:number[], targetFlowRate:number, initialFlowRate:number}} p - times = [M21, M22, M23, M24]
+ * @returns {{startTime:number, stopTime:number}} 未取位 (min)
+ */
+function fractionCollectorWindow({ times, targetFlowRate, initialFlowRate }) {
+    const segments = fractionCollectorSegments(times, targetFlowRate, initialFlowRate);
+    const xrayVolumeUl = (times[1] - times[0]) * targetFlowRate * 1000;   // Excel D4（Q1）
+    const { deadVolumeUl, safeZoneMin } = FRACTION_COLLECTOR;
+    return Object.freeze({
+        startTime: timeAtCumulativeVolume(deadVolumeUl, segments) - safeZoneMin,
+        stopTime: timeAtCumulativeVolume(xrayVolumeUl + deadVolumeUl, segments) + safeZoneMin,
+    });
+}
 
 /**
  * 計算 HPLC-SAXS 完整設定
@@ -169,10 +240,10 @@ function calculateHPLCSAXSSettings(params) {
     const M22 = M21 + M9 * O12 + (0.05 / targetFlowRate) + E4;
 
     // M23 = M22+2 (Transition to fast flow)
-    const M23 = M22 + 2;
+    const M23 = M22 + FRACTION_COLLECTOR.rampToMidMin;
 
     // M24 = M23+0.5
-    const M24 = M23 + 0.5;
+    const M24 = M23 + FRACTION_COLLECTOR.rampToInitialMin;
 
     // === Flow Rate Table（Excel 工作表1_(2) M19:N24）===
     // 語意是 LC 時間表（各時間點 + 線性內插）：
@@ -192,20 +263,15 @@ function calculateHPLCSAXSSettings(params) {
     ];
 
     // === Fraction Collector (Excel `Fraction_collector_high_c`) ===
-    // 舊版用「×2.45 反推」硬湊 Excel 範例的 19.72，換了流速就完全失準。
-    // 實際物理量：
-    //   起始 = X 光開始時間 + 死體積走完所需時間 − 安全區間
-    //   結束 = 起始 + 安全區間 + X 光收集時間 + 安全區間
-    // 死體積 1050 μL 與安全區間 2.8 min 為 Excel 表上的常數。
-    // 注意：本式對應 Excel Fraction_collector_high_c 的第一分支，適用於
-    // (M22 − M21) × flow × 1000 ≥ 1050 μL；更慢的流速 Excel 會分段續算。
+    // 減速段與回升段的流速不同，死體積要逐段換算。舊版只用目標流速，初始 ≠ 目標時
+    // Stop 一律偏晚（0.20／0.35 mL/min 晚 1.56 min）。
     const xrayDuration = M22 - M21;
-    const deadVolumeTime = DEAD_VOLUME_UL / (targetFlowRate * 1000);   // min
-    const fractionStartTime = M21 + deadVolumeTime - SAFE_ZONE_MIN;
-    const fractionStopTime = fractionStartTime + SAFE_ZONE_MIN + xrayDuration + SAFE_ZONE_MIN;
+    const { startTime: fractionStartTime, stopTime: fractionStopTime } = fractionCollectorWindow({
+        times: [M21, M22, M23, M24], targetFlowRate, initialFlowRate,
+    });
 
-    // B24 = 1.2/B6 (time per fraction)
-    const timePerFraction = 1.2 / initialFlowRate;
+    // 'HPLC flow down data'!B24 = 1.2/B6（該工作表的 B6 是初始流速）
+    const timePerFraction = FRACTION_COLLECTOR.fractionVolumeMl / initialFlowRate;
 
     // 保留 2 位小數：Excel 的 fraction collector 時間就是以 0.01 min 設定的
     const fractionCollector = {
@@ -214,9 +280,10 @@ function calculateHPLCSAXSSettings(params) {
         timePerFraction: parseFloat(timePerFraction.toFixed(2))
     };
 
-    // === Report Stoptime (來自 HPLC flow down data A15) ===
-    // A15 = B22+1+3 (然後取整數)
-    const reportStoptime = Math.ceil(fractionStopTime + 1 + 3);
+    // === Report Stoptime ('HPLC flow down data'!A15 = B22+1+3) ===
+    // 公式本身不取整；儲存格格式 [$-404]0 讓畫面顯示四捨五入的整數，Excel 裡沒有其他儲存格引用 A15。
+    // 2026-10-14 使用者決定與 Excel 畫面一致（原本的 Math.ceil 在多數流速下多 1 min）。
+    const reportStoptime = Math.round(fractionStopTime + 1 + 3);
 
     // === Detector Settings (來自 HPLC flow down data E22-J27) ===
     // B11 = M20 (transition time in HPLC flow down data)

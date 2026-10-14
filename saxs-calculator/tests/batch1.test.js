@@ -253,12 +253,13 @@ test('[46] Fraction collector：Excel 範例 start 10.28 / stop 19.72（死體�
     assert.equal(SAXS.SAFE_ZONE_MIN, 2.8);
 });
 
-test('[46] Fraction collector 隨流速改變（不再是寫死的 ×2.45）', () => {
+test('[46] Fraction collector 隨流速改變（Excel 分段計算，目標 0.20／初始 0.35）', () => {
     const slow = SAXS.calculateHPLCSAXSSettings({ ...EXCEL_CASE, targetFlowRate: 0.2 });
-    // start = M21 + 1050/(0.2×1000) − 2.8 = 10.08 + 5.25 − 2.8
+    // 死體積在慢流速段內走完：start = M21 + 1050/(0.2×1000) − 2.8 = 10.08 + 5.25 − 2.8
     approx(slow.fractionCollector.startTime, 12.53, 2e-3, 'fraction start @0.2 mL/min');
-    const span = slow.fractionCollector.stopTime - slow.fractionCollector.startTime;
-    approx(span, 2.8 + (slow.flowRateTable[3].time - slow.flowRateTable[2].time) + 2.8, 2e-3, 'collection span');
+    // 收集窗尾端的樣品在 M22 之後才走完死體積，要用回升段的流速逐段換算（Excel B12）→ 21.79。
+    // 舊期望值（Stop − Start = 2.8 + 收集時間 + 2.8 → 23.35）是由錯誤公式推得，不是 Excel 的值。
+    approx(slow.fractionCollector.stopTime, 21.79, 2e-3, 'fraction stop @0.2/0.35 mL/min');
 });
 
 // ---------------------------------------------------------------- [47] injection volume range
