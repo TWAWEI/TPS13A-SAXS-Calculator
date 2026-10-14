@@ -23,10 +23,16 @@ const CSS_DIR = path.join(ROOT, 'css');
 // 全域規則：檔案 ≤ 800 行（典型 200–400）。index.html 無 build/template 層，已知例外。
 const MAX_LINES = 800;
 
-// 尚未拆分的計算模組（batch 3 的範圍是 app.js / dndc-ui.js / styles.css）。
-// 這是「棘輪」名單：下面的測試會同時檢查名單內的檔案『確實還是超行』，
-// 拆完之後不移除名單就會失敗，債務不會被默默留著。
-const PENDING_SPLIT = Object.freeze(['calculations.js', 'dndc-calculations.js']);
+// 「棘輪」名單：允許暫時超過 800 行的檔案。下面的測試會同時檢查名單內的檔案『確實還是超行』，
+// 拆完之後不移除名單就會失敗，債務不會被默默留著。2026-10-14 拆完 calculations.js 與
+// dndc-calculations.js 後清空。
+const PENDING_SPLIT = Object.freeze([]);
+
+// 拆檔群組：負責匯出命名空間的原檔，在載入期讀取分檔的頂層函式，所以分檔必須先載入。
+const SPLIT_GROUPS = Object.freeze({
+    'calculations.js': Object.freeze(['sample-prep-calculations.js', 'hplc-calculations.js', 'detector-calculations.js']),
+    'dndc-calculations.js': Object.freeze(['dndc-theory-calculations.js', 'dndc-signal-calculations.js', 'dndc-alignment-calculations.js']),
+});
 
 const listFiles = (dir, ext) =>
     fs.readdirSync(dir).filter(f => f.endsWith(ext)).sort();
@@ -187,4 +193,33 @@ test('[structure] section-liposome.js 排在它呼叫的所有模組之後（lip
         assert.ok(pos(dep) >= 0, `${dep} 未被引用`);
         assert.ok(pos(dep) < section, `${dep} 必須排在 section-liposome.js 之前`);
     }
+});
+
+test('[structure] 拆出的分檔在 index.html 與 tests/load.js 都排在原檔之前', () => {
+    const { LOAD_ORDER } = require('./load.js');
+    const orders = [
+        ['index.html', SCRIPT_REFS.map(ref => ref.replace(/^js\//, ''))],
+        ['tests/load.js', [...LOAD_ORDER]],
+    ];
+    for (const [owner, parts] of Object.entries(SPLIT_GROUPS)) {
+        for (const [label, order] of orders) {
+            const ownerPos = order.indexOf(owner);
+            assert.ok(ownerPos >= 0, `${label} 沒有載入 ${owner}`);
+            for (const part of parts) {
+                const partPos = order.indexOf(part);
+                assert.ok(partPos >= 0, `${label} 沒有載入 ${part}`);
+                assert.ok(partPos < ownerPos, `${label}：${part} 必須排在 ${owner} 之前`);
+            }
+        }
+    }
+});
+
+test('[structure] tests/load.js 的載入順序與 index.html 的相對順序一致', () => {
+    const { LOAD_ORDER } = require('./load.js');
+    const pageOrder = SCRIPT_REFS.map(ref => ref.replace(/^js\//, ''));
+    const missing = LOAD_ORDER.filter(file => !pageOrder.includes(file));
+    assert.deepEqual(missing, [], `load.js 載入了 index.html 沒有引用的檔：${missing.join(', ')}`);
+    const positions = LOAD_ORDER.map(file => pageOrder.indexOf(file));
+    const outOfOrder = LOAD_ORDER.filter((file, i) => i > 0 && positions[i] < positions[i - 1]);
+    assert.deepEqual(outOfOrder, [], `這些檔在 load.js 裡排得比 index.html 早：${outOfOrder.join(', ')}`);
 });
