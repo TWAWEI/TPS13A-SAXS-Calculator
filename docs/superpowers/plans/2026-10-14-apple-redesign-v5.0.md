@@ -34,7 +34,7 @@
 - **路徑：**
   - repo 根目錄 `/Users/hsutingwei/Desktop/TPS13A`（以下簡稱 `ROOT`）；網站在 `ROOT/saxs-calculator/`。
   - 本計畫的檔案路徑若沒寫 `saxs-calculator/` 前綴，指的都是 `ROOT` 底下的路徑（例如 `CLAUDE.md`、`docs/...`）。
-- **分支：** Task 0 從 `main`（`6b02fbe`，v4.15）開 `feat/apple-redesign-v5`，所有 commit 都在這個分支。**Task 14 之前不要 push、不要合併**；Task 14 先回報使用者，等使用者同意才合併與 push。
+- **分支：** Task 0 從 `main` 開 `feat/apple-redesign-v5`，所有 commit 都在這個分支。開分支時 `main` 應該是 v4.15（`6b02fbe`）再加上文件類 commit（至少有 `94a980a` 這份計畫），網站程式碼與 `6b02fbe` 相同。**Task 14 之前不要 push、不要合併**；Task 14 先回報使用者，等使用者同意才合併與 push。
 - **JS 測試：** `cd /Users/hsutingwei/Desktop/TPS13A && node --test saxs-calculator/tests/*.test.js`
   - 要用 `*.test.js`：Node 26 不接受目錄形式，`tests/load.js` 開頭註解寫的目錄形式會失敗。
   - 結尾要看到 `ℹ fail 0` 且 `ℹ skipped 0`。
@@ -58,6 +58,7 @@
   - 例外二：`applyTo`／`exportPng` 依 Chart.js 的 API 必須改圖表實例本身。這兩處的程式碼註解都寫了原因。
 - **Commit：** conventional commits（`feat:`／`fix:`／`refactor:`／`test:`／`docs:`／`chore:`）。**不加 Co-Authored-By 之類的署名行**（使用者全域設定）。
 - **停下來回報的情況：** 遇到計畫說「停下來回報」，或測試結果與預期不同時，停下來回報，不要自行改期望值。
+- **Agent 分工（CLAUDE.md 的工作流程、規格 §9.4）：** Task 1–11 交給 `saxs-frontend` 實作，每個任務完成後由 `code-reviewer` 審 diff；Task 12 是文件；Task 13–14 由主 session 做。
 - **不要用 port 8765：** 那裡有使用者另一個 App 的 service worker。本機驗收用 8791；Task 13 另外用 8793 放 v4.15 對照版。
 
 ## 任務相依
@@ -125,7 +126,8 @@ Task 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 1
 ```bash
 cd /Users/hsutingwei/Desktop/TPS13A
 git status --short          # 應該沒有輸出
-git log --oneline -1        # 6b02fbe fix: negative-UV message names the most common cause ...
+git log --oneline -3        # 最上面是文件類 commit（例如 94a980a docs: v5.0 implementation plan ...）
+git diff --stat 6b02fbe -- saxs-calculator   # 應該沒有輸出：網站程式碼與 v4.15 相同
 git switch -c feat/apple-redesign-v5
 ```
 
@@ -405,7 +407,7 @@ git status --short
 Expected：
 - 第一次測試印出 `少了 id=xrayEnergy` 與 `多了 id=xrayEnergyX`。
 - 第二次測試印出含 `js/app.js: #123456` 的那一行。
-- `git status --short` 只列出 Task 1 新增的 4 個檔（`??`）。
+- `git status --short` 只列出 Task 1 新增的 3 個檔與 `saxs-calculator/tests/fixtures/` 目錄（都是 `??`）。
 
 - [ ] **Step 7：Commit**
 
@@ -3674,7 +3676,7 @@ git diff -w saxs-calculator/index.html | grep '^[-+]' | grep -v '^[-+][-+]' | so
 - 13 個 `<div class="form-list">` 與 13 個對應的 `</div>`
 - 4 個 `<p class="form-list-foot">…</p>`
 
-刪除的行只有 4 組 alert-info：開頭的 `<div class="alert alert-info…">`、內文、`</div>`。
+刪除的行只有 4 組 alert-info：開頭的 `<div class="alert alert-info…">`、內文、`</div>`，以及每組後面的空行（所以 `uniq -c` 還會多一行 `4 -`）。
 
 - [ ] **Step 4：清掉裝飾用的修飾 class**
 
@@ -4083,10 +4085,10 @@ const PENDING_TOKEN_FILES = Object.freeze([
 ```bash
 cd /Users/hsutingwei/Desktop/TPS13A
 grep -rn "border-left" saxs-calculator/js saxs-calculator/css saxs-calculator/index.html
-grep -rn "style.color\|accent-danger\|accent-secondary\|accent-tertiary" saxs-calculator/js
+grep -rn "style\.color\|var(--color-accent-danger\|var(--color-accent-secondary\|var(--color-accent-tertiary" saxs-calculator/js
 ```
 
-Expected: 兩行都沒有輸出
+Expected: 兩行都沒有輸出。第二行只比對 `var(` 引用，所以 liposome-charts.js 色表註解裡的舊 token 名稱不會被抓到；那份色表在 Task 11 整段刪除。
 
 - [ ] **Step 4：跑測試**
 
@@ -6463,6 +6465,8 @@ Expected: `比對 47 個欄位；不同：0`
 - **深色模式漏網：** 沒有白底殘留。圖表軸線、格線、圖例、提示框都是深色版本。
 - **雙軸圖：** 軸線是訊號色，刻度是灰字。
 - **段落：** 多行段落左右對齊，單行文字沒有被拉開。
+
+**已知的既有問題，不在 v5.0 範圍，不要修：** 390px 寬時，HPLC 頁與偵測器頁會水平溢出（捲動寬度約 505–516px）。v4.15 就是這樣，是表格與理論值面板三欄格線造成的，與改版無關。驗收時記下來，回報給使用者，由使用者決定是否另外處理。
 
 發現問題：
 - 修在對應的檔案，跑 node 測試，各自 commit（`fix: …`）。
