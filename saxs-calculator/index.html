@@ -18,7 +18,7 @@
 
     <!-- 主題初始化：必須是同步 script，且排在所有 stylesheet 之前——第一次繪製前就設好 data-theme，
          深色使用者才不會先看到淺色閃一下（tests/structure.test.js 檢查位置） -->
-    <script src="js/theme-init.js?v=4.15"></script>
+    <script src="js/theme-init.js?v=5.0"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,11 +46,11 @@
         crossorigin="anonymous" defer></script>
 
     <!-- Styles — 載入順序即 cascade 順序，不可調換（後面的檔案刻意覆寫前面的） -->
-    <link rel="stylesheet" href="css/tokens.css?v=4.15">
-    <link rel="stylesheet" href="css/layout.css?v=4.15">
-    <link rel="stylesheet" href="css/panels.css?v=4.15">
-    <link rel="stylesheet" href="css/components.css?v=4.15">
-    <link rel="stylesheet" href="css/sections.css?v=4.15">
+    <link rel="stylesheet" href="css/tokens.css?v=5.0">
+    <link rel="stylesheet" href="css/layout.css?v=5.0">
+    <link rel="stylesheet" href="css/panels.css?v=5.0">
+    <link rel="stylesheet" href="css/components.css?v=5.0">
+    <link rel="stylesheet" href="css/sections.css?v=5.0">
 </head>
 
 <body>
@@ -148,7 +148,7 @@
             <!-- 版本號同時是所有本地 css/js 的 ?v=：bump 時兩者一起改（tests/structure.test.js 檢查） -->
             <div class="sidebar-footer">
                 NSRRC TPS 13A Beamline<br>
-                Version 4.15
+                Version 5.0
             </div>
             <button class="sidebar-toggle" id="sidebarToggle" aria-label="收合側邊欄" aria-expanded="true" aria-controls="sidebar">
                 <span id="sidebarToggleIcon" aria-hidden="true">◀</span>
@@ -2095,57 +2095,57 @@
          tests/structure.test.js 會盯著這三條與「跨檔重複宣告」。 -->
 
     <!-- 共用工具與純計算模組（無 DOM 相依） -->
-    <script src="js/form-utils.js?v=4.15"></script>
-    <script src="js/a11y-utils.js?v=4.15"></script>
-    <script src="js/chart-theme.js?v=4.15"></script>
-    <script src="js/theme-toggle.js?v=4.15"></script>
-    <script src="js/protein.js?v=4.15"></script>
-    <script src="js/sample-prep-calculations.js?v=4.15"></script>
-    <script src="js/hplc-calculations.js?v=4.15"></script>
-    <script src="js/detector-calculations.js?v=4.15"></script>
-    <script src="js/calculations.js?v=4.15"></script>
-    <script src="js/detector-limits-ui.js?v=4.15"></script>
-    <script src="js/detector-rg-panel.js?v=4.15"></script>
-    <script src="js/charts.js?v=4.15"></script>
-    <script src="js/dndc-theory-calculations.js?v=4.15"></script>
-    <script src="js/dndc-signal-calculations.js?v=4.15"></script>
-    <script src="js/dndc-alignment-calculations.js?v=4.15"></script>
-    <script src="js/dndc-calculations.js?v=4.15"></script>
-    <script src="js/dndc-file-parser.js?v=4.15"></script>
-    <script src="js/dndc-astra-parser.js?v=4.15"></script>
-    <script src="js/dndc-charts.js?v=4.15"></script>
+    <script src="js/form-utils.js?v=5.0"></script>
+    <script src="js/a11y-utils.js?v=5.0"></script>
+    <script src="js/chart-theme.js?v=5.0"></script>
+    <script src="js/theme-toggle.js?v=5.0"></script>
+    <script src="js/protein.js?v=5.0"></script>
+    <script src="js/sample-prep-calculations.js?v=5.0"></script>
+    <script src="js/hplc-calculations.js?v=5.0"></script>
+    <script src="js/detector-calculations.js?v=5.0"></script>
+    <script src="js/calculations.js?v=5.0"></script>
+    <script src="js/detector-limits-ui.js?v=5.0"></script>
+    <script src="js/detector-rg-panel.js?v=5.0"></script>
+    <script src="js/charts.js?v=5.0"></script>
+    <script src="js/dndc-theory-calculations.js?v=5.0"></script>
+    <script src="js/dndc-signal-calculations.js?v=5.0"></script>
+    <script src="js/dndc-alignment-calculations.js?v=5.0"></script>
+    <script src="js/dndc-calculations.js?v=5.0"></script>
+    <script src="js/dndc-file-parser.js?v=5.0"></script>
+    <script src="js/dndc-astra-parser.js?v=5.0"></script>
+    <script src="js/dndc-charts.js?v=5.0"></script>
 
     <!-- 脂質體 DOX 載藥：純模組（無 DOM 相依） -->
-    <script src="js/liposome-calculations.js?v=4.15"></script>
-    <script src="js/liposome-file-parsers.js?v=4.15"></script>
-    <script src="js/liposome-charts.js?v=4.15"></script>
-    <script src="js/liposome-results-table.js?v=4.15"></script>
+    <script src="js/liposome-calculations.js?v=5.0"></script>
+    <script src="js/liposome-file-parsers.js?v=5.0"></script>
+    <script src="js/liposome-charts.js?v=5.0"></script>
+    <script src="js/liposome-results-table.js?v=5.0"></script>
 
     <!-- dn/dc 分頁 UI：dndc-ui.js（共用狀態）必須在各頁面之前 -->
-    <script src="js/dndc-ui.js?v=4.15"></script>
-    <script src="js/dndc-theory-ui.js?v=4.15"></script>
-    <script src="js/dndc-hplc-ui.js?v=4.15"></script>
-    <script src="js/dndc-hplc-results.js?v=4.15"></script>
-    <script src="js/dndc-multi-ui.js?v=4.15"></script>
-    <script src="js/dndc-slice-ui.js?v=4.15"></script>
-    <script src="js/dndc-astra-ui.js?v=4.15"></script>
-    <script src="js/dndc-export.js?v=4.15"></script>
+    <script src="js/dndc-ui.js?v=5.0"></script>
+    <script src="js/dndc-theory-ui.js?v=5.0"></script>
+    <script src="js/dndc-hplc-ui.js?v=5.0"></script>
+    <script src="js/dndc-hplc-results.js?v=5.0"></script>
+    <script src="js/dndc-multi-ui.js?v=5.0"></script>
+    <script src="js/dndc-slice-ui.js?v=5.0"></script>
+    <script src="js/dndc-astra-ui.js?v=5.0"></script>
+    <script src="js/dndc-export.js?v=5.0"></script>
 
     <!-- 主計算機 UI -->
-    <script src="js/alerts.js?v=4.15"></script>
-    <script src="js/dndc-lock.js?v=4.15"></script>
-    <script src="js/navigation.js?v=4.15"></script>
-    <script src="js/section-protein.js?v=4.15"></script>
-    <script src="js/section-saxs.js?v=4.15"></script>
-    <script src="js/section-hplc.js?v=4.15"></script>
-    <script src="js/section-sample.js?v=4.15"></script>
-    <script src="js/section-mw.js?v=4.15"></script>
-    <script src="js/section-centrifuge.js?v=4.15"></script>
-    <script src="js/section-detector.js?v=4.15"></script>
-    <script src="js/section-iucr.js?v=4.15"></script>
-    <script src="js/section-liposome.js?v=4.15"></script>
-    <script src="js/form-persistence.js?v=4.15"></script>
-    <script src="js/app.js?v=4.15"></script>
+    <script src="js/alerts.js?v=5.0"></script>
+    <script src="js/dndc-lock.js?v=5.0"></script>
+    <script src="js/navigation.js?v=5.0"></script>
+    <script src="js/section-protein.js?v=5.0"></script>
+    <script src="js/section-saxs.js?v=5.0"></script>
+    <script src="js/section-hplc.js?v=5.0"></script>
+    <script src="js/section-sample.js?v=5.0"></script>
+    <script src="js/section-mw.js?v=5.0"></script>
+    <script src="js/section-centrifuge.js?v=5.0"></script>
+    <script src="js/section-detector.js?v=5.0"></script>
+    <script src="js/section-iucr.js?v=5.0"></script>
+    <script src="js/section-liposome.js?v=5.0"></script>
+    <script src="js/form-persistence.js?v=5.0"></script>
+    <script src="js/app.js?v=5.0"></script>
 
     <!-- dn/dc Password Modal -->
     <dialog id="dndcPasswordModal" class="modal-dialog" aria-labelledby="dndcModalTitle" aria-describedby="dndcModalDesc">
