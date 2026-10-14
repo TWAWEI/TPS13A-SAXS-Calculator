@@ -35,15 +35,26 @@ const JS_FILES = listFiles(JS_DIR, '.js');
 const CSS_FILES = listFiles(CSS_DIR, '.css');
 const INDEX_HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
-/** 依 index.html 出現順序取出本地資源清單（跳過 CDN）。 */
+/**
+ * 依 index.html 出現順序取出本地資源清單（跳過 CDN）。
+ * 每筆 { path, version }：path 不含查詢字串，version 是 ?v= 的值（沒有則為 null）。
+ */
 function localRefs(pattern) {
     const found = [];
-    for (const m of INDEX_HTML.matchAll(pattern)) found.push(m[1]);
+    for (const m of INDEX_HTML.matchAll(pattern)) {
+        const [file, query = ''] = m[1].split('?');
+        found.push(Object.freeze({ path: file, version: new URLSearchParams(query).get('v') }));
+    }
     return found;
 }
 
-const SCRIPT_REFS = localRefs(/<script\s+src="(js\/[^"]+)"/g);
-const LINK_REFS = localRefs(/<link\s+rel="stylesheet"\s+href="(css\/[^"]+)"/g);
+const SCRIPT_ENTRIES = localRefs(/<script\s+src="(js\/[^"]+)"/g);
+const LINK_ENTRIES = localRefs(/<link\s+rel="stylesheet"\s+href="(css\/[^"]+)"/g);
+const SCRIPT_REFS = SCRIPT_ENTRIES.map(e => e.path);
+const LINK_REFS = LINK_ENTRIES.map(e => e.path);
+
+/** 側欄 footer 的版本號（例如 "4.15"），是 ?v= 的唯一來源。 */
+const PAGE_VERSION = (INDEX_HTML.match(/Version\s+(\d+\.\d+)/) || [])[1] || null;
 
 /**
  * 抓一個檔案的頂層宣告識別字。
@@ -120,6 +131,15 @@ test('[structure] index.html 引用了每一個 css/*.css，且沒有重複', ()
     assert.deepEqual([...LINK_REFS].sort(), CSS_FILES.map(f => `css/${f}`),
         '有樣式檔沒被引用或引用了不存在的檔');
     assert.equal(new Set(LINK_REFS).size, LINK_REFS.length, '有重複的 <link>');
+});
+
+test('[structure] 每個本地 css/js 引用都帶 ?v=，且等於側欄版本號（避免 Pages 快取讓新 HTML 配舊檔）', () => {
+    assert.ok(PAGE_VERSION, '找不到側欄 footer 的「Version X.Y」');
+    const mismatched = [...SCRIPT_ENTRIES, ...LINK_ENTRIES]
+        .filter(e => e.version !== PAGE_VERSION)
+        .map(e => `${e.path}（?v=${e.version}）`);
+    assert.deepEqual(mismatched, [],
+        `本地引用的 ?v= 必須等於 ${PAGE_VERSION}；bump 版本時 footer 與 ?v= 要一起改`);
 });
 
 test('[structure] 沒有 @import：多一輪序列請求，改用多個 <link>', () => {
