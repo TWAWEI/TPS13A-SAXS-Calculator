@@ -47,10 +47,17 @@ test('[mass] toInputValue：kDa、最多 3 位小數（1 Da）、去尾端 0', (
     assert.equal(MassUnits.toInputValue(undefined), '');
 });
 
-test('[mass] 1 Da 精度：帶入值換回 Da 與序列 MW 相差 ≤ 0.5 Da（SAXS 面板的 1 Da 容差成立）', () => {
+test('[mass] 帶入值（3 位）換回 Da 與序列 MW 相差 ≤ 0.5 Da', () => {
     for (const da of [12345.678, 66430.5, 69293.82, 150000.4999]) {
         const back = MassUnits.kDaToDa(Number(MassUnits.toInputValue(da)));
         assert.ok(Math.abs(back - da) <= 0.5 + 1e-9, `${da} → ${back}`);
+    }
+});
+
+test('[mass] 照結果的 2 位小數重打仍在「同一個蛋白質」容差內（SAXS 理論值面板）', () => {
+    for (const da of [12345.678, 66430.5, 69293.82, 69294.999, 150004.999]) {
+        const retyped = MassUnits.kDaToDa(Number(MassUnits.formatKDa(da).replace(/,/g, '')));
+        assert.ok(Math.abs(retyped - da) <= MassUnits.RETYPE_TOLERANCE_DA, `${da} → ${retyped}`);
     }
 });
 

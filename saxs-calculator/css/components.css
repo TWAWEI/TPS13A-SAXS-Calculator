@@ -473,6 +473,12 @@
     width: 100%;
 }
 
+/* 還沒建圖的 <canvas> 是 HTML 預設的 300px 寬；.grid 欄可以縮到比它窄（layout.css），
+   不限寬的話空白畫布會伸出卡片。建圖後 Chart.js 本來就把畫布設成容器寬。 */
+.chart-container > canvas {
+    max-width: 100%;
+}
+
 /* HPLC dn/dc 全通道預覽的通道開關（dndc-hplc-results.js）。
    --chip-color 由 JS 依目前主題設定（ChartTheme.seriesColor）；文字一律用文字 token，
    顏色只出現在與圖線同色同線型的小樣本上。 */

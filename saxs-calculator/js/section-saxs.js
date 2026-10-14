@@ -62,15 +62,12 @@ function readPanelConcentration() {
     return { valid: true, isError: false, value, message: '' };
 }
 
-// 面板 MW 與序列 MW 視為同一個蛋白質的容差。序列帶入的是 kDa 三位小數（差 ≤ 0.5 Da）；
-// 使用者照結果的 2 位小數重打（69.29 kDa）最多差 5 Da，也要認得出來。
-const SEQUENCE_MW_TOLERANCE_DA = 5;
-
 function getTheoreticalOpts(mwUsed) {
     const protein = AppState.proteinData;
     if (!protein || !Number.isFinite(protein.molecularWeight)) return {};
     if (!Number.isFinite(mwUsed)) return {};
-    if (Math.abs(mwUsed - protein.molecularWeight) > SEQUENCE_MW_TOLERANCE_DA) return {};
+    // 序列帶入的 kDa 三位小數差 ≤ 0.5 Da；照結果的 2 位小數重打（69.29 kDa）差 ≤ 5 Da，都算同一個蛋白質
+    if (Math.abs(mwUsed - protein.molecularWeight) > MassUnits.RETYPE_TOLERANCE_DA) return {};
 
     const opts = {};
     if (Number.isFinite(protein.electronCount) && protein.electronCount > 0) {

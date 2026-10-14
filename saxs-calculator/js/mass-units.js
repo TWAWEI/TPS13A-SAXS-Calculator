@@ -16,6 +16,9 @@
     const INPUT_DECIMALS = 3;            // 自動帶入的精度：0.001 kDa = 1 Da
     const WARN_ABOVE_KDA = 10000;
     const MIGRATE_MIN_DA = 1000;         // 舊存檔裡小於 1,000 的值多半是在 Da 欄位裡打了 kDa，不換算
+    // 兩個分子量視為「同一個蛋白質」的容差：結果顯示到 0.01 kDa，照畫面重打（69.29）最多差 5 Da。
+    // 代價是 ±5 Da 內的點突變（例如 N→D 差 1 Da）也會被當成同一個——電子數只差 1／約 37,000，對 I(0) 無影響。
+    const RETYPE_TOLERANCE_DA = 5;
     const STATE_UNIT = 'kDa';            // form-persistence 存檔裡的單位標記
     const HINT_SUFFIX = 'UnitHint';
 
@@ -29,6 +32,9 @@
     ]);
 
     const HINT_TEXT = '超過 10,000 kDa（10 MDa），是不是輸入了 Da？例：66500 Da 請輸入 66.5';
+
+    // 已綁定提示的欄位：initInputHints 被叫第二次時不重複綁事件
+    const boundInputs = new WeakSet();
 
     const daToKDa = da => da / DA_PER_KDA;
     const kDaToDa = kDa => kDa * DA_PER_KDA;
@@ -121,7 +127,8 @@
         if (!doc) return;
         INPUT_IDS.forEach(id => {
             const input = doc.getElementById(id);
-            if (!input) return;
+            if (!input || boundInputs.has(input)) return;
+            boundInputs.add(input);
             if (!hintFor(input)) createHint(doc, input);
             const update = () => refreshHint(input);
             input.addEventListener('input', update);
@@ -133,6 +140,7 @@
     global.MassUnits = Object.freeze({
         DA_PER_KDA,
         WARN_ABOVE_KDA,
+        RETYPE_TOLERANCE_DA,
         STATE_UNIT,
         INPUT_IDS,
         daToKDa,

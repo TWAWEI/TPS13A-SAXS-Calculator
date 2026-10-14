@@ -65,7 +65,7 @@
 | `targetProteinMW` | 偵測器距離 | 單位 `kDa`、預設 `66.5`、`min="1" max="10000" step="any"`（原 1000／10,000,000 Da） | `section-detector.js` × 1000 |
 
 - 自動帶入（`section-protein.js` 3 個、`section-saxs.js` 1 個）一律走 `MassUnits.writeInput`。原本 `inputMw`／`mwInput` 帶 0.01 Da、另兩個帶整數 Da；統一成 1 Da 精度後，`inputMw`／`mwInput` 最多差 0.5 Da（相對 < 10⁻⁵），不影響任何顯示位數。
-- `section-saxs.js` 的 `getTheoreticalOpts` 判斷「面板 MW 是否就是序列 MW」，容差從 1 Da 放寬為 5 Da（常數 `SEQUENCE_MW_TOLERANCE_DA`）。序列帶入最多差 0.5 Da；使用者照結果的 2 位小數重打（69.29 kDa）會差 3.8 Da，1 Da 容差會讓它悄悄退回經驗式。
+- `section-saxs.js` 的 `getTheoreticalOpts` 判斷「面板 MW 是否就是序列 MW」，容差從 1 Da 放寬為 5 Da（`MassUnits.RETYPE_TOLERANCE_DA`，放在 mass-units.js 才測得到）。代價：±5 Da 內的點突變（例如 N→D）也算同一個，電子數只差約 1／37,000，對 *I*(0) 無影響。序列帶入最多差 0.5 Da；使用者照結果的 2 位小數重打（69.29 kDa）會差 3.8 Da，1 Da 容差會讓它悄悄退回經驗式。
 - `section-saxs.js` 的 × 1000 只套在欄位讀到的值；欄位空白時退回的 `AppState.proteinData.molecularWeight` 本來就是 Da。
 
 ## 5. 顯示
@@ -118,6 +118,7 @@
 
 - 成因（2026-10-15 實測）：`.grid-2`／`.grid-3` 的 `1fr` 是 `minmax(auto, 1fr)`，最小值等於內容的最小寬度。卡片裡的寬表格把整欄撐到 480／490px，`.table-wrapper` 的 `overflow-x: auto` 沒機會發揮。
 - 修法：`css/layout.css` 加 `.grid > * { min-width: 0; }`，表格改在自己的框內橫捲。
+- 副作用（code review 後逐頁量過 390／768／1024／1280／1440 寬）：HPLC 頁與偵測器頁在 1024／1280 寬時原本一欄被表格撐寬、現在兩欄等寬，表格在框內橫捲；脂質體頁還沒建圖的 `<canvas>`（HTML 預設 300px）會伸出 288px 的卡片，補 `.chart-container > canvas { max-width: 100%; }`。其他頁、其他寬度欄寬不變，沒有內容伸出卡片。
 - 驗收：390px 寬時每一頁（含 dn/dc 已解鎖的子頁）`document.documentElement.scrollWidth === 390`，淺色與深色各一次。
 
 ## 10. 對改版規格的影響
