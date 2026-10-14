@@ -156,3 +156,12 @@ test('[fc] 常數集中在凍結的 FRACTION_COLLECTOR，既有匯出名稱數�
     assert.equal(SAXS.DEAD_VOLUME_UL, 1050);
     assert.equal(SAXS.SAFE_ZONE_MIN, 2.8);
 });
+
+test('[fc] timeAtCumulativeVolume：剛好落在段尾時算在該段（Excel B10 的 <=），跨段連續；流速非正 → throw', () => {
+    const segs = SAXS.fractionCollectorSegments([0, 1, 3, 4], 1, 1);   // 目標＝初始＝1 mL/min：每段 1000 μL/min
+    assert.equal(SAXS.timeAtCumulativeVolume(1000, segs), 1);           // 剛好第 1 段段尾
+    assert.equal(SAXS.timeAtCumulativeVolume(3000, segs), 3);           // 剛好第 2 段段尾
+    assert.equal(SAXS.timeAtCumulativeVolume(0, segs), 0);
+    assert.ok(Math.abs(SAXS.timeAtCumulativeVolume(4500, segs) - 4.5) < 1e-12, '第 4 段（無限長）');
+    assert.throws(() => SAXS.timeAtCumulativeVolume(10, SAXS.fractionCollectorSegments([0, 1, 3, 4], 0, 1)), /流速/);
+});

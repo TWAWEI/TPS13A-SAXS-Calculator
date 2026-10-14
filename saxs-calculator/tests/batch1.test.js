@@ -255,7 +255,7 @@ test('[46] Fraction collector：Excel 範例 start 10.28 / stop 19.72（死體�
 
 test('[46] Fraction collector 隨流速改變（Excel 分段計算，目標 0.20／初始 0.35）', () => {
     const slow = SAXS.calculateHPLCSAXSSettings({ ...EXCEL_CASE, targetFlowRate: 0.2 });
-    // 死體積在慢流速段內走完：start = M21 + 1050/(0.2×1000) − 2.8 = 10.08 + 5.25 − 2.8
+    // X 光收集窗體積 Q1 = 1043 μL 略小於死體積 1050 μL，起點落在回升第 2 段開頭約 6.7 μL 處（Excel B10 = E19）→ 12.53
     approx(slow.fractionCollector.startTime, 12.53, 2e-3, 'fraction start @0.2 mL/min');
     // 收集窗尾端的樣品在 M22 之後才走完死體積，要用回升段的流速逐段換算（Excel B12）→ 21.79。
     // 舊期望值（Stop − Start = 2.8 + 收集時間 + 2.8 → 23.35）是由錯誤公式推得，不是 Excel 的值。

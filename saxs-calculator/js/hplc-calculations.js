@@ -120,10 +120,14 @@ function fractionCollectorSegments(times, targetFlowRate, initialFlowRate) {
  * @param {number} volumeUl - 累積體積 (μL)，≥ 0
  * @param {ReadonlyArray<{start:number, end:number, flowRate:number}>} segments - 最後一段須為無限長
  * @returns {number} 時刻 (min)
+ * @throws {Error} 任一段流速非正或非有限
  */
 function timeAtCumulativeVolume(volumeUl, segments) {
     let remaining = volumeUl;
     for (const segment of segments) {
+        if (!(Number.isFinite(segment.flowRate) && segment.flowRate > 0)) {
+            throw new Error(`timeAtCumulativeVolume：流速必須是大於 0 的數值（目前 ${segment.flowRate} mL/min）`);
+        }
         const segmentVolume = (segment.end - segment.start) * segment.flowRate * 1000;   // μL；最後一段為 Infinity
         if (remaining <= segmentVolume) {
             return segment.start + remaining / (segment.flowRate * 1000);
