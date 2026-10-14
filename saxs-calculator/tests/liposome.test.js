@@ -479,3 +479,34 @@ test('[lipo] roundAbsorbances 先四捨五入再算 SD，與 Excel 一致', () =
     assert.ok(Object.isFrozen(r) && Object.isFrozen(r.shown));
     assert.throws(() => Liposome.roundAbsorbances([0.1, NaN, 0.2]), /有限數/);
 });
+
+// ---------------------------------------------------------------- 2026-10-14 待辦批次 §7
+test('[lipo] standardErrorOfMean：SD/√n；n < 2、非整數或非有限 → null', () => {
+    assert.equal(Liposome.standardErrorOfMean(0.03, 4), 0.015);
+    assert.ok(Math.abs(Liposome.standardErrorOfMean(0.0132, 40) - 0.0132 / Math.sqrt(40)) < 1e-15);
+    assert.equal(Liposome.standardErrorOfMean(0.03, 1), null);
+    assert.equal(Liposome.standardErrorOfMean(0.03, 2.5), null);
+    assert.equal(Liposome.standardErrorOfMean(NaN, 10), null);
+});
+
+test('[lipo] compareWithStandard：k × c_pure 對 ε 法 [DOX]；差 > 10% 才警告；k < 0 或濃度非正不比較', () => {
+    // 同基準：純 DOX 在 495 nm 的 A = 1、ε 9250、光徑 0.2 cm → c_pure = 1/1850 M 時兩法一致
+    const same = Liposome.compareWithStandard({ k: 0.8, pureConcMolar: 1 / 1850, doxConcMolar: 0.8 / 1850 });
+    assert.ok(Math.abs(same.relDiff) < 1e-12);
+    assert.equal(same.exceedsWarn, false);
+    assert.ok(Object.isFrozen(same));
+
+    const high = Liposome.compareWithStandard({ k: 0.8, pureConcMolar: 7e-4, doxConcMolar: 0.8 / 1850 });
+    assert.ok(Math.abs(high.doxConcStd - 5.6e-4) < 1e-15);
+    assert.ok(Math.abs(high.relDiff - (5.6e-4 / (0.8 / 1850) - 1)) < 1e-12);
+    assert.equal(high.exceedsWarn, true);
+
+    assert.equal(Liposome.compareWithStandard({ k: 1, pureConcMolar: 1.09e-3, doxConcMolar: 1e-3 }).exceedsWarn, false);
+    assert.equal(Liposome.compareWithStandard({ k: 1, pureConcMolar: 0.89e-3, doxConcMolar: 1e-3 }).exceedsWarn, true);
+
+    assert.equal(Liposome.compareWithStandard({ k: -0.1, pureConcMolar: 1e-3, doxConcMolar: 1e-3 }), null);
+    assert.equal(Liposome.compareWithStandard({ k: 1, pureConcMolar: 0, doxConcMolar: 1e-3 }), null);
+    assert.equal(Liposome.compareWithStandard({ k: 1, pureConcMolar: NaN, doxConcMolar: 1e-3 }), null);
+    assert.equal(Liposome.compareWithStandard({ k: 1, pureConcMolar: 1e-3, doxConcMolar: 0 }), null);
+    assert.equal(Liposome.DEFAULTS.STD_COMPARE_WARN_REL, 0.10);
+});

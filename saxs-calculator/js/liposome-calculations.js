@@ -34,6 +34,7 @@
         A_MAX_LINEAR: 1.5,                // Beer–Lambert 線性範圍上限（雜散光造成負偏差）
         WAVELENGTH_SPREAD_WARN_REL: 0.05, // |A(λ1) − A(λ3)| / A(主) > 5% → 平滑吸收帶不可能，資料有問題
         WINDOW_COVERAGE_WARN: 0.5,        // 有效點實際涵蓋的 q 範圍 < 視窗寬度的 50% → 提醒
+        STD_COMPARE_WARN_REL: 0.10,       // 標準液法與 ε 法的 [DOX] 相差 > 10% → 提醒（2026-10-14 使用者定案）
     });
 
     function assertFinite(value, label) {
@@ -386,6 +387,41 @@
         });
     }
 
+    /**
+     * 平均值的標準誤 SEM = SD / √n，只當對照顯示。相鄰 q 點的雜訊通常相關、比值也可能隨 q 漂移，
+     * 兩者都會讓 SEM 低估真正的不確定度，所以 D/L 誤差仍用 SD（2026-10-14 使用者定案）。
+     *
+     * @param {number} sd - 樣本標準差
+     * @param {number} n - 點數
+     * @returns {number|null} n < 2、n 非整數或 sd 非有限時為 null
+     */
+    function standardErrorOfMean(sd, n) {
+        if (!Number.isFinite(sd) || !Number.isInteger(n) || n < 2) return null;
+        return sd / Math.sqrt(n);
+    }
+
+    /**
+     * 純 DOX 標準液法的 [DOX] 對照：[DOX]_std = k × c_pure。
+     * 與 computeDrugToLipid 的 [DOX] = A(主波長)/(ε·l) 同基準（扣背景後的比色槽光譜、不含稀釋修正），
+     * 前提是標準液與樣品用同一光徑、且標準液在線性範圍內量測。
+     *
+     * @param {{k:number, pureConcMolar:number, doxConcMolar:number}} p - 濃度單位皆為 M
+     * @returns {{doxConcStd:number, relDiff:number, exceedsWarn:boolean}|null}
+     *          k < 0、標準液濃度或主值 [DOX] 非正（或非有限）時為 null
+     */
+    function compareWithStandard({ k, pureConcMolar, doxConcMolar }) {
+        if (!(Number.isFinite(k) && k >= 0)) return null;
+        if (!(Number.isFinite(pureConcMolar) && pureConcMolar > 0)) return null;
+        if (!(Number.isFinite(doxConcMolar) && doxConcMolar > 0)) return null;
+        const doxConcStd = k * pureConcMolar;
+        const relDiff = doxConcStd / doxConcMolar - 1;
+        return Object.freeze({
+            doxConcStd,
+            relDiff,
+            exceedsWarn: Math.abs(relDiff) > DEFAULTS.STD_COMPARE_WARN_REL,
+        });
+    }
+
     global.LiposomeCalculations = Object.freeze({
         DEFAULTS,
         interpolateLinear,
@@ -396,5 +432,7 @@
         roundAbsorbances,
         fitPureDoxScale,
         computeDrugToLipid,
+        standardErrorOfMean,
+        compareWithStandard,
     });
 })(typeof window !== 'undefined' ? window : globalThis);
