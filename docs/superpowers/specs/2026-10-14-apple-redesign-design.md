@@ -1,7 +1,7 @@
 # 蘋果風改版（v5.0 骨架與深色模式、v5.1 結果磚）— 設計規格
 
 - 日期：2026-10-14（同日依規格審查修訂一次）
-- 狀態：設計已與使用者逐段確認，待使用者審閱本規格 → 撰寫實作計畫（v5.0、v5.1 各一份計畫）
+- 狀態：設計已與使用者逐段確認。v5.0 實作計畫 `docs/superpowers/plans/2026-10-14-apple-redesign-v5.0.md`（2026-10-15）；計畫階段的修訂見 §13，與前面各節不一致時以 §13 為準。v5.1 計畫待 v5.0 上線後再寫
 - 目標產品：`saxs-calculator/`（GitHub Pages 單頁站），v4.14 → v5.0 → v5.1
 - 視覺參考：Artifact「TPS13A 蘋果風方案」<https://claude.ai/artifact/UCCetn9p91wH8RgNqkeXYa>（A 方案、淺／深色預覽、色表）。mockup 是示意：側欄字為了塞進畫面縮小了，結果磚裡的「66.6 kDa」「相差 0.2%」是新格式，實作依 §7.2 保留現有數字格式。以本規格為準。
 - 前置條件：同期「待辦批次」的靜態資源版本查詢（`?v=`）必須先上線，見 §9.1。
@@ -142,7 +142,7 @@
 2. 按鈕 hover：淺色變暗、深色變亮。深色若也變暗（#8F4646），按鈕對卡片只剩 2.5:1；若亮到 #B86262，白字只剩 4.2:1，所以取 #B05A5A。
 3. 白字只能放在 `--color-accent-primary`、`--color-accent-primary-hover`、`--color-danger` 上。
 4. 填色 token（`--color-accent-primary`、`--color-success`、`--color-warning`、`--color-danger`）不能當文字。文字一律用 `--color-text-*`、`--color-accent-text` 或語意色的 `-text`；語意色的 `-text` 只放在對應的 `-bg` 或卡片上。§8.1 的用途測試會擋。
-5. 色碼字面值只能出現在 `css/tokens.css` 與 `js/chart-theme.js`。其他 CSS、JS 與 `index.html` 的 `style` 屬性只能用 `var(--…)` 或 class（§8.1 有測試擋）。要清掉的包括：其他 4 個 CSS 檔的約 80 處字面值；`charts.js`、`dndc-charts.js`、`liposome-charts.js`、`dndc-hplc-results.js`、`dndc-astra-ui.js`、`section-hplc.js`、`section-sample.js` 的色碼。`section-hplc.js` 流速表的主步驟列（行內底色與 `color: #92400e` 字色）與 TM 模式字色，見 §5.6。
+5. 色碼字面值只能出現在 `css/tokens.css` 與 `js/chart-theme.js`。其他 CSS、JS 與 `index.html` 的 `style` 屬性只能用 `var(--…)` 或 class（§8.1 有測試擋）。要清掉的包括：其他 4 個 CSS 檔的約 80 處字面值；`charts.js`、`dndc-charts.js`、`liposome-charts.js`、`dndc-hplc-results.js`、`dndc-astra-ui.js`、`section-hplc.js`、`section-sample.js` 的色碼。`section-hplc.js` Detector Setting 表的主步驟列（行內底色與 `color: #92400e` 字色）與 TM 模式字色，見 §5.6。
 6. 不加左側色條（`border-left`）。現有的色條分兩種，都拿掉：
    - `.result-item` 的 CSS 預設左側色條（`components.css` 約 393 行）。
    - 行內 `border-left-color`／`border-left`：`section-sample.js:74,78,118,130,134`、`section-mw.js:101,140`、`section-centrifuge.js:70,74`、`dndc-hplc-results.js`、`dndc-multi-ui.js`、`dndc-slice-ui.js`。這些是在標出「該頁的主要結果」，不是狀態；v5.0 直接拿掉，v5.1 由主角磚取代。
@@ -233,7 +233,7 @@
 - 表頭：12px、600、`--color-text-muted`、不填底色；列之間 1px `--color-separator`；不用斑馬紋。
 - 數字欄靠右、`tabular-nums`。`.table-wrapper` 維持水平捲動。
 - IUCr 大表、HPLC 流速表、脂質體結果表都用這個樣式。
-- HPLC 流速表（`section-hplc.js:106-113`）：主步驟列改成 class，底色 `--color-warning-bg`、框數字用 `--color-warning-text` 加 700；TM 模式字色改成 class，TM 用 `--color-accent-text`、其他模式用 `--color-success-text`。
+- HPLC 頁的 Detector Setting 表（`section-hplc.js:106-114`，`#detectorSettingsTableBody`）：主步驟列改成 class `is-main-step`，底色 `--color-warning-bg`、框數字用 `--color-warning-text` 加 700；TM 模式字色改成 class，TM 用 `--color-accent-text`、其他模式用 `--color-success-text`。（流速表的提示列是既有的 `.flow-rate-row--note`。）
 
 ### 5.7 分段控制
 
@@ -280,17 +280,18 @@
 | `text` | #636366 | #A1A1A6 | 6.0 ／ 6.5 | 軸標、圖例 |
 | `grid` | rgba(0,0,0,0.08) | rgba(255,255,255,0.10) | 豁免（裝飾） | 格線 |
 | `surface` | #FFFFFF | #1E1E21 | — | 圓餅圖扇區分隔線（= 卡片色） |
-| `primary` | #F04E4E | #F06464 | 3.6 ／ 5.3 | 樣品主線、UV 通道、散佈點、胺基酸組成長條 |
+| `primary` | #F04E4E | #E85858 | 3.6 ／ 4.7 | 樣品主線、UV 通道、散佈點、胺基酸組成長條 |
 | `reference` | #636366 | #A1A1A6 | 6.0 ／ 6.5 | 參考或空白曲線、圓餅圖「Others」 |
 | `model` | #047857 | #5BD68A | 5.5 ／ 9.1 | 擬合模型線、RI 通道 |
 | `residual` | #B45309 | #F5B754 | 5.0 ／ 9.3 | 殘差、基線標註 |
 | `fit` | #B91C1C | #F58A8A | 6.5 ／ 7.0 | dn/dc 擬合線 |
-| `region` | rgba(240,78,78,0.08) | rgba(240,100,100,0.14) | 豁免（填色） | 峰區、q 視窗 |
+| `region` | rgba(240,78,78,0.08) | rgba(232,88,88,0.14) | 豁免（填色） | 峰區、q 視窗、ASTRA 積分範圍 |
+| `regionAlt` | rgba(180,83,9,0.08) | rgba(245,183,84,0.12) | 豁免（填色） | HPLC 基線區間 |
 | `marker` | #C27A7A | rgba(238,144,144,0.6) | 3.3 ／ 3.4（疊在卡片後） | 讀值波長的垂直線（現況 rgba(168,85,85,0.55) 在白底只有 2.3:1） |
 | `tooltipBg`／`tooltipText` | rgba(29,29,31,0.92)／#FFFFFF | #2C2C2E／#F5F5F7 | — | 提示框 |
-| `series[0..9]` | 實作時定 | 實作時定 | 每色 ≥ 3 | 多偵測器通道、胺基酸組成圓餅圖前 10 名 |
+| `series[0..7]` | #F04E4E #2A78D6 #0F8A6E #B45309 #6250D6 #C2307A #4D7C0F #0891B2 | #E85858 #4A8DDF #1FA27F #C08418 #9085E9 #E0629B #76A12B #1898B4 | 淺 ≥ 3.56 ／ 深 ≥ 4.73 | 多偵測器通道、ASTRA 多檔疊圖、胺基酸組成圓餅圖前 7 名 |
 
-- `series` 的要求：兩個主題各 10 色；每色對卡片至少 3:1；相鄰色在常見色覺差異下仍可分辨；實作時用 dataviz skill 的驗證工具選定。它取代 `dndc-hplc-results.js`、`dndc-astra-ui.js` 的 8–10 色陣列（其中幾個淺粉色，例如 rgba(232,182,182)，對白底不到 3:1），以及 `charts.js` 圓餅圖（約 59–108 行）的 oklch 色相輪。圓餅圖第 11 片「Others」用 `reference`，扇區分隔線從寫死的 `#ffffff` 改用 `surface`。
+- `series` 共 8 色（2026-10-15 以 dataviz 驗證工具選定：每色對卡片 ≥ 3:1；相鄰色在常見色覺差異下 ΔE ≥ 10.5／10.6，一般視覺 ≥ 18.6／17.5；`series[0]` = `primary`）。類別色超過 8 個無法同時滿足對比與色覺區分，所以圓餅圖改成前 7 名＋「Others」（`reference`），第 9 個以後的通道重用 `series[i % 8]` 並改虛線 [6, 4]。它取代 `dndc-hplc-results.js`、`dndc-astra-ui.js` 的 8–10 色陣列（其中幾個淺粉色，例如 rgba(232,182,182)，對白底不到 3:1），以及 `charts.js` 圓餅圖的 oklch 色相輪。扇區分隔線從寫死的 `#ffffff` 改用 `surface`。
 - 字型：`ChartTheme.FONT`（系統字 stack）、`ChartTheme.MONO`。
 
 **API**：
@@ -468,3 +469,31 @@
 
 - 光束線電腦的作業系統（決定實際顯示的字型）：驗收時請使用者在光束線電腦開一次。
 - 離心頁、HPLC 頁的主角是提案，v5.1 動工前可再改。
+
+## 13. 實作修訂（2026-10-15，v5.0 計畫階段）
+
+寫 v5.0 計畫時對照 v4.15 的實際程式碼，並在 scratchpad 先完整實作、以 node 測試、axe 與 Playwright 驗證過一遍。以下是與前面各節不同、或前面沒寫清楚的地方，以本節為準。計畫：`docs/superpowers/plans/2026-10-14-apple-redesign-v5.0.md`。
+
+1. **圖表色（§6.1，表格已同步修改）**
+   - `series` 改為 8 色。dataviz 規範：類別色超過 8 個就無法同時滿足「對卡片 ≥ 3:1」與「相鄰色在常見色覺差異下可分辨」，第 9 個以後要併成「Others」或改用複合編碼。所以圓餅圖改成前 7 名＋「Others」（`reference`）；第 9 個以後的偵測器通道重用 `series[i % 8]` 並改虛線 [6, 4]，通道膠囊上的線段樣本同步改虛線。
+   - 深色 `primary` 從 #F06464 改成 #E85858，與深色 `series[0]` 一致。
+   - 新增用途 `regionAlt`（HPLC 基線區間的淡琥珀底）。峰起訖線用 `marker`；ASTRA 積分範圍 dataset 填色 `region`、邊線 `marker`。
+   - 帶顏色的座標軸（dn/dc 的 UV／RI 軸、多通道的各 y 軸）**只有軸線**（`scales.*.border.color`）用該訊號的顏色，刻度與標題一律 `text` 色：文字不穿系列色，系列色當文字對比也不夠。軸標題寫明訊號名稱，識別不靠顏色。
+   - annotation 線段標籤的底色用 `surface`（Chart.js annotation 預設是黑底）；box 的標籤維持透明。
+   - 2026-10-15 以 Playwright 實測 Chart.js 4.5.1：`Chart.instances` 存在；`chart.config.options`／`.data` 就是建立時傳入的物件，寫入葉節點後 `update('none')` 會生效且 zoom 範圍保留；圖表檔用 `{...shared}` 淺展開的共用設定會被寫穿（所以 `colorize` 必須深拷貝）；動畫進行中 `update('none')` 不會同步重畫，`exportPng` 要先 `chart.stop()`。
+2. **§3.2 與 §5.5 的衝突**：`.alert-info` 文字用 `--color-text-primary`（§5.5 為準）；`components.css:304`（流速表提示列最後一格）用 `--color-accent-text`。
+3. **§3.3 規則 5、§5.6 表格名稱**：`section-hplc.js:106-114` 上色的是 **Detector Setting 表**（`#detectorSettingsTableBody`），不是流速表。流速表的提示列是既有的 `.flow-rate-row--note`。
+4. **§5.5**：提示框原本沒有左側色條，是四邊 1px 邊框；v5.0 拿掉邊框。
+5. **§5.6 表格 hover**：改用 `--color-bg-tertiary`（淺色 `--color-success-text` 在 `--color-bg-hover` 上只有 4.49:1）。主步驟列、流速表提示列的 `:hover` 維持各自底色（`.table tbody tr:hover` 的特異性比單一 class 高，不寫會被蓋掉）。
+6. **§5.9 磚與面板**
+   - 放在卡片裡的磚（`.gradient-stat`、`.result-card`、卡片內的 `.stat-card`）用 `--color-bg-tertiary`，避免白底疊白底；直接放在頁面上的 `#proteinStats` 才是白色磚（`--color-bg-card`＋`--shadow-sm`）。
+   - 兩個理論值面板都用中性 tertiary，`--success`／`--warning` 修飾移除：它們代表「理論值」「建議」，不是狀態。面板內的數值格用卡片色；強調格（Predicted *R*g）是淡珊瑚疊在卡片色上——直接疊在面板上時，深色模式的灰色單位字只有 4.3:1（axe 抓到）。
+   - 資料來源 chip：序列預測＝`--color-accent-tint` 底＋`--color-accent-text`；手動＝warning 那組；Guinier 實測＝success 那組。
+   - `.stat-value`、`.result-card-value` 用 `--color-accent-text`；`.info-panel-value`、`.result-value` 用 `--color-text-primary`。
+7. **§5.3 分組列表**：外框 1px `--color-separator`、圓角 12px、左內距 14px（分隔線因此內縮 14px）；列與列之間的分隔線只畫在兩個可見列之間。輸入框 8.5rem（約 9ch，中文 placeholder 也放得下）；≤480px 縮成 6rem，短標籤與輸入框留在同一列。13 組、39 個欄位；4 則純說明的 `alert-info` 改成列表下方的 `.form-list-foot`。
+8. **§5.4**：沒有任何按鈕用到 danger 底，不新增 `.btn-danger`。`.btn-sm` 最小高 1.875rem（≈32px）、主要按鈕 2.625rem（≈44px）。
+9. **§5.10**：左右對齊名單加上 div 型 prose：`.stat-sub`、`.quick-ref-body`、`.info-panel-formula`、`.info-panel-hint`、`.result-note`。盤點後沒有靠繼承置中的單行文字，不需要補 `text-align: center`。
+10. **§4.3**：切換控制放在側欄導覽與 footer 之間；側欄收合時用 `display: none`（`opacity: 0` 仍留在 Tab 順序）。
+11. **§5.8**：`::backdrop` 從 Chrome 122／Safari 17.4／Firefox 120 起才繼承自訂屬性；更舊的瀏覽器遮罩色會變透明（blur 仍在，對話框照常可用）。
+12. **§8.1**：既有測試基準是 179（不是 159），v5.0 完成後 208。用途測試另加「不准任何 `border-left`」；`structure.test.js` 另加「每個 `new Chart(` 都經過 `ChartTheme.colorize(`」；對比矩陣加上語意色 `-text` × tertiary、`--color-text-muted` × 淡珊瑚疊卡片。測試指令要用 `node --test saxs-calculator/tests/*.test.js`（Node 26 不接受目錄形式）。
+13. **§8.4 驗收**：axe 要用 `preload: false` 執行——預載會去抓 Google Fonts 樣式表，被本站 CSP 的 `connect-src` 擋下而在 console 報錯，不是網站的問題。
