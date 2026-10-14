@@ -25,6 +25,7 @@ const safeSession = FormUtils.safeSession;
 // ========================
 document.addEventListener('DOMContentLoaded', () => {
     ThemeToggle.init();
+    ChartTheme.init();   // 此時 defer 載入的 Chart.js 已執行
     initFormPersistence();
     initNavigation();
     initProteinSection();

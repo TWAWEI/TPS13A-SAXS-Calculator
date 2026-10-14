@@ -239,3 +239,14 @@ test('[structure] theme-init.js：<head> 唯一的本地 script、同步載入�
     assert.ok(head.indexOf('Content-Security-Policy') < at, 'theme-init.js 必須在 CSP meta 之後');
     assert.ok(at < head.indexOf('rel="stylesheet"'), 'theme-init.js 必須在第一個 stylesheet 之前（避免深色使用者看到淺色閃一下）');
 });
+
+test('[structure] chart-theme.js 排在所有建立或匯出圖表的本地檔之前', () => {
+    const pos = name => SCRIPT_REFS.indexOf(name);
+    assert.ok(pos('js/chart-theme.js') >= 0, 'chart-theme.js 未被引用');
+    const users = ['js/charts.js', 'js/dndc-charts.js', 'js/liposome-charts.js',
+        'js/dndc-hplc-results.js', 'js/dndc-astra-ui.js', 'js/dndc-export.js'];
+    for (const file of users) {
+        assert.ok(pos(file) >= 0, `${file} 未被引用`);
+        assert.ok(pos('js/chart-theme.js') < pos(file), `chart-theme.js 必須排在 ${file} 之前`);
+    }
+});

@@ -118,3 +118,26 @@ for (const [themeName, theme] of Object.entries(THEMES)) {
         assert.deepEqual(failures, []);
     });
 }
+
+// ---------------------------------------------------------------- 圖表色（js/chart-theme.js，規格 §6.1）
+const { ChartTheme } = require('./load.js');
+
+const CHART_LINE_ROLES = Object.freeze(['primary', 'reference', 'model', 'residual', 'fit', 'marker']);
+
+for (const [themeName, p] of Object.entries(ChartTheme.PALETTES)) {
+    test(`[contrast] 圖表 ${themeName}：text ≥ 4.5，線與標記 ≥ 3（疊在卡片上）`, () => {
+        const cardValue = THEMES[themeName].get('--color-bg-card');
+        assert.equal(p.surface.toUpperCase(), cardValue.toUpperCase(), 'surface（圓餅分隔線、標籤底）必須等於卡片色');
+        const card = parseColor(cardValue);
+        const checks = [
+            ['text', p.text, 4.5],
+            ...CHART_LINE_ROLES.map(role => [role, p[role], 3]),
+            ...p.series.map((color, i) => [`series[${i}]`, color, 3]),
+        ];
+        const failures = checks
+            .map(([name, color, min]) => ({ name, min, value: contrast(over(parseColor(color), card), card) }))
+            .filter(c => c.value < c.min)
+            .map(c => `${c.name} = ${c.value.toFixed(2)} < ${c.min}`);
+        assert.deepEqual(failures, []);
+    });
+}
