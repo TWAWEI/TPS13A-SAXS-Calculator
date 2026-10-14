@@ -47,8 +47,9 @@ Beamline scientists at NSRRC operating the TPS 13A BioSAXS beamline. They use th
 
 ### 驗證
 - 修改 saxs-calculator 後，必須在瀏覽器開啟 index.html 確認無 console error
-- 修改 dndc calculator 後，必須執行 `cd "dndc calculator" && .venv_mac/bin/python -m pytest -q`（py3.9 venv；基準 2026-08-21：194 passed / 27 xfailed / 0 failed）。xfail 是以 `xfail(strict=True)` 鎖定的已知 bug——修好一個會變成 XPASS 失敗，此時移除該測試的 xfail 標記，不要改期望值
+- 修改 dndc calculator 後，必須執行 `cd "dndc calculator" && .venv_mac/bin/python -m pytest -q`（py3.9 venv；基準 2026-10-14：349 passed / 0 xfailed / 0 failed）。xfail 是以 `xfail(strict=True)` 鎖定的已知 bug——修好一個會變成 XPASS 失敗，此時移除該測試的 xfail 標記，不要改期望值
 - 不要說「應該可以」或「看起來沒問題」，要跑過才算
+- 改 saxs-calculator 後 bump 版本：側欄 footer 的 `Version X.Y` 與 `index.html` 所有本地 `?v=` 一起改（`tests/structure.test.js` 會檢查兩者一致）
 
 ### 安全（saxs-calculator，2026-08-22 起）
 - index.html 有 `<meta http-equiv="Content-Security-Policy">`：新增任何 CDN 來源、行內 `onclick`/`<script>`、外部 fetch 都會被擋——改用 `addEventListener`，外部來源要同時加進 CSP 對應指令
