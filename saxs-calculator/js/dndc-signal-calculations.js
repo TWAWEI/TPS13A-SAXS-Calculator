@@ -168,7 +168,7 @@ const PEAK_MODES = Object.freeze(['height', 'area', 'spi']);
  * @param {number[]} time - Time axis
  * @param {boolean[]} peakMask - Boolean mask for the peak region
  * @param {string} mode - "height", "area", or "spi" (single-point interpolation)
- * @returns {object} { value, mode, peakHeight, peakArea, spi }
+ * @returns {object} { value, mode, peakHeight, peakArea, spi }——三者都保留正負號：峰高取峰區內絕對值最大那一點的原值，面積取淨積分；峰區內訊號有正有負時兩者的正負號可能不同（與 Python peak.py 一致）
  * @throws {Error} mode 不是 height／area／spi 時
  */
 function measurePeak(correctedSignal, time, peakMask, mode) {

@@ -92,3 +92,20 @@ test('[sign] negativeDndcWarnings：只有負值才警告；訊息與 Python 相
     assert.deepEqual(Dndc.negativeDndcWarnings(0.185), []);
     assert.deepEqual(Dndc.negativeDndcWarnings(0), []);
 });
+
+test('[sign] measurePeak：峰區正負都有時，峰高取 |v| 最大點的原值、面積取淨積分', () => {
+    const time = [0, 1, 2, 3, 4];
+    const signal = [0, -1, 0, 3, 0];
+    const mask = time.map(() => true);
+    const r = Dndc.measurePeak(signal, time, mask, 'height');
+    assert.equal(r.peakHeight, 3);
+    assert.equal(r.peakArea, 2);   // 梯形：四段 −0.5、−0.5、+1.5、+1.5 → 淨面積 2（≠ 峰高 3，也 ≠ 絕對值面積 4）
+});
+
+test('[sign] computeSliceDndc：峰邊緣 UV 因雜訊略低於 0 不會被拒絕（使用者定案，規格 §6.3）', () => {
+    const { time, uv, ri } = chromatogram();
+    const dipped = uv.map((v, i) => (time[i] >= 7 && time[i] <= 7.05 ? -0.03 : v));   // 峰區左緣塞入負值（> 5% 門檻才會被算進切片）
+    const r = Dndc.computeSliceDndc(time, dipped, ri, PARAMS);
+    assert.ok(Number.isFinite(r.dndc));
+    assert.ok(r.sliceCount >= 2);
+});
