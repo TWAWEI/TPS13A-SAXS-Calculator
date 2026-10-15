@@ -1,7 +1,7 @@
 /* =============================================
    TPS13A SAXS Calculator — Stat & Info Panels
-   數值磚（stat-card／gradient-stat／result-card）、理論值與偵測器建議面板、資料來源 chip
-   v5.0：拿掉漸層與色條，改成中性磚；v5.1 再換成 .tile 結果磚。
+   蛋白質頁統計列（stat-card）、理論值與偵測器建議面板、資料來源 chip
+   v5.2 起各頁結果改用 css/tiles.css 的 .tile；這裡只剩蛋白質頁的統計列（.stat-card）。
    ============================================= */
 
 /* ===== Stat Cards ===== */
@@ -56,13 +56,6 @@
     font-size: 0.75rem;
     color: var(--color-text-muted);
     margin-top: 0.125rem;
-}
-
-/* ===== Gradient Stat（HPLC 頁的 Fraction Collector 與 pre-run 建議值；名稱沿用，已無漸層） ===== */
-.gradient-stat {
-    background: var(--color-bg-tertiary);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-md) var(--spacing-lg);
 }
 
 /* ===== Info Panels（理論預測值／偵測器距離建議） ===== */
@@ -270,51 +263,4 @@
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
     border-radius: 2px;
-}
-
-/* ===== Result Cards（偵測器距離頁；放在卡片裡，用淺灰磚） ===== */
-.result-card {
-    padding: var(--spacing-md);
-    border-radius: var(--radius-lg);
-    background: var(--color-bg-tertiary);
-    text-align: center;
-}
-
-.result-card-label {
-    color: var(--color-text-muted);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    margin-bottom: var(--spacing-xs);
-}
-
-.result-card-value {
-    color: var(--color-accent-text);
-    font-size: 1.375rem;
-    font-weight: 600;
-    font-family: var(--font-body);
-    font-variant-numeric: tabular-nums;
-}
-
-.result-card-unit {
-    color: var(--color-text-muted);
-    font-size: 0.6875rem;
-    margin-top: 0.125rem;
-}
-
-.result-card--lg {
-    padding: var(--spacing-lg);
-    margin-top: var(--spacing-md);
-}
-
-.result-card--lg .result-card-label {
-    font-size: 0.75rem;
-}
-
-.result-card--lg .result-card-value {
-    font-size: 1.75rem;
-}
-
-.result-card--lg .result-card-unit {
-    font-size: 0.75rem;
 }

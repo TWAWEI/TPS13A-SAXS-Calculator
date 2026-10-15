@@ -84,25 +84,6 @@
     line-height: 1.7;
 }
 
-/* ===== Suggested Values Flex ===== */
-.suggested-values {
-    display: flex;
-    gap: var(--spacing-sm);
-    flex-wrap: wrap;
-}
-
-.suggested-values > * {
-    flex: 1;
-    min-width: 150px;
-}
-
-/* ===== Detector Result Grid ===== */
-.detector-result-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--spacing-sm);
-}
-
 /* ===== Page Sections ===== */
 .section {
     display: none;

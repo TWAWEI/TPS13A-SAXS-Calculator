@@ -524,49 +524,6 @@
     }
 }
 
-/* ===== Result Display ===== */
-.result-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: var(--spacing-sm);
-}
-
-.result-item {
-    background: var(--color-bg-tertiary);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-sm);
-}
-
-.result-label {
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    letter-spacing: 0.02em;
-    margin-bottom: 0.125rem;
-}
-
-.result-value {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    font-family: var(--font-body);
-    font-variant-numeric: tabular-nums;
-}
-
-/* 該頁的關鍵數值（dn/dc 理論頁的最終值與 Lorentz-Lorenz 值） */
-.result-value--key {
-    font-size: 1.25rem;
-    color: var(--color-accent-text);
-}
-
-/* 數值下方的一行說明（單位別名、適用場合） */
-.result-note {
-    font-size: 0.6875rem;
-    color: var(--color-text-muted);
-    line-height: 1.4;
-    margin-top: 0.25rem;
-}
-
 /* ===== Sequence Meta Row ===== */
 .sequence-meta {
     display: flex;
