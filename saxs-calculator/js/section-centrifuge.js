@@ -63,45 +63,23 @@ function initCentrifugeSection() {
 }
 
 function centrifugeResultsHtml(data) {
+    const { tile, tiles, rows } = ResultTiles;
     return `
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">相對離心力 (RCF)</div>
-                <div class="result-value">${data.rcf.toFixed(0)} <span style="font-size: 0.75rem;">× g</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">沉降係數</div>
-                <div class="result-value">${data.sedimentationCoeffSvedberg.toFixed(2)} <span style="font-size: 0.75rem;">S</span></div>
-            </div>
-        </div>
-        
-        <div class="section-divider"><span>粒子參數</span></div>
-        
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">估算粒子半徑</div>
-                <div class="result-value">${data.particleRadius.toFixed(2)} <span style="font-size: 0.75rem;">nm</span></div>
-                <div style="font-size: 0.7rem; color: var(--color-text-muted); margin-top: 0.25rem;">無水球近似；實際沉降係數約為此值的 0.75–0.85 倍（水合與形狀因子）</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">浮力因子</div>
-                <div class="result-value">${data.buoyancyFactor.toFixed(4)}</div>
-            </div>
-        </div>
-        
-        <div class="section-divider"><span>離心結果</span></div>
-        
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">終端速度</div>
-                <div class="result-value">${(data.velocity * 1000).toFixed(4)} <span style="font-size: 0.75rem;">μm/s</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">移動距離 (${data.time} min)</div>
-                <div class="result-value">${data.distance.toFixed(4)} <span style="font-size: 0.75rem;">mm</span></div>
-            </div>
-        </div>
-        
+        ${tiles([
+            tile({ label: '相對離心力 (RCF)', value: data.rcf.toFixed(0), unit: '× g', hero: true }),
+            tile({ label: '沉降係數', value: data.sedimentationCoeffSvedberg.toFixed(2), unit: 'S' }),
+            tile({
+                label: '估算粒子半徑', value: data.particleRadius.toFixed(2), unit: 'nm',
+                sub: '無水球近似；實際沉降係數約為此值的 0.75–0.85 倍（水合與形狀因子）',
+            }),
+            tile({ label: '終端速度', value: (data.velocity * 1000).toFixed(4), unit: 'μm/s' }),
+            tile({ label: `移動距離 (${data.time} min)`, value: data.distance.toFixed(4), unit: 'mm' }),
+        ])}
+
+        ${rows([
+            { label: '浮力因子', value: data.buoyancyFactor.toFixed(4) },
+        ])}
+
         <div class="alert alert-info" style="margin-top: 1rem;">
             <strong>公式：</strong>RCF = 1.118 × 10⁻⁵ × r × N² <br>
             其中 r = ${data.radius} cm, N = ${data.rpm} rpm
