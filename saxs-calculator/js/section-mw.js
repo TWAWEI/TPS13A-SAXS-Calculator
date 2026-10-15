@@ -90,89 +90,60 @@ function initMWSection() {
 }
 
 function mwResultsHtml(data, proteinMw) {
+    const { tile, tiles, rows } = ResultTiles;
+    const massResolutionTile = data.massResolution
+        ? tile({ label: '質量解析度', value: `± ${MassUnits.formatKDa(data.massResolution)}`, unit: 'kDa' })
+        : '';
+
     if (data.mode === 'forward') {
         // 從 MW 計算滯留時間
         const oligomerText = data.oligomer > 1 ? ` (${data.oligomer}mer)` : '';
         return `
-            <div class="result-grid">
-                <div class="result-item">
-                    <div class="result-label">預期滯留時間</div>
-                    <div class="result-value">${data.retentionTime.toFixed(3)} <span style="font-size: 0.75rem;">min</span></div>
-                </div>
-                ${data.massResolution ? `
-                <div class="result-item">
-                    <div class="result-label">質量解析度</div>
-                    <div class="result-value">± ${MassUnits.formatKDa(data.massResolution)} <span style="font-size: 0.75rem;">kDa</span></div>
-                </div>
-                ` : ''}
-            </div>
-            
+            ${tiles([
+                tile({ label: '預期滯留時間', value: data.retentionTime.toFixed(3), unit: 'min', hero: true }),
+                massResolutionTile,
+            ])}
+
             <div class="section-divider"><span>輸入參數</span></div>
-            
-            <div class="result-grid">
-                <div class="result-item">
-                    <div class="result-label">實際分子量${oligomerText}</div>
-                    <div class="result-value">${MassUnits.formatKDa(data.mw)} <span style="font-size: 0.75rem;">kDa</span></div>
-                </div>
-                <div class="result-item">
-                    <div class="result-label">管柱孔徑</div>
-                    <div class="result-value">${data.poreSize} Å</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-label">流速</div>
-                    <div class="result-value">${data.flowRate} <span style="font-size: 0.75rem;">mL/min</span></div>
-                </div>
-            </div>
-            
+
+            ${rows([
+                { label: `實際分子量${oligomerText}`, value: MassUnits.formatKDa(data.mw), unit: 'kDa' },
+                { label: '管柱孔徑', value: data.poreSize, unit: 'Å' },
+                { label: '流速', value: data.flowRate, unit: 'mL/min' },
+            ])}
+
             <div class="alert alert-success" style="margin-top: 1rem;">
                 <strong>✓ 計算完成</strong><br>
                 流速 ${data.flowRate} mL/min 條件下<br>
                 分子量 ${MassUnits.formatKDa(data.mw)} kDa 預期在 <strong>${data.retentionTime.toFixed(3)} min</strong> 出峰
             </div>
         `;
-    } else {
-        // 反向計算：從滯留時間估算 MW
-        return `
-            <div class="result-grid">
-                <div class="result-item">
-                    <div class="result-label">估算分子量</div>
-                    <div class="result-value">${MassUnits.formatKDa(data.estimatedMw)} <span style="font-size: 0.75rem;">kDa</span></div>
-                </div>
-                ${data.massResolution ? `
-                <div class="result-item">
-                    <div class="result-label">質量解析度</div>
-                    <div class="result-value">± ${MassUnits.formatKDa(data.massResolution)} <span style="font-size: 0.75rem;">kDa</span></div>
-                </div>
-                ` : ''}
-            </div>
-            
-            <div class="section-divider"><span>輸入參數</span></div>
-            
-            <div class="result-grid">
-                <div class="result-item">
-                    <div class="result-label">滯留時間</div>
-                    <div class="result-value">${data.retentionTime.toFixed(3)} min</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-label">管柱孔徑</div>
-                    <div class="result-value">${data.poreSize} Å</div>
-                </div>
-                <div class="result-item">
-                    <div class="result-label">流速</div>
-                    <div class="result-value">${data.flowRate} <span style="font-size: 0.75rem;">mL/min</span></div>
-                </div>
-            </div>
-            
-            ${proteinMw ? `
-            <div class="alert ${Math.abs(data.estimatedMw - proteinMw) / proteinMw < 0.3 ? 'alert-success' : 'alert-warning'}" style="margin-top: 1rem;">
-                <strong>與序列 MW 比較：</strong><br>
-                序列 MW: ${MassUnits.formatKDa(proteinMw)} kDa<br>
-                SEC MW: ${MassUnits.formatKDa(data.estimatedMw)} kDa<br>
-                比值: ${(data.estimatedMw / proteinMw).toFixed(2)}
-            </div>
-            ` : ''}
-        `;
     }
+
+    // 反向計算：從滯留時間估算 MW
+    return `
+        ${tiles([
+            tile({ label: '估算分子量', value: MassUnits.formatKDa(data.estimatedMw), unit: 'kDa', hero: true }),
+            massResolutionTile,
+        ])}
+
+        <div class="section-divider"><span>輸入參數</span></div>
+
+        ${rows([
+            { label: '滯留時間', value: data.retentionTime.toFixed(3), unit: 'min' },
+            { label: '管柱孔徑', value: data.poreSize, unit: 'Å' },
+            { label: '流速', value: data.flowRate, unit: 'mL/min' },
+        ])}
+
+        ${proteinMw ? `
+        <div class="alert ${Math.abs(data.estimatedMw - proteinMw) / proteinMw < 0.3 ? 'alert-success' : 'alert-warning'}" style="margin-top: 1rem;">
+            <strong>與序列 MW 比較：</strong><br>
+            序列 MW: ${MassUnits.formatKDa(proteinMw)} kDa<br>
+            SEC MW: ${MassUnits.formatKDa(data.estimatedMw)} kDa<br>
+            比值: ${(data.estimatedMw / proteinMw).toFixed(2)}
+        </div>
+        ` : ''}
+    `;
 }
 
 function displayMWResults(data) {
