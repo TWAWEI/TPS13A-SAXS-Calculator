@@ -609,20 +609,15 @@
                             <h2 class="card-title">Fraction Collector</h2>
                         </div>
                         <div class="card-body">
-                            <div class="gradient-stat">
-                                <div class="stat-label">Start Time</div>
-                                <div class="stat-value" id="fractionStartTime">--</div>
-                                <div class="stat-sub">min</div>
-                            </div>
-                            <div class="gradient-stat mt-md">
-                                <div class="stat-label">Stop Time</div>
-                                <div class="stat-value" id="fractionStopTime">--</div>
-                                <div class="stat-sub">min</div>
-                            </div>
-                            <div class="gradient-stat mt-md">
-                                <div class="stat-label">Time/Fraction</div>
-                                <div class="stat-value" id="timePerFraction">--</div>
-                                <div class="stat-sub">min</div>
+                            <div class="tiles">
+                                <div class="tile tile--hero">
+                                    <div class="tile-label">Fraction 收集時段（Start → Stop）</div>
+                                    <div class="tile-value"><span id="fractionStartTime">--</span> → <span id="fractionStopTime">--</span><span class="tile-unit">min</span></div>
+                                </div>
+                                <div class="tile tile--wide">
+                                    <div class="tile-label">Time/Fraction</div>
+                                    <div class="tile-value"><span id="timePerFraction">--</span><span class="tile-unit">min</span></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -634,21 +629,18 @@
                         <h2 class="card-title card-title--warning">Pre-run 10μL 建議值 (用於下次 pre-run)</h2>
                     </div>
                     <div class="card-body" id="hplcSuggestedValues">
-                        <div class="suggested-values">
-                            <div class="gradient-stat">
-                                <div class="stat-label">Suggested Peak Center</div>
-                                <div class="stat-value" id="suggestPeakCenter">--</div>
-                                <div class="stat-sub">min</div>
+                        <div class="tiles">
+                            <div class="tile">
+                                <div class="tile-label">Suggested Peak Center</div>
+                                <div class="tile-value"><span id="suggestPeakCenter">--</span><span class="tile-unit">min</span></div>
                             </div>
-                            <div class="gradient-stat">
-                                <div class="stat-label">Suggested Peak Width</div>
-                                <div class="stat-value" id="suggestPeakWidth">--</div>
-                                <div class="stat-sub">min</div>
+                            <div class="tile">
+                                <div class="tile-label">Suggested Peak Width</div>
+                                <div class="tile-value"><span id="suggestPeakWidth">--</span><span class="tile-unit">min</span></div>
                             </div>
-                            <div class="gradient-stat">
-                                <div class="stat-label">Suggested Sample Volume</div>
-                                <div class="stat-value" id="suggestSampleVolume">--</div>
-                                <div class="stat-sub">μL</div>
+                            <div class="tile tile--wide">
+                                <div class="tile-label">Suggested Sample Volume</div>
+                                <div class="tile-value"><span id="suggestSampleVolume">--</span><span class="tile-unit">μL</span></div>
                             </div>
                         </div>
                     </div>
@@ -1250,35 +1242,32 @@
 
                             <!-- Results Display -->
                             <div id="detectorResults" class="mt-lg">
-                                <div class="detector-result-grid">
+                                <div class="tiles">
+                                    <!-- 9M SD（主角） -->
+                                    <div class="tile tile--hero">
+                                        <div class="tile-label">建議 9M 偵測器距離 (SD)</div>
+                                        <div class="tile-value"><span id="detectorSDResult">1,900</span><span class="tile-unit">mm</span></div>
+                                        <span class="tile-chip tile-chip--warn" id="detectorSDBadge" hidden>超出行程</span>
+                                        <div class="tile-sub">(<span id="detectorSDMeters">1.9</span> m)</div>
+                                    </div>
+
                                     <!-- MW Result (shown in Rg mode) -->
-                                    <div id="mwResultCard" class="result-card hidden">
-                                        <div class="result-card-label">預測 MW</div>
-                                        <div class="result-card-value" id="detectorMwResult">66.50</div>
-                                        <div class="result-card-unit">kDa</div>
+                                    <div id="mwResultCard" class="tile hidden">
+                                        <div class="tile-label">預測 MW</div>
+                                        <div class="tile-value"><span id="detectorMwResult">66.50</span><span class="tile-unit">kDa</span></div>
                                     </div>
 
                                     <!-- Rg Result (shown in MW mode) -->
-                                    <div id="rgResultCard" class="result-card">
-                                        <div class="result-card-label">理論 <i>R</i><sub>g</sub></div>
-                                        <div class="result-card-value" id="detectorRgResult">28.00</div>
-                                        <div class="result-card-unit">Å</div>
+                                    <div id="rgResultCard" class="tile">
+                                        <div class="tile-label">理論 <i>R</i><sub>g</sub></div>
+                                        <div class="tile-value"><span id="detectorRgResult">28.00</span><span class="tile-unit">Å</span></div>
                                     </div>
 
                                     <!-- qmin Result -->
-                                    <div class="result-card">
-                                        <div class="result-card-label"><i>q</i><sub>min</sub></div>
-                                        <div class="result-card-value" id="detectorQminResult">0.0080</div>
-                                        <div class="result-card-unit">Å⁻¹</div>
+                                    <div class="tile">
+                                        <div class="tile-label"><i>q</i><sub>min</sub></div>
+                                        <div class="tile-value"><span id="detectorQminResult">0.0080</span><span class="tile-unit">Å⁻¹</span></div>
                                     </div>
-                                </div>
-
-                                <!-- 9M SD Result (Full Width) -->
-                                <div class="result-card result-card--lg">
-                                    <div class="result-card-label">建議 9M 偵測器距離 (SD)</div>
-                                    <div class="result-card-value" id="detectorSDResult">1,900</div>
-                                    <span class="info-panel-badge info-panel-badge--warn" id="detectorSDBadge" hidden>超出行程</span>
-                                    <div class="result-card-unit">mm (<span id="detectorSDMeters">1.9</span> m)</div>
                                 </div>
                             </div>
 
