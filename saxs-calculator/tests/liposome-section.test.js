@@ -93,7 +93,7 @@ const stubWindow = { localStorage: memoryStorage() };   // classic-script 全域
 global.window = stubWindow;
 global.document = { getElementById: id => elements.get(id) || null };
 
-const MODULES = ['form-utils.js', 'a11y-utils.js', 'liposome-calculations.js', 'liposome-file-parsers.js',
+const MODULES = ['form-utils.js', 'a11y-utils.js', 'result-tiles.js', 'liposome-calculations.js', 'liposome-file-parsers.js',
     'liposome-charts.js', 'liposome-results-table.js', 'section-liposome.js'].map(f => path.join(JS, f));
 const SECTION = MODULES[MODULES.length - 1];
 
@@ -335,8 +335,8 @@ test('[lipo-section] S3 光譜讀值：五位小數、SD 用四捨五入值；�
     assert.deepEqual(chartCalls.at(-1), ['spectra', [494, 495, 496]]);
 
     input('lipoWl2', '500');
-    const card = $('lipoSpectraResults').innerHTML.match(/stat-value">([\d.]+)/)[1];
-    assert.equal(card, $('lipoAbs2').value, 'stat-card 與輸入框同一個值');
+    const card = $('lipoSpectraResults').innerHTML.match(/tile-value">([\d.]+)/)[1];
+    assert.equal(card, $('lipoAbs2').value, '主波長磚與輸入框同一個值');
     assert.deepEqual(chartCalls.at(-1), ['spectra', [494, 500, 496]], '標線跟著讀值波長');
     assert.equal($('lipoResultsAbsHeader').textContent, 'A(500 nm)', '主波長改了，結果表表頭跟著改');
     input('lipoWl2', '495');

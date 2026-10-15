@@ -24,6 +24,7 @@
     const Charts = () => global.LiposomeCharts;
     const Table = () => global.LiposomeResultsTable;
     const esc = (v) => global.FormUtils.escapeHtml(v);
+    const Tiles = () => global.ResultTiles;
     /** 主波長在三個讀值波長中的索引（Excel J 欄只用 495 nm）。 */
     const primary = () => Calc().DEFAULTS.PRIMARY_INDEX;
 
@@ -89,14 +90,6 @@
         return texts.map(warningRow).join('');
     }
 
-    /**
-     * 一格結果。label / value / unit 全部經 escapeHtml——value 目前都是數字格式化後的字串，
-     * 逸出等於沒動；這樣日後放進任何字串也不會變成 HTML。
-     */
-    function resultItem(label, value, unit = '') {
-        return `<div class="result-item"><div class="result-label">${esc(label)}</div><div class="result-value">${esc(String(value))}${unit ? ` <span class="stat-unit">${esc(unit)}</span>` : ''}</div></div>`;
-    }
-
     function pct(rel) {
         return `${(rel * 100).toFixed(2)}%`;
     }
@@ -158,21 +151,25 @@
 
     /** 稀釋因子結果區 HTML（純函式） */
     function dilutionResultsHtml(r, qMin, qMax) {
+        const { tile, tiles, rows } = Tiles();
         const excluded = r.excluded.outOfRange + r.excluded.nonPositive;
         const sem = Calc().standardErrorOfMean(r.sd, r.n);
         const semText = sem === null ? '' : `；SEM ${pct(sem / r.factor)}（僅供對照，D/L 誤差用 SD）`;
         return `
-            <div class="stat-card">
-                <div class="stat-content">
-                    <div class="stat-label">稀釋因子（I_bypass / I_solution 逐點平均）</div>
-                    <div class="stat-value">${r.factor.toPrecision(4)} <span class="stat-unit">± ${r.sd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">q 視窗 ${qMin}–${qMax} Å⁻¹，實際涵蓋 ${r.qCovered[0].toFixed(3)}–${r.qCovered[1].toFixed(3)}，n = ${r.n}，相對離散 ${pct(r.sd / r.factor)}${semText}</div>
-                </div>
-            </div>
-            <div class="result-grid mt-sm">
-                ${resultItem('最小平方縮放（PRIMUS I Scale 等價）', r.lsqScale.toPrecision(4))}
-                ${resultItem('排除點', String(excluded), excluded ? `超出範圍 ${r.excluded.outOfRange}、非正 ${r.excluded.nonPositive}` : '')}
-            </div>
+            ${tiles([
+                tile({
+                    label: '稀釋因子（I_bypass / I_solution 逐點平均）', wide: true,
+                    value: r.factor.toPrecision(4), unit: `± ${r.sd.toPrecision(2)}`,
+                    sub: `q 視窗 ${qMin}–${qMax} Å⁻¹，實際涵蓋 ${r.qCovered[0].toFixed(3)}–${r.qCovered[1].toFixed(3)}，n = ${r.n}，相對離散 ${pct(r.sd / r.factor)}${semText}`,
+                }),
+            ])}
+            ${rows([
+                { label: esc('最小平方縮放（PRIMUS I Scale 等價）'), value: esc(r.lsqScale.toPrecision(4)) },
+                {
+                    label: esc('排除點'), value: esc(String(excluded)),
+                    unit: excluded ? esc(`超出範圍 ${r.excluded.outOfRange}、非正 ${r.excluded.nonPositive}`) : '',
+                },
+            ])}
             ${dilutionWarnings(r)}`;
     }
 
@@ -246,27 +243,28 @@
         updateAbsSummary();
     }
 
-    /** 結果區 HTML（純函式）：stat-card + 擬合摘要 + 警告列。 */
+    /** 結果區 HTML（純函式）：主波長吸光度磚 + 擬合摘要 + 警告列。 */
     function spectraResultsHtml(a, subtracted, fit) {
+        const { tile, tiles, rows } = Tiles();
         const fitHtml = fit
-            ? `<div class="result-grid mt-sm">
-                   ${resultItem('純 DOX 縮放係數 k', fit.k.toPrecision(4))}
-                   ${resultItem('擬合殘差 RMS', fit.rms.toPrecision(3), `A.U.，n = ${fit.n}`)}
-               </div>
-               <p class="stat-sub mt-sm">k 是讓「空白 + k×純 DOX」最貼近含藥光譜的縮放；殘差大代表兩樣品的脂質濃度可能不一致。網站不判定通過與否，請看下方擬合圖。</p>`
+            ? `${rows([
+                   { label: esc('純 DOX 縮放係數 k'), value: esc(fit.k.toPrecision(4)) },
+                   { label: esc('擬合殘差 RMS'), value: esc(fit.rms.toPrecision(3)), unit: esc(`A.U.，n = ${fit.n}`) },
+               ])}
+               <p class="result-list-foot">k 是讓「空白 + k×純 DOX」最貼近含藥光譜的縮放；殘差大代表兩樣品的脂質濃度可能不一致。網站不判定通過與否，請看下方擬合圖。</p>`
             : '';
         const warn = fit && fit.flags.negativeScale
             ? warningRow('縮放係數 k 為負：含藥／空白檔可能互換，或扣背景過頭')
             : '';
         const dropped = subtracted.dropped ? `，捨棄 ${subtracted.dropped} 點（超出空白光譜範圍）` : '';
         return `
-            <div class="stat-card">
-                <div class="stat-content">
-                    <div class="stat-label">扣背景後 A(主波長)</div>
-                    <div class="stat-value">${a.values[primary()].toFixed(5)} <span class="stat-unit">± ${a.sd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">± 為${SPREAD_LABEL}；重疊 ${subtracted.wavelength.length} 點${dropped}</div>
-                </div>
-            </div>
+            ${tiles([
+                tile({
+                    label: '扣背景後 A(主波長)', wide: true,
+                    value: a.values[primary()].toFixed(5), unit: `± ${a.sd.toPrecision(2)}`,
+                    sub: `± 為${SPREAD_LABEL}；重疊 ${subtracted.wavelength.length} 點${dropped}`,
+                }),
+            ])}
             ${fitHtml}${warn}`;
     }
 
@@ -372,23 +370,32 @@
 
     /** D/L 結果區 HTML（純函式） */
     function dlResultsHtml(snap) {
+        const { tile, tiles, rows } = Tiles();
         const p = snap.params;
         return `
-            <div class="stat-card">
-                <div class="stat-content">
-                    <div class="stat-label">D/L（drug-to-lipid 莫耳比）</div>
-                    <div class="stat-value">${snap.dl.toPrecision(4)} <span class="stat-unit">± ${snap.dlSd.toPrecision(2)}</span></div>
-                    <div class="stat-sub">誤差 = D/L × √(relA² + relF²)：${SPREAD_LABEL}貢獻 ${pct(snap.relA)}，稀釋因子離散貢獻 ${pct(snap.relF)}</div>
-                    <div class="stat-sub">此為精密度，不含 ε、光程、脂質配製濃度的系統誤差</div>
-                    <div class="stat-sub">Excel 原式（僅 UV）：${snap.dl.toPrecision(4)} ± ${snap.dlSdExcel.toPrecision(2)}</div>
-                </div>
-            </div>
-            <div class="result-grid mt-sm">
-                ${resultItem('[DOX]', (snap.doxConc * 1000).toPrecision(4), `± ${(snap.doxSd * 1000).toPrecision(2)} mM`)}
-                ${resultItem('脂質實際濃度', (snap.lipidActual * 1000).toPrecision(4), 'mM')}
-                ${resultItem(`A(${p.wavelengths[primary()]} nm)`, snap.aPrimary.toFixed(5), `${SPREAD_LABEL} ${snap.sdA.toPrecision(2)}`)}
-                ${resultItem('稀釋因子', p.factor.toPrecision(4), SOURCE_LABEL[p.factorSource])}
-            </div>
+            ${tiles([
+                tile({
+                    label: 'D/L（drug-to-lipid 莫耳比）', hero: true,
+                    value: snap.dl.toPrecision(4), unit: `± ${snap.dlSd.toPrecision(2)}`,
+                    sub: [
+                        `誤差 = D/L × √(relA² + relF²)：${SPREAD_LABEL}貢獻 ${pct(snap.relA)}，稀釋因子離散貢獻 ${pct(snap.relF)}`,
+                        '此為精密度，不含 ε、光程、脂質配製濃度的系統誤差',
+                        `Excel 原式（僅 UV）：${snap.dl.toPrecision(4)} ± ${snap.dlSdExcel.toPrecision(2)}`,
+                    ],
+                }),
+                tile({
+                    label: esc('[DOX]'), value: esc((snap.doxConc * 1000).toPrecision(4)),
+                    unit: esc(`± ${(snap.doxSd * 1000).toPrecision(2)} mM`),
+                }),
+                tile({ label: esc('稀釋因子'), value: esc(p.factor.toPrecision(4)), unit: esc(SOURCE_LABEL[p.factorSource]) }),
+            ])}
+            ${rows([
+                { label: esc('脂質實際濃度'), value: esc((snap.lipidActual * 1000).toPrecision(4)), unit: esc('mM') },
+                {
+                    label: esc(`A(${p.wavelengths[primary()]} nm)`), value: esc(snap.aPrimary.toFixed(5)),
+                    unit: esc(`${SPREAD_LABEL} ${snap.sdA.toPrecision(2)}`),
+                },
+            ])}
             ${dlWarnings(snap)}`;
     }
 
