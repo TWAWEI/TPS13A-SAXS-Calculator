@@ -4,7 +4,8 @@
  *
  * 各頁的結果 HTML 都由純函式產生（*ResultsHtml、LiposomeSection.resultsHtml）。本檔用固定輸入呼叫，
  * 經 tests/result-pairs.js 摘要後與 v5.1 擷取的 fixture 比對：pairs（標籤｜數值）與 alerts 必須相同，
- * numbers（所有數字）必須等於 fixture 加上該案例列出的 extraNumbers。版面（順序、主角、列表）可以變。
+ * notes（附註文字）與 numbers（所有數字）必須等於 fixture 加上該案例列出的 extraNotes／extraNumbers。
+ * 版面（順序、主角、列表）可以變。
  *
  * fixture 只在 v5.1 標記下擷取一次（Task 2），之後不應再更新：
  *   GOLDEN_UPDATE=1 node --test saxs-calculator/tests/result-golden.test.js
@@ -63,7 +64,10 @@ const LIPO_DL = Object.freeze({
     flags: { epsilonWavelengthMismatch: false, absorbanceAboveLinear: true, wavelengthSpreadHigh: false },
 });
 
-/** 每個案例：name、html()、extraNumbers（v5.2 新增、刻意重複顯示的數字，例如主角膠囊上的比值） */
+/**
+ * 每個案例：name、html()、extraNumbers（v5.2 新增、刻意重複顯示的數字，例如主角膠囊上的比值）、
+ * extraNotes（v5.1 用行內樣式、沒有附註 class 的說明，v5.2 改成磚的附註）。
+ */
 const CASES = Object.freeze([
     { name: 'protein', html: () => proteinResultsHtml(ProteinAnalysisResult(), 'HEWL <test>') },
     {
@@ -118,6 +122,7 @@ const CASES = Object.freeze([
             rcf: 15000.4, sedimentationCoeffSvedberg: 4.567, particleRadius: 2.789, buoyancyFactor: 0.2701,
             velocity: 0.0001234, time: 30, distance: 0.2222, radius: 8.5, rpm: 13000,
         }),
+        extraNotes: ['無水球近似；實際沉降係數約為此值的 0.75–0.85 倍（水合與形狀因子）'],
     },
     { name: 'dndc-correction', html: () => dndcCorrectionResultsHtml(Dndc.comprehensiveCorrection(0.185, 25, 589, 20, 658)) },
     { name: 'dndc-ll', html: () => llResultsHtml(0.187654, 0.190123) },
@@ -174,6 +179,7 @@ CASES.forEach(c => {
         assert.ok(want, `fixture 沒有 ${c.name}：先在 v5.1 標記下以 GOLDEN_UPDATE=1 擷取`);
         assert.deepEqual(got.pairs, want.pairs, '標籤｜數值');
         assert.deepEqual(got.alerts, want.alerts, '提示框文字');
+        assert.deepEqual(got.notes, [...want.notes, ...(c.extraNotes || [])].sort(), '附註文字');
         assert.deepEqual(got.numbers, [...want.numbers, ...(c.extraNumbers || [])].sort(), '所有數字');
     });
 });

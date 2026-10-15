@@ -122,7 +122,9 @@
 }
 
 .result-row-value {
+    min-width: 0;
     margin-left: auto;
+    overflow-wrap: anywhere;       /* 檔名、方法名稱等長字串不撐出列表 */
     font-size: 0.875rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
