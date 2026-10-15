@@ -508,3 +508,19 @@
 - 使用者要求分子量全站改 kDa，排在結果磚之前：v5.1 ＝ 分子量改 kDa ＋ 390px 溢出修正（規格 `2026-10-15-kda-units-design.md`），**本規格 §7 的結果磚改稱 v5.2**。§1、§9、§10 等處的「v5.1」一律讀作 v5.2。
 - §7.2 SAXS 主角磚的格式「`toFixed(0)` Da」改為 `MassUnits.formatKDa` 的 kDa（2 位小數）；§7.1「數字、位數、單位照舊」的原則以 v5.1 上線後的格式為準。
 - §7.2 蛋白質頁主角「分子量」：數值是 kDa，磚的 `.tile-sub` 放 v5.1 的 Da 精確值。
+
+## 15. v5.2 實作修訂（2026-10-15，結果磚）
+
+計畫 `docs/superpowers/plans/2026-10-15-result-tiles-v5.2.md`。與 §7、§8.3 不一致時以本節為準。
+
+1. **不加 `aria-live`。** §7.1 要求結果容器加 `aria-live="polite"`，但 `js/a11y-utils.js` 的 `focusResults` 刻意在計算後移除 live region 並把焦點移到結果（否則整張結果被朗讀兩次）。維持現行做法，`markup` fixture 不更新。
+2. **磚的底色是 tertiary。** 結果都在卡片裡，§7.1 寫的 `--color-bg-card` 會白底疊白卡（§13 已定「卡片內的磚用 tertiary」）。
+3. **輸入回顯放列表，不做磚。** SAXS 的波長、濃度、序列乾燥體積，分子量解析度的孔徑、流速等，放在磚下方的 `.result-list`。
+4. **SAXS 主角沿用原標籤**（「MW from Porod」等本身就註明來源）。狀態膠囊寫「✓／⚠️ ＋現有比值」，原本的「MW 比較」提示框保留（它列出全部比值與判讀文字），所以膠囊上的比值與提示框重複出現一次。
+5. **Slice-by-slice 主角是「d*n*/d*c* (斜率)」。** §7.2 寫的「dn/dc 平均 ± SD」頁面上不存在。
+6. **每頁一個主角。** dn/dc 理論頁的主角是「最終 d*n*/d*c*」；Lorentz-Lorenz 卡改為一般磚，`.result-value--key` 退役。樣品頁主角在濃度卡，稀釋因子卡沒有主角；脂質體頁主角是 D/L。
+7. **蛋白質頁上方的 `#proteinStats` 統計列保留**（不在 §7 範圍）。
+8. **單一磚可跨兩欄**：新增 `.tile--wide`（跨欄、不變色），用在只有一個磚的卡片（脂質體稀釋因子、光譜）與 HPLC 的 Time/Fraction、建議樣品體積。
+9. **§8.3 的實作方式**：各頁結果 HTML 由純函式產生（`*ResultsHtml`、`LiposomeSection.resultsHtml`）；`tests/result-golden.test.js` 以固定輸入呼叫，經 `tests/result-pairs.js` 摘要成「標籤｜數值」、提示框文字與所有數字，與 v5.1 擷取的 fixture 比對。靜態結果頁（HPLC-SAXS、偵測器）由 Playwright 以元素 id 比對。
+10. **既有文字問題（未改）：** 多注射與 slice 頁在 0.95 ≤ R² < 0.99 時提示框寫「R² < 0.95」。改版不改字（數值不變測試鎖住），另案處理。
+
