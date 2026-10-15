@@ -52,43 +52,20 @@ function initDndcSliceSection() {
 
 /** Slice-by-slice 擬合結果（純函式；呼叫前已確認 result.fitResult 存在） */
 function sliceResultsHtml(result, warnings = []) {
+    const { tile, tiles } = ResultTiles;
     const fit = result.fitResult;
-    const rSquared = fit.rSquared;
-
-    const r2Quality = rSquared >= 0.999 ? '優良' :
-        rSquared >= 0.99 ? '良好' :
-        rSquared >= 0.95 ? '可接受' : '偏低';
-    const r2Class = rSquared >= 0.99 ? 'alert-success' :
-        rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
-
+    const grade = dndcR2Grade(fit.rSquared);
     return `
         ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
-        <div class="stat-card mb-md">
-            <div class="stat-content">
-                <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
-                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dndc)} <span class="stat-unit">mL/g</span></div>
-            </div>
-        </div>
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label"><i>R</i>²</div>
-                <div class="result-value">${rSquared.toFixed(6)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">截距</div>
-                <div class="result-value">${fit.intercept.toExponential(4)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">標準誤差</div>
-                <div class="result-value">${fit.stdError.toExponential(4)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">有效切片數</div>
-                <div class="result-value">${result.sliceCount}</div>
-            </div>
-        </div>
-        <div class="alert ${r2Class} mt-md">
-            擬合品質：${r2Quality} (<i>R</i>² ${rSquared >= 0.999 ? '≥' : rSquared >= 0.99 ? '≥' : '<'} ${rSquared >= 0.999 ? '0.999' : rSquared >= 0.99 ? '0.99' : '0.95'})
+        ${tiles([
+            tile({ label: 'd<i>n</i>/d<i>c</i> (斜率)', value: formatDndc(result.dndc), unit: 'mL/g', hero: true }),
+            tile({ label: '<i>R</i>²', value: fit.rSquared.toFixed(6) }),
+            tile({ label: '標準誤差', value: fit.stdError.toExponential(4) }),
+            tile({ label: '截距', value: fit.intercept.toExponential(4) }),
+            tile({ label: '有效切片數', value: result.sliceCount }),
+        ])}
+        <div class="alert ${grade.alertClass} mt-md">
+            擬合品質：${grade.quality} (<i>R</i>² ${grade.comparator} ${grade.bound})
         </div>
     `;
 }
@@ -107,14 +84,6 @@ function displaySliceResults(result, warnings = []) {
         return;
     }
 
-    const rSquared = fit.rSquared;
-
-    const r2Quality = rSquared >= 0.999 ? '優良' :
-        rSquared >= 0.99 ? '良好' :
-        rSquared >= 0.95 ? '可接受' : '偏低';
-    const r2Class = rSquared >= 0.99 ? 'alert-success' :
-        rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
-
     resultsDiv.innerHTML = sliceResultsHtml(result, warnings);
 
     // 顯示擬合圖
@@ -132,7 +101,7 @@ function displaySliceResults(result, warnings = []) {
 
     A11y.describeChart('sliceDndcChart',
         `Slice-by-slice 線性擬合圖：濃度 (g/mL) 對 Δn (RIU)，${result.sliceCount} 個有效切片，` +
-        `dn/dc ${formatDndc(fit.slope)} mL/g，R² ${rSquared.toFixed(4)}（擬合品質${r2Quality}）`);
+        `dn/dc ${formatDndc(fit.slope)} mL/g，R² ${fit.rSquared.toFixed(4)}（擬合品質${dndcR2Grade(fit.rSquared).quality}）`);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('sliceDndcResults');

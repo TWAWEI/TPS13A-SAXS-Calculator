@@ -77,6 +77,21 @@ function formatDndc(value) {
 }
 
 /**
+ * 線性擬合 R² 的分級（多注射與 slice-by-slice 共用）。
+ * comparator／bound 照 v5.1 的寫法：0.95 ≤ R² < 0.99 時顯示「< 0.95」是既有的文字問題，
+ * 改版不改字（數值不變測試鎖住），另案處理。
+ *
+ * @param {number} rSquared - 決定係數
+ * @returns {{quality: string, alertClass: string, comparator: string, bound: string}}
+ */
+function dndcR2Grade(rSquared) {
+    if (rSquared >= 0.999) return { quality: '優良', alertClass: 'alert-success', comparator: '≥', bound: '0.999' };
+    if (rSquared >= 0.99) return { quality: '良好', alertClass: 'alert-success', comparator: '≥', bound: '0.99' };
+    if (rSquared >= 0.95) return { quality: '可接受', alertClass: 'alert-warning', comparator: '<', bound: '0.95' };
+    return { quality: '偏低', alertClass: 'alert-error', comparator: '<', bound: '0.95' };
+}
+
+/**
  * 隱藏元素（不存在時安靜略過）。
  *
  * @param {string} elementId - 元素 id

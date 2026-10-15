@@ -102,44 +102,22 @@ function multiFitSource(source) {
 
 /** 多注射擬合結果（純函式） */
 function multiFitResultsHtml(result, meta, pointCount, signWarnings) {
-    const r2Quality = result.rSquared >= 0.999 ? '優良' :
-        result.rSquared >= 0.99 ? '良好' :
-        result.rSquared >= 0.95 ? '可接受' : '偏低';
-    const r2Class = result.rSquared >= 0.99 ? 'alert-success' :
-        result.rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
-
+    const { tile, tiles, rows } = ResultTiles;
+    const grade = dndcR2Grade(result.rSquared);
     return `
         ${renderWarningsHtml(signWarnings)}
-        <div class="stat-card mb-md">
-            <div class="stat-content">
-                <div class="stat-label">d<i>n</i>/d<i>c</i> (斜率)</div>
-                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dnDc)} <span class="stat-unit">mL/g</span></div>
-            </div>
-        </div>
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label"><i>R</i>²</div>
-                <div class="result-value">${result.rSquared.toFixed(6)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">截距</div>
-                <div class="result-value">${result.intercept.toExponential(4)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">標準誤差</div>
-                <div class="result-value">${result.stdError.toExponential(4)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">資料點數</div>
-                <div class="result-value">${pointCount}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">方法</div>
-                <div class="result-value" style="font-size: 0.875rem;">${escapeHtmlDndc(meta.methodName)}</div>
-            </div>
-        </div>
-        <div class="alert ${r2Class} mt-md">
-            擬合品質：${r2Quality} (<i>R</i>² ${result.rSquared >= 0.999 ? '≥' : result.rSquared >= 0.99 ? '≥' : '<'} ${result.rSquared >= 0.999 ? '0.999' : result.rSquared >= 0.99 ? '0.99' : '0.95'})
+        ${tiles([
+            tile({ label: 'd<i>n</i>/d<i>c</i> (斜率)', value: formatDndc(result.dnDc), unit: 'mL/g', hero: true }),
+            tile({ label: '<i>R</i>²', value: result.rSquared.toFixed(6) }),
+            tile({ label: '標準誤差', value: result.stdError.toExponential(4) }),
+            tile({ label: '截距', value: result.intercept.toExponential(4) }),
+            tile({ label: '資料點數', value: pointCount }),
+        ])}
+        ${rows([
+            { label: '方法', value: escapeHtmlDndc(meta.methodName) },
+        ])}
+        <div class="alert ${grade.alertClass} mt-md">
+            擬合品質：${grade.quality} (<i>R</i>² ${grade.comparator} ${grade.bound})
         </div>
     `;
 }
@@ -155,12 +133,6 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
         yData: yData.slice(),
         source: MULTI_FIT_SOURCES[source] ? source : 'manual'
     };
-
-    const r2Quality = result.rSquared >= 0.999 ? '優良' :
-        result.rSquared >= 0.99 ? '良好' :
-        result.rSquared >= 0.95 ? '可接受' : '偏低';
-    const r2Class = result.rSquared >= 0.99 ? 'alert-success' :
-        result.rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
     // 負斜率警告只給手動多注射；ASTRA 多注射（source === 'astra'）沿用它自己的慣例（規格 §6.2）
     const signWarnings = source === 'manual' ? DndcCalculations.negativeDndcWarnings(result.dnDc) : [];
@@ -183,7 +155,7 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
     // Chart.js 只畫像素；把關鍵數字寫進 aria-label，AT 才讀得到圖的結論
     A11y.describeChart('multiDndcChart',
         `多注射線性擬合圖：${meta.xLabel} 對 ${meta.yLabel}，${xData.length} 個資料點，` +
-        `dn/dc ${formatDndc(result.dnDc)} mL/g，R² ${result.rSquared.toFixed(4)}（擬合品質${r2Quality}）`);
+        `dn/dc ${formatDndc(result.dnDc)} mL/g，R² ${result.rSquared.toFixed(4)}（擬合品質${dndcR2Grade(result.rSquared).quality}）`);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('multiDndcResults');
