@@ -27,35 +27,7 @@ function initDndcTheorySection() {
                 refDndc, refTemp, refWave, targetTemp, targetWave
             );
 
-            document.getElementById('dndcCorrectionResults').innerHTML = `
-                <div class="result-grid">
-                    <div class="result-item">
-                        <div class="result-label">參考 d<i>n</i>/d<i>c</i></div>
-                        <div class="result-value">${result.refDndc.toFixed(4)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">溫度校正後</div>
-                        <div class="result-value">${result.tempCorrected.toFixed(4)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">溫度貢獻</div>
-                        <div class="result-value">${result.tempContribution >= 0 ? '+' : ''}${result.tempContribution.toFixed(6)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">最終 d<i>n</i>/d<i>c</i></div>
-                        <div class="result-value result-value--key">${result.finalDndc.toFixed(4)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">波長貢獻</div>
-                        <div class="result-value">${result.waveContribution >= 0 ? '+' : ''}${result.waveContribution.toFixed(6)}</div>
-                    </div>
-                </div>
-                <div class="formula-note mt-md">
-                    溫度校正: d<i>n</i>/d<i>c</i>(<i>T</i>) = d<i>n</i>/d<i>c</i>(25°C) × (1 + α×Δ<i>T</i>), α = −4×10⁻⁴ °C⁻¹<br>
-                    波長校正 (Cauchy): d<i>n</i>/d<i>c</i>(λ₂) = d<i>n</i>/d<i>c</i>(λ₁) × (<i>A</i> + <i>B</i>/λ₂²) / (<i>A</i> + <i>B</i>/λ₁²)，
-                    蛋白質預設 <i>A</i> = 0.1756 mL/g、<i>B</i> = 5.0×10³ nm²·mL/g
-                </div>
-            `;
+            document.getElementById('dndcCorrectionResults').innerHTML = dndcCorrectionResultsHtml(result);
         });
     }
 
@@ -88,18 +60,7 @@ function initDndcTheorySection() {
                 return;
             }
 
-            document.getElementById('llResults').innerHTML = `
-                <div class="result-grid">
-                    <div class="result-item">
-                        <div class="result-label">Lorentz-Lorenz d<i>n</i>/d<i>c</i></div>
-                        <div class="result-value result-value--key">${llResult.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">Gladstone-Dale (近似)</div>
-                        <div class="result-value">${gdResult.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
-                    </div>
-                </div>
-            `;
+            document.getElementById('llResults').innerHTML = llResultsHtml(llResult, gdResult);
         });
     }
 }
@@ -116,4 +77,53 @@ function parseManualConcentration(rawValue) {
     if (rawValue == null || String(rawValue).trim() === '') return null;
     const parsed = parseFloat(rawValue);
     return Number.isNaN(parsed) ? null : parsed;
+}
+
+/** 理論校正結果（純函式） */
+function dndcCorrectionResultsHtml(result) {
+    return `
+                <div class="result-grid">
+                    <div class="result-item">
+                        <div class="result-label">參考 d<i>n</i>/d<i>c</i></div>
+                        <div class="result-value">${result.refDndc.toFixed(4)}</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">溫度校正後</div>
+                        <div class="result-value">${result.tempCorrected.toFixed(4)}</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">溫度貢獻</div>
+                        <div class="result-value">${result.tempContribution >= 0 ? '+' : ''}${result.tempContribution.toFixed(6)}</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">最終 d<i>n</i>/d<i>c</i></div>
+                        <div class="result-value result-value--key">${result.finalDndc.toFixed(4)}</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">波長貢獻</div>
+                        <div class="result-value">${result.waveContribution >= 0 ? '+' : ''}${result.waveContribution.toFixed(6)}</div>
+                    </div>
+                </div>
+                <div class="formula-note mt-md">
+                    溫度校正: d<i>n</i>/d<i>c</i>(<i>T</i>) = d<i>n</i>/d<i>c</i>(25°C) × (1 + α×Δ<i>T</i>), α = −4×10⁻⁴ °C⁻¹<br>
+                    波長校正 (Cauchy): d<i>n</i>/d<i>c</i>(λ₂) = d<i>n</i>/d<i>c</i>(λ₁) × (<i>A</i> + <i>B</i>/λ₂²) / (<i>A</i> + <i>B</i>/λ₁²)，
+                    蛋白質預設 <i>A</i> = 0.1756 mL/g、<i>B</i> = 5.0×10³ nm²·mL/g
+                </div>
+            `;
+}
+
+/** Lorentz-Lorenz／Gladstone-Dale 結果（純函式） */
+function llResultsHtml(llResult, gdResult) {
+    return `
+                <div class="result-grid">
+                    <div class="result-item">
+                        <div class="result-label">Lorentz-Lorenz d<i>n</i>/d<i>c</i></div>
+                        <div class="result-value result-value--key">${llResult.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Gladstone-Dale (近似)</div>
+                        <div class="result-value">${gdResult.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
+                    </div>
+                </div>
+            `;
 }

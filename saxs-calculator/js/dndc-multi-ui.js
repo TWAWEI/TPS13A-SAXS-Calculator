@@ -100,28 +100,15 @@ function multiFitSource(source) {
     return MULTI_FIT_SOURCES[source] || MULTI_FIT_SOURCES.manual;
 }
 
-function displayMultiFitResults(result, xData, yData, source = 'manual') {
-    const resultsDiv = document.getElementById('multiDndcResults');
-    const meta = multiFitSource(source);
-
-    // 匯出改從狀態輸出，不再從 DOM 表格刮資料（表格 id 兩條路徑不同）
-    DndcState.lastMultiResult = {
-        result,
-        xData: xData.slice(),
-        yData: yData.slice(),
-        source: MULTI_FIT_SOURCES[source] ? source : 'manual'
-    };
-
+/** 多注射擬合結果（純函式） */
+function multiFitResultsHtml(result, meta, pointCount, signWarnings) {
     const r2Quality = result.rSquared >= 0.999 ? '優良' :
         result.rSquared >= 0.99 ? '良好' :
         result.rSquared >= 0.95 ? '可接受' : '偏低';
     const r2Class = result.rSquared >= 0.99 ? 'alert-success' :
         result.rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
-    // 負斜率警告只給手動多注射；ASTRA 多注射（source === 'astra'）沿用它自己的慣例（規格 §6.2）
-    const signWarnings = source === 'manual' ? DndcCalculations.negativeDndcWarnings(result.dnDc) : [];
-
-    resultsDiv.innerHTML = `
+    return `
         ${renderWarningsHtml(signWarnings)}
         <div class="stat-card mb-md">
             <div class="stat-content">
@@ -144,7 +131,7 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
             </div>
             <div class="result-item">
                 <div class="result-label">資料點數</div>
-                <div class="result-value">${xData.length}</div>
+                <div class="result-value">${pointCount}</div>
             </div>
             <div class="result-item">
                 <div class="result-label">方法</div>
@@ -155,6 +142,30 @@ function displayMultiFitResults(result, xData, yData, source = 'manual') {
             擬合品質：${r2Quality} (<i>R</i>² ${result.rSquared >= 0.999 ? '≥' : result.rSquared >= 0.99 ? '≥' : '<'} ${result.rSquared >= 0.999 ? '0.999' : result.rSquared >= 0.99 ? '0.99' : '0.95'})
         </div>
     `;
+}
+
+function displayMultiFitResults(result, xData, yData, source = 'manual') {
+    const resultsDiv = document.getElementById('multiDndcResults');
+    const meta = multiFitSource(source);
+
+    // 匯出改從狀態輸出，不再從 DOM 表格刮資料（表格 id 兩條路徑不同）
+    DndcState.lastMultiResult = {
+        result,
+        xData: xData.slice(),
+        yData: yData.slice(),
+        source: MULTI_FIT_SOURCES[source] ? source : 'manual'
+    };
+
+    const r2Quality = result.rSquared >= 0.999 ? '優良' :
+        result.rSquared >= 0.99 ? '良好' :
+        result.rSquared >= 0.95 ? '可接受' : '偏低';
+    const r2Class = result.rSquared >= 0.99 ? 'alert-success' :
+        result.rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
+
+    // 負斜率警告只給手動多注射；ASTRA 多注射（source === 'astra'）沿用它自己的慣例（規格 §6.2）
+    const signWarnings = source === 'manual' ? DndcCalculations.negativeDndcWarnings(result.dnDc) : [];
+
+    resultsDiv.innerHTML = multiFitResultsHtml(result, meta, xData.length, signWarnings);
 
     // 顯示擬合圖
     const chartContainer = document.getElementById('multiDndcChartContainer');

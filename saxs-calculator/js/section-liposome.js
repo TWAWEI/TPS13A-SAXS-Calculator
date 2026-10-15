@@ -156,11 +156,12 @@
         return warningRows(texts);
     }
 
-    function renderDilutionResults(r, qMin, qMax) {
+    /** 稀釋因子結果區 HTML（純函式） */
+    function dilutionResultsHtml(r, qMin, qMax) {
         const excluded = r.excluded.outOfRange + r.excluded.nonPositive;
         const sem = Calc().standardErrorOfMean(r.sd, r.n);
         const semText = sem === null ? '' : `；SEM ${pct(sem / r.factor)}（僅供對照，D/L 誤差用 SD）`;
-        els.dilutionResults.innerHTML = `
+        return `
             <div class="stat-card">
                 <div class="stat-content">
                     <div class="stat-label">稀釋因子（I_bypass / I_solution 逐點平均）</div>
@@ -173,6 +174,10 @@
                 ${resultItem('排除點', String(excluded), excluded ? `超出範圍 ${r.excluded.outOfRange}、非正 ${r.excluded.nonPositive}` : '')}
             </div>
             ${dilutionWarnings(r)}`;
+    }
+
+    function renderDilutionResults(r, qMin, qMax) {
+        els.dilutionResults.innerHTML = dilutionResultsHtml(r, qMin, qMax);
         global.A11y.focusResults('lipoDilutionResults');
     }
 
@@ -365,9 +370,10 @@
         return warningRows(texts);
     }
 
-    function renderDlResults(snap) {
+    /** D/L 結果區 HTML（純函式） */
+    function dlResultsHtml(snap) {
         const p = snap.params;
-        els.dlResults.innerHTML = `
+        return `
             <div class="stat-card">
                 <div class="stat-content">
                     <div class="stat-label">D/L（drug-to-lipid 莫耳比）</div>
@@ -384,6 +390,10 @@
                 ${resultItem('稀釋因子', p.factor.toPrecision(4), SOURCE_LABEL[p.factorSource])}
             </div>
             ${dlWarnings(snap)}`;
+    }
+
+    function renderDlResults(snap) {
+        els.dlResults.innerHTML = dlResultsHtml(snap);
         global.A11y.focusResults('lipoDlResults');
         updateStdCompare();
     }
@@ -555,5 +565,10 @@
         initialised = true;
     }
 
-    global.LiposomeSection = Object.freeze({ init, getState: () => state });
+    global.LiposomeSection = Object.freeze({
+        init,
+        getState: () => state,
+        // 純函式：結果區 HTML（tests/result-golden.test.js 用）
+        resultsHtml: Object.freeze({ dilution: dilutionResultsHtml, spectra: spectraResultsHtml, dl: dlResultsHtml }),
+    });
 })(typeof window !== 'undefined' ? window : globalThis);

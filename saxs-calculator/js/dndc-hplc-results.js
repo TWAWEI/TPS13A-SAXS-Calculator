@@ -78,8 +78,7 @@ function renderWarningsHtml(warnings) {
     return `<div class="alert alert-warning" role="status" style="margin-bottom: 1rem;">${items}</div>`;
 }
 
-function displayHplcDndcResults(result, params, warnings = []) {
-    const resultsDiv = document.getElementById('hplcDndcResults');
+function hplcDndcResultsHtml(result, params, warnings = []) {
     const alignment = renderAlignmentInfo(result.alignmentInfo);
     const alignInfo = alignment.items;
 
@@ -89,7 +88,7 @@ function displayHplcDndcResults(result, params, warnings = []) {
     const concLabel = isArea ? 'UV 積分' : '濃度';
     const concUnit = isArea ? 'mg·min/mL' : 'mg/mL';
 
-    resultsDiv.innerHTML = `
+    return `
         ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
         <div class="stat-card mb-md">
             <div class="stat-content">
@@ -118,6 +117,12 @@ function displayHplcDndcResults(result, params, warnings = []) {
         </div>
         ${alignment.alert}
     `;
+}
+
+function displayHplcDndcResults(result, params, warnings = []) {
+    const resultsDiv = document.getElementById('hplcDndcResults');
+
+    resultsDiv.innerHTML = hplcDndcResultsHtml(result, params, warnings);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('hplcDndcResults');

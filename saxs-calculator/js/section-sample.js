@@ -66,10 +66,8 @@ function initSampleSection() {
     }
 }
 
-function displaySampleResults(data) {
-    const resultsDiv = document.getElementById('sampleResults');
-
-    resultsDiv.innerHTML = `
+function sampleResultsHtml(data) {
+    return `
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">濃度</div>
@@ -102,18 +100,23 @@ function displaySampleResults(data) {
             </div>
         </div>
     `;
+}
+
+function displaySampleResults(data) {
+    const resultsDiv = document.getElementById('sampleResults');
+
+    resultsDiv.innerHTML = sampleResultsHtml(data);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('sampleResults');
 }
 
-function displayDilutionFactorResults(data) {
-    const resultsDiv = document.getElementById('dilutionFactorResults');
+function dilutionFactorResultsHtml(data) {
     const onColumnConc = (data.uvConcentration && data.uvConcentration > 0)
         ? (data.uvConcentration / data.dilutionFactor)
         : null;
 
-    resultsDiv.innerHTML = `
+    return `
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">稀釋因子 (DF)</div>
@@ -145,6 +148,12 @@ function displayDilutionFactorResults(data) {
             <strong>注意：</strong>此為經驗公式估算，誤差約 ±7.33%
         </div>
     `;
+}
+
+function displayDilutionFactorResults(data) {
+    const resultsDiv = document.getElementById('dilutionFactorResults');
+
+    resultsDiv.innerHTML = dilutionFactorResultsHtml(data);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('dilutionFactorResults');

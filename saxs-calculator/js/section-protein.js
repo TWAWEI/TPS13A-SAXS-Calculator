@@ -109,10 +109,8 @@ function initProteinSection() {
     });
 }
 
-function displayProteinResults(result, name) {
-    const resultsDiv = document.getElementById('proteinResults');
-
-    resultsDiv.innerHTML = `
+function proteinResultsHtml(result, name) {
+    return `
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">蛋白質名稱</div>
@@ -190,6 +188,12 @@ function displayProteinResults(result, name) {
             <i>ε</i><sub>mass</sub> = <i>ε</i> / MW（MW 以 Da 代入；Pace 1995 序列估計；BSA 文獻實測 0.667）
         </div>
     `;
+}
+
+function displayProteinResults(result, name) {
+    const resultsDiv = document.getElementById('proteinResults');
+
+    resultsDiv.innerHTML = proteinResultsHtml(result, name);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('proteinResults');

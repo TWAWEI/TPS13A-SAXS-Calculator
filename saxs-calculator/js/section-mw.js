@@ -89,14 +89,11 @@ function initMWSection() {
     }
 }
 
-function displayMWResults(data) {
-    const resultsDiv = document.getElementById('mwResults');
-    const proteinMw = AppState.proteinData?.molecularWeight;
-
+function mwResultsHtml(data, proteinMw) {
     if (data.mode === 'forward') {
         // 從 MW 計算滯留時間
         const oligomerText = data.oligomer > 1 ? ` (${data.oligomer}mer)` : '';
-        resultsDiv.innerHTML = `
+        return `
             <div class="result-grid">
                 <div class="result-item">
                     <div class="result-label">預期滯留時間</div>
@@ -135,7 +132,7 @@ function displayMWResults(data) {
         `;
     } else {
         // 反向計算：從滯留時間估算 MW
-        resultsDiv.innerHTML = `
+        return `
             <div class="result-grid">
                 <div class="result-item">
                     <div class="result-label">估算分子量</div>
@@ -176,6 +173,12 @@ function displayMWResults(data) {
             ` : ''}
         `;
     }
+}
+
+function displayMWResults(data) {
+    const resultsDiv = document.getElementById('mwResults');
+
+    resultsDiv.innerHTML = mwResultsHtml(data, AppState.proteinData?.molecularWeight);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('mwResults');

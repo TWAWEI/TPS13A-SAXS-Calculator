@@ -62,10 +62,8 @@ function initCentrifugeSection() {
     });
 }
 
-function displayCentrifugeResults(data) {
-    const resultsDiv = document.getElementById('centrifugeResults');
-
-    resultsDiv.innerHTML = `
+function centrifugeResultsHtml(data) {
+    return `
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">相對離心力 (RCF)</div>
@@ -109,6 +107,12 @@ function displayCentrifugeResults(data) {
             其中 r = ${data.radius} cm, N = ${data.rpm} rpm
         </div>
     `;
+}
+
+function displayCentrifugeResults(data) {
+    const resultsDiv = document.getElementById('centrifugeResults');
+
+    resultsDiv.innerHTML = centrifugeResultsHtml(data);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('centrifugeResults');

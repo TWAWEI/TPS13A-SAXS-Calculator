@@ -50,20 +50,9 @@ function initDndcSliceSection() {
     }
 }
 
-function displaySliceResults(result, warnings = []) {
-    const resultsDiv = document.getElementById('sliceDndcResults');
+/** Slice-by-slice 擬合結果（純函式；呼叫前已確認 result.fitResult 存在） */
+function sliceResultsHtml(result, warnings = []) {
     const fit = result.fitResult;
-
-    // 沒有擬合結果就不要打開圖表容器（createLinearFitChart 也會擋，這是第二道）
-    if (!fit) {
-        showDndcAlert('sliceDndcResults', 'warning',
-            `有效切片數不足（${result.sliceCount} 個，至少需要 2 個），` +
-            '請檢查峰範圍是否涵蓋訊號，或降低「最小 UV 閾值」');
-        const emptyChart = document.getElementById('sliceDndcChartContainer');
-        if (emptyChart) emptyChart.classList.add('hidden');
-        return;
-    }
-
     const rSquared = fit.rSquared;
 
     const r2Quality = rSquared >= 0.999 ? '優良' :
@@ -72,7 +61,7 @@ function displaySliceResults(result, warnings = []) {
     const r2Class = rSquared >= 0.99 ? 'alert-success' :
         rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
 
-    resultsDiv.innerHTML = `
+    return `
         ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
         <div class="stat-card mb-md">
             <div class="stat-content">
@@ -102,6 +91,31 @@ function displaySliceResults(result, warnings = []) {
             擬合品質：${r2Quality} (<i>R</i>² ${rSquared >= 0.999 ? '≥' : rSquared >= 0.99 ? '≥' : '<'} ${rSquared >= 0.999 ? '0.999' : rSquared >= 0.99 ? '0.99' : '0.95'})
         </div>
     `;
+}
+
+function displaySliceResults(result, warnings = []) {
+    const resultsDiv = document.getElementById('sliceDndcResults');
+    const fit = result.fitResult;
+
+    // 沒有擬合結果就不要打開圖表容器（createLinearFitChart 也會擋，這是第二道）
+    if (!fit) {
+        showDndcAlert('sliceDndcResults', 'warning',
+            `有效切片數不足（${result.sliceCount} 個，至少需要 2 個），` +
+            '請檢查峰範圍是否涵蓋訊號，或降低「最小 UV 閾值」');
+        const emptyChart = document.getElementById('sliceDndcChartContainer');
+        if (emptyChart) emptyChart.classList.add('hidden');
+        return;
+    }
+
+    const rSquared = fit.rSquared;
+
+    const r2Quality = rSquared >= 0.999 ? '優良' :
+        rSquared >= 0.99 ? '良好' :
+        rSquared >= 0.95 ? '可接受' : '偏低';
+    const r2Class = rSquared >= 0.99 ? 'alert-success' :
+        rSquared >= 0.95 ? 'alert-warning' : 'alert-error';
+
+    resultsDiv.innerHTML = sliceResultsHtml(result, warnings);
 
     // 顯示擬合圖
     const chartContainer = document.getElementById('sliceDndcChartContainer');

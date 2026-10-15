@@ -252,11 +252,9 @@ function updateTheoreticalI0FromProtein() {
     updateTheoreticalValuesFromProtein();
 }
 
-function displaySAXSResults(data) {
-    const resultsDiv = document.getElementById('saxsResults');
-
-    const proteinMw = AppState.proteinData?.molecularWeight;
-    const dryVolume = AppState.proteinData?.dryVolume;
+function saxsResultsHtml(data, protein) {
+    const proteinMw = protein?.molecularWeight;
+    const dryVolume = protein?.dryVolume;
 
     // Calculate MW from I(0) if concentration and I(0) are valid
     let mwFromI0Guinier = null;
@@ -298,7 +296,7 @@ function displaySAXSResults(data) {
         }
     }
 
-    resultsDiv.innerHTML = `
+    return `
         <div class="result-grid">
             <div class="result-item">
                 <div class="result-label">X 射線波長</div>
@@ -385,6 +383,12 @@ function displaySAXSResults(data) {
 
         ${mwAlertHtml}
     `;
+}
+
+function displaySAXSResults(data) {
+    const resultsDiv = document.getElementById('saxsResults');
+
+    resultsDiv.innerHTML = saxsResultsHtml(data, AppState.proteinData);
 
     // 把焦點帶到結果，鍵盤／螢幕閱讀器使用者才知道計算完成了
     A11y.focusResults('saxsResults');
