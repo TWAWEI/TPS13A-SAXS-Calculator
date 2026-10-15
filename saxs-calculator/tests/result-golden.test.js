@@ -68,10 +68,12 @@ const CASES = Object.freeze([
     { name: 'protein', html: () => proteinResultsHtml(ProteinAnalysisResult(), 'HEWL <test>') },
     {
         name: 'saxs-porod-hero', html: () => saxsResultsHtml(SAXS_FULL, PROTEIN),
+        extraNumbers: [ratio(66666.7, 69293.82)],
     },
     {
         name: 'saxs-guinier-hero-qrg-warning',
         html: () => saxsResultsHtml({ ...SAXS_FULL, guinierQmax: 0.05, porodVolume: NaN, mwFromPorod: null }, PROTEIN),
+        extraNumbers: ['0', ratio(SAXS.calculateMwFromI0(0.105, 2), 69293.82)],
     },
     {
         name: 'saxs-no-protein',

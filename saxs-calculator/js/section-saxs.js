@@ -252,11 +252,19 @@ function updateTheoreticalI0FromProtein() {
     updateTheoreticalValuesFromProtein();
 }
 
+/**
+ * SAXS 結果。主角是「MW 比較」所用的 MW：依原順序取第一個有值的（Porod → I(0) Guinier → I(0) P(r)），
+ * 沿用原標籤（本身就註明來源）；有序列 MW 時帶狀態膠囊（20% 門檻，與下方 MW 比較提示框一致）。
+ *
+ * @param {object} data - AppState.saxsData 的內容
+ * @param {{molecularWeight: number, dryVolume: number}|null} protein - 序列分析結果
+ * @returns {string} HTML
+ */
 function saxsResultsHtml(data, protein) {
+    const { tile, tiles, rows } = ResultTiles;
     const proteinMw = protein?.molecularWeight;
     const dryVolume = protein?.dryVolume;
 
-    // Calculate MW from I(0) if concentration and I(0) are valid
     let mwFromI0Guinier = null;
     let mwFromI0Pr = null;
     if (data.concentration > 0) {
@@ -268,26 +276,21 @@ function saxsResultsHtml(data, protein) {
         }
     }
 
-    // Build MW comparison alert
+    const mwEstimates = [
+        { label: 'MW from Porod', mw: data.mwFromPorod, ratioLabel: 'Porod / 序列' },
+        { label: 'MW from <i>I</i>(0) Guinier', mw: mwFromI0Guinier, ratioLabel: 'I(0) Guinier / 序列' },
+        { label: 'MW from <i>I</i>(0) <i>P</i>(<i>r</i>)', mw: mwFromI0Pr, ratioLabel: 'I(0) P(r) / 序列' },
+    ];
+    const hero = mwEstimates.find(item => item.mw) || null;
+    const isClose = hero && proteinMw ? Math.abs(hero.mw - proteinMw) / proteinMw < 0.2 : false;
+
+    // MW 比較提示框（與 v5.1 逐字相同）
     let mwAlertHtml = '';
     if (proteinMw) {
-        const comparisons = [];
-        if (data.mwFromPorod) {
-            const ratio = data.mwFromPorod / proteinMw;
-            comparisons.push(`Porod / 序列 = ${ratio.toFixed(2)}`);
-        }
-        if (mwFromI0Guinier) {
-            const ratio = mwFromI0Guinier / proteinMw;
-            comparisons.push(`I(0) Guinier / 序列 = ${ratio.toFixed(2)}`);
-        }
-        if (mwFromI0Pr) {
-            const ratio = mwFromI0Pr / proteinMw;
-            comparisons.push(`I(0) P(r) / 序列 = ${ratio.toFixed(2)}`);
-        }
+        const comparisons = mwEstimates
+            .filter(item => item.mw)
+            .map(item => `${item.ratioLabel} = ${(item.mw / proteinMw).toFixed(2)}`);
         if (comparisons.length > 0) {
-            // Use the first available MW ratio for color coding
-            const firstMw = data.mwFromPorod || mwFromI0Guinier || mwFromI0Pr;
-            const isClose = Math.abs(firstMw - proteinMw) / proteinMw < 0.2;
             mwAlertHtml = `
             <div class="alert ${isClose ? 'alert-success' : 'alert-warning'}" style="margin-top: 1rem;">
                 <strong>MW 比較：</strong>${comparisons.join(' | ')}
@@ -296,90 +299,47 @@ function saxsResultsHtml(data, protein) {
         }
     }
 
-    return `
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">X 射線波長</div>
-                <div class="result-value">${data.wavelength.toFixed(5)} <span style="font-size: 0.75rem;">Å</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">樣品濃度</div>
-                <div class="result-value">${data.concentration} <span style="font-size: 0.75rem;">mg/mL</span></div>
-            </div>
-        </div>
+    const heroChip = hero && proteinMw
+        ? { tone: isClose ? 'ok' : 'warn', text: `${isClose ? '✓' : '⚠️'} ${hero.ratioLabel} = ${(hero.mw / proteinMw).toFixed(2)}` }
+        : null;
+    const mwTile = item => tile({ label: item.label, value: item.mw ? MassUnits.formatKDa(item.mw) : '-', unit: 'kDa' });
 
-        <div class="section-divider"><span>Guinier 分析</span></div>
-
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label"><i>I</i>(0) from Guinier</div>
-                <div class="result-value">${isNaN(data.i0Guinier) ? '-' : data.i0Guinier.toFixed(5)} <span style="font-size: 0.75rem;">cm⁻¹</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label"><i>R</i><sub>g</sub> from Guinier</div>
-                <div class="result-value">${isNaN(data.rgGuinier) ? '-' : data.rgGuinier.toFixed(2)} <span style="font-size: 0.75rem;">Å</span></div>
-            </div>
-        </div>
-        ${(() => {
-            if (!isNaN(data.guinierQmax) && !isNaN(data.rgGuinier) && data.guinierQmax > 0 && data.rgGuinier > 0) {
-                const qRg = data.guinierQmax * data.rgGuinier;
-                if (qRg > 1.3) {
-                    return `<div class="alert alert-warning" style="margin-top: 0.5rem;">
+    const qRgAlert = (() => {
+        if (!isNaN(data.guinierQmax) && !isNaN(data.rgGuinier) && data.guinierQmax > 0 && data.rgGuinier > 0) {
+            const qRg = data.guinierQmax * data.rgGuinier;
+            if (qRg > 1.3) {
+                return `<div class="alert alert-warning" style="margin-top: 0.5rem;">
                         ⚠️ <i>q</i><sub>max</sub> × <i>R</i><sub>g</sub> = ${qRg.toFixed(2)} > 1.3 — Guinier 擬合可能不可靠，建議降低 <i>q</i><sub>max</sub>
                     </div>`;
-                }
-                return `<div class="alert alert-success" style="margin-top: 0.5rem;">
+            }
+            return `<div class="alert alert-success" style="margin-top: 0.5rem;">
                     ✓ <i>q</i><sub>max</sub> × <i>R</i><sub>g</sub> = ${qRg.toFixed(2)} ≤ 1.3 — Guinier 擬合範圍有效
                 </div>`;
-            }
-            return '';
-        })()}
+        }
+        return '';
+    })();
 
-        <div class="section-divider"><span><i>P</i>(<i>r</i>) 分析</span></div>
+    return `
+        ${tiles([
+            hero && tile({ label: hero.label, value: MassUnits.formatKDa(hero.mw), unit: 'kDa', hero: true, chip: heroChip }),
+            tile({ label: '<i>R</i><sub>g</sub> from Guinier', value: isNaN(data.rgGuinier) ? '-' : data.rgGuinier.toFixed(2), unit: 'Å' }),
+            tile({ label: '<i>I</i>(0) from Guinier', value: isNaN(data.i0Guinier) ? '-' : data.i0Guinier.toFixed(5), unit: 'cm⁻¹' }),
+            tile({ label: '<i>R</i><sub>g</sub> from <i>P</i>(<i>r</i>)', value: isNaN(data.rgPr) ? '-' : data.rgPr.toFixed(2), unit: 'Å' }),
+            tile({ label: '<i>I</i>(0) from <i>P</i>(<i>r</i>)', value: isNaN(data.i0Pr) ? '-' : data.i0Pr.toFixed(5), unit: 'cm⁻¹' }),
+            tile({ label: '<i>D</i><sub>max</sub>', value: isNaN(data.dmax) ? '-' : data.dmax, unit: 'Å' }),
+            tile({ label: 'Porod volume', value: isNaN(data.porodVolume) ? '-' : data.porodVolume.toLocaleString(), unit: 'Å³' }),
+            tile({ label: 'MW from 序列', value: proteinMw ? MassUnits.formatKDa(proteinMw) : '-', unit: 'kDa' }),
+            ...mwEstimates.filter(item => item !== hero).map(mwTile),
+        ])}
+        ${qRgAlert}
 
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label"><i>I</i>(0) from <i>P</i>(<i>r</i>)</div>
-                <div class="result-value">${isNaN(data.i0Pr) ? '-' : data.i0Pr.toFixed(5)} <span style="font-size: 0.75rem;">cm⁻¹</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label"><i>R</i><sub>g</sub> from <i>P</i>(<i>r</i>)</div>
-                <div class="result-value">${isNaN(data.rgPr) ? '-' : data.rgPr.toFixed(2)} <span style="font-size: 0.75rem;">Å</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label"><i>D</i><sub>max</sub></div>
-                <div class="result-value">${isNaN(data.dmax) ? '-' : data.dmax} <span style="font-size: 0.75rem;">Å</span></div>
-            </div>
-        </div>
+        <div class="section-divider"><span>輸入與序列</span></div>
 
-        <div class="section-divider"><span>體積與分子量</span></div>
-
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">Porod volume</div>
-                <div class="result-value">${isNaN(data.porodVolume) ? '-' : data.porodVolume.toLocaleString()} <span style="font-size: 0.75rem;">Å³</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">乾燥體積 (序列)</div>
-                <div class="result-value">${dryVolume ? dryVolume.toFixed(1) : '-'} <span style="font-size: 0.75rem;">Å³</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">MW from Porod</div>
-                <div class="result-value">${data.mwFromPorod ? MassUnits.formatKDa(data.mwFromPorod) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">MW from 序列</div>
-                <div class="result-value">${proteinMw ? MassUnits.formatKDa(proteinMw) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">MW from <i>I</i>(0) Guinier</div>
-                <div class="result-value">${mwFromI0Guinier ? MassUnits.formatKDa(mwFromI0Guinier) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">MW from <i>I</i>(0) <i>P</i>(<i>r</i>)</div>
-                <div class="result-value">${mwFromI0Pr ? MassUnits.formatKDa(mwFromI0Pr) : '-'} <span style="font-size: 0.75rem;">kDa</span></div>
-            </div>
-        </div>
+        ${rows([
+            { label: 'X 射線波長', value: data.wavelength.toFixed(5), unit: 'Å' },
+            { label: '樣品濃度', value: data.concentration, unit: 'mg/mL' },
+            { label: '乾燥體積 (序列)', value: dryVolume ? dryVolume.toFixed(1) : '-', unit: 'Å³' },
+        ])}
 
         ${mwAlertHtml}
     `;
