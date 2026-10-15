@@ -25,14 +25,14 @@ function alignmentReasonText(reason) {
 }
 
 /**
- * Build the alignment result-items plus an explicit warning banner when the
+ * Build the alignment rows plus an explicit warning banner when the
  * auto-alignment was skipped or clamped.
  *
  * @param {object|null} ai - result.alignmentInfo
- * @returns {{items: string, alert: string}} HTML fragments
+ * @returns {{rows: object[], alert: string}} 列表項與提示框
  */
 function renderAlignmentInfo(ai) {
-    if (!ai) return { items: '', alert: '' };
+    if (!ai) return { rows: [], alert: '' };
 
     const inactive = ai.skipped || ai.clamped;
     const corr = ai.correlation != null ? ai.correlation : null;
@@ -49,21 +49,16 @@ function renderAlignmentInfo(ai) {
         corrBadge = '';
     }
 
-    const items = `
-            <div class="result-item">
-                <div class="result-label">UV-RI 時間偏移</div>
-                <div class="result-value">${ai.lag.toFixed(4)} <span style="font-size: 0.75rem;">pts</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">對齊品質</div>
-                <div class="result-value">${corrBadge}</div>
-            </div>`;
+    const rows = [
+        { label: 'UV-RI 時間偏移', value: ai.lag.toFixed(4), unit: 'pts' },
+        { label: '對齊品質', value: corrBadge },
+    ];
 
     const alert = inactive
         ? `<div class="alert alert-warning mt-md">${ai.skipped ? '已略過自動對齊' : '自動對齊結果已被忽略'}：${escapeHtmlDndc(alignmentReasonText(ai.reason))}</div>`
         : '';
 
-    return { items, alert };
+    return { rows, alert };
 }
 
 /**
@@ -79,8 +74,8 @@ function renderWarningsHtml(warnings) {
 }
 
 function hplcDndcResultsHtml(result, params, warnings = []) {
+    const { tile, tiles, rows } = ResultTiles;
     const alignment = renderAlignmentInfo(result.alignmentInfo);
-    const alignInfo = alignment.items;
 
     const isArea = params.peakMode === 'area';
     const riUnit = isArea ? 'RIU·min' : 'RIU';
@@ -90,31 +85,16 @@ function hplcDndcResultsHtml(result, params, warnings = []) {
 
     return `
         ${renderWarningsHtml([...warnings, ...(result.warnings || [])])}
-        <div class="stat-card mb-md">
-            <div class="stat-content">
-                <div class="stat-label">d<i>n</i>/d<i>c</i></div>
-                <div class="stat-value" style="font-size: 1.75rem;">${formatDndc(result.dndc)} <span class="stat-unit">mL/g</span></div>
-            </div>
-        </div>
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">${concLabel}</div>
-                <div class="result-value">${result.concentration != null ? result.concentration.toFixed(4) : '-'} <span style="font-size: 0.75rem;">${concUnit}</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">RI peak value</div>
-                <div class="result-value">${result.riPeakValue != null ? result.riPeakValue.toExponential(4) : '-'} <span style="font-size: 0.75rem;">${riUnit}</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">RI (corrected)</div>
-                <div class="result-value">${result.riValue != null ? result.riValue.toExponential(4) : '-'} <span style="font-size: 0.75rem;">RIU</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">Peak 模式</div>
-                <div class="result-value">${escapeHtmlDndc(result.peakMode)}</div>
-            </div>
-            ${alignInfo}
-        </div>
+        ${tiles([
+            tile({ label: 'd<i>n</i>/d<i>c</i>', value: formatDndc(result.dndc), unit: 'mL/g', hero: true }),
+            tile({ label: concLabel, value: result.concentration != null ? result.concentration.toFixed(4) : '-', unit: concUnit }),
+            tile({ label: 'RI peak value', value: result.riPeakValue != null ? result.riPeakValue.toExponential(4) : '-', unit: riUnit }),
+            tile({ label: 'RI (corrected)', value: result.riValue != null ? result.riValue.toExponential(4) : '-', unit: 'RIU' }),
+        ])}
+        ${rows([
+            { label: 'Peak 模式', value: escapeHtmlDndc(result.peakMode) },
+            ...alignment.rows,
+        ])}
         ${alignment.alert}
     `;
 }
