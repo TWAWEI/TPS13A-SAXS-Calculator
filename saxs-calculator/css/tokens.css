@@ -253,6 +253,7 @@ a:hover {
    單行文字 justify 後等同靠左。表格儲存格、按鈕、表單 label、導覽項不在名單內；
    .formula-note 是等寬字公式（規則裡的「程式碼區塊」例外），justify 會把中文拉開成「校 準 值」。 */
 :where(p, li, dd, blockquote, .alert, .modal-desc, .form-list-foot,
-       .stat-sub, .quick-ref-body, .info-panel-formula, .info-panel-hint, .result-note) {
+       .stat-sub, .quick-ref-body, .info-panel-formula, .info-panel-hint, .result-note,
+       .tile-sub, .result-row-note, .result-list-foot) {
     text-align: justify;
 }

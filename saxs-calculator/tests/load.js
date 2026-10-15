@@ -23,6 +23,7 @@ const LOAD_ORDER = Object.freeze([
     'theme-init.js',               // index.html 在 <head> 載入；頂層只在有 document 時才動 DOM
     'form-utils.js',
     'mass-units.js',               // 頂層只定義常數與函式（不碰 document）
+    'result-tiles.js',             // 純字串組裝（不碰 document）
     'chart-theme.js',              // 頂層只定義常數與函式（不碰 Chart／document）
     'protein.js',
     'sample-prep-calculations.js',
@@ -66,4 +67,5 @@ module.exports = {
     ThemeInit: window.ThemeInit,
     ChartTheme: window.ChartTheme,
     MassUnits: window.MassUnits,
+    ResultTiles: window.ResultTiles,
 };

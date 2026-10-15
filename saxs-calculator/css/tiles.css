@@ -1,0 +1,151 @@
+/* ===== 結果磚（v5.2，改版規格 §7；組裝在 js/result-tiles.js） =====
+   主角 .tile--hero 跨兩欄、46px、珊瑚字；一般磚 32px；次要數值放 .result-list 唯讀列表。
+   磚都在卡片裡，底色用 tertiary（白底疊白卡看不出邊界）。字級以 html 17px 換算成 rem。 */
+.tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: var(--spacing-md);
+}
+
+.tile {
+    min-width: 0;
+    padding: 14px 16px;
+    border-radius: var(--radius-xl);
+    background: var(--color-bg-tertiary);
+}
+
+.tile--hero,
+.tile--wide {
+    grid-column: 1 / -1;
+}
+
+.tile-label {
+    margin-bottom: 0.125rem;
+    font-size: 0.75rem;            /* ≈12.75px */
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+
+.tile-value {
+    font-size: 1.875rem;           /* ≈32px */
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;       /* 長的科學記號在窄欄裡換行，不撐破磚 */
+}
+
+.tile--hero .tile-value {
+    font-size: 2.75rem;            /* ≈46px */
+    color: var(--color-accent-text);
+}
+
+/* 單位在 .tile-value 裡：用 rem，才不會跟著數值放大 */
+.tile-unit {
+    margin-left: 0.25em;
+    font-size: 0.8125rem;          /* ≈14px */
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--color-text-muted);
+}
+
+.tile-sub {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+}
+
+.tile-chip {
+    display: inline-block;
+    margin-top: var(--spacing-xs);
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* display:inline-block 會蓋掉瀏覽器預設的 [hidden]{display:none}（偵測器頁的「超出行程」） */
+.tile-chip[hidden] {
+    display: none;
+}
+
+.tile-chip--ok {
+    background: var(--color-success-bg);
+    color: var(--color-success-text);
+}
+
+.tile-chip--warn {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+}
+
+.tile-chip--error {
+    background: var(--color-danger-bg);
+    color: var(--color-danger-text);
+}
+
+@media (max-width: 640px) {
+    .tiles {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* ===== 次要數值：分組列表樣式的唯讀列（分隔線與 .form-list 同一套） ===== */
+.result-list {
+    margin-bottom: var(--spacing-md);
+    padding-left: 14px;
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-lg);
+}
+
+.result-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--spacing-md);
+    row-gap: 2px;
+    padding: 9px 14px 9px 0;
+}
+
+.result-row + .result-row {
+    border-top: 1px solid var(--color-separator);
+}
+
+.result-row-label {
+    flex: 1 1 8rem;
+    min-width: 0;
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+}
+
+.result-row-value {
+    margin-left: auto;
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--color-text-primary);
+}
+
+.result-row-value .tile-unit {
+    font-size: 0.75rem;
+}
+
+.result-row-note {
+    flex: 1 0 100%;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+}
+
+/* 列表下方的一段說明（脂質體光譜擬合） */
+.result-list-foot {
+    margin: calc(-1 * var(--spacing-sm)) 0 var(--spacing-md);
+    padding: 0 14px;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+}
