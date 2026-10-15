@@ -110,79 +110,46 @@ function initProteinSection() {
 }
 
 function proteinResultsHtml(result, name) {
+    const { tile, tiles, rows } = ResultTiles;
     return `
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">蛋白質名稱</div>
-                <div class="result-value">${escapeHtml(name)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">序列長度</div>
-                <div class="result-value">${result.length} <span style="font-size: 0.75rem;">殘基</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">分子量</div>
-                <div class="result-value">${MassUnits.formatKDa(result.molecularWeight)} <span style="font-size: 0.75rem;">kDa</span></div>
-                <div class="result-note">${MassUnits.formatDa(result.molecularWeight)} Da</div>
-            </div>
-        </div>
-        
-        <div class="section-divider"><span>物理參數</span></div>
-        
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">乾燥體積</div>
-                <div class="result-value">${result.dryVolume.toFixed(1)} <span style="font-size: 0.75rem;">Å³</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">電子數</div>
-                <div class="result-value">${result.electronCount}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label"><i>v̄</i> = <i>V</i><sub>dry</sub>/<i>M</i></div>
-                <div class="result-value">${result.partialSpecificVolume.toFixed(4)} <span style="font-size: 0.75rem;">cm³/g</span></div>
-                <div class="result-note">晶體殘基體積推得，SAXS 對比用；非熱力學偏比容</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">dn/dc</div>
-                <div class="result-value">${result.dndc.toFixed(4)} <span style="font-size: 0.75rem;">mL/g</span></div>
-            </div>
-        </div>
-        
+        ${tiles([
+            tile({
+                label: '分子量', value: MassUnits.formatKDa(result.molecularWeight), unit: 'kDa', hero: true,
+                sub: `${MassUnits.formatDa(result.molecularWeight)} Da`,
+            }),
+            tile({ label: '<i>ε</i> (M⁻¹ cm⁻¹)', value: result.extinction.epsilon.toLocaleString() }),
+            tile({ label: 'dn/dc', value: result.dndc.toFixed(4), unit: 'mL/g' }),
+            tile({ label: '乾燥體積', value: result.dryVolume.toFixed(1), unit: 'Å³' }),
+            tile({ label: '電子數', value: result.electronCount }),
+        ])}
+
+        <div class="section-divider"><span>序列與物理參數</span></div>
+
+        ${rows([
+            { label: '蛋白質名稱', value: escapeHtml(name) },
+            { label: '序列長度', value: result.length, unit: '殘基' },
+            {
+                label: '<i>v̄</i> = <i>V</i><sub>dry</sub>/<i>M</i>', value: result.partialSpecificVolume.toFixed(4), unit: 'cm³/g',
+                note: '晶體殘基體積推得，SAXS 對比用；非熱力學偏比容',
+            },
+        ])}
+
         <div class="section-divider"><span>消光係數 (280 nm)</span></div>
-        
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label"><i>ε</i> (M⁻¹ cm⁻¹)</div>
-                <div class="result-value">${result.extinction.epsilon.toLocaleString()}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label"><i>ε</i><sub>mass</sub> (mL·mg⁻¹·cm⁻¹)</div>
-                <div class="result-value">${result.massExtinction.mlPerMgCm.toFixed(3)}</div>
-                <div class="result-note">= A280 (0.1%)，HPLC dn/dc 頁用</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">ASTRA 單位 (mL·g⁻¹·cm⁻¹)</div>
-                <div class="result-value">${result.massExtinction.mlPerGCm.toFixed(1)}</div>
-                <div class="result-note">.afe7 的 UV 消光係數欄位</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">Trp (W)</div>
-                <div class="result-value">${result.extinction.nTrp}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">Tyr (Y)</div>
-                <div class="result-value">${result.extinction.nTyr}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">Cys (C)</div>
-                <div class="result-value">${result.extinction.nCys}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">二硫鍵數</div>
-                <div class="result-value">${result.extinction.nDisulfide}</div>
-            </div>
-        </div>
+
+        ${rows([
+            {
+                label: '<i>ε</i><sub>mass</sub> (mL·mg⁻¹·cm⁻¹)', value: result.massExtinction.mlPerMgCm.toFixed(3),
+                note: '= A280 (0.1%)，HPLC dn/dc 頁用',
+            },
+            {
+                label: 'ASTRA 單位 (mL·g⁻¹·cm⁻¹)', value: result.massExtinction.mlPerGCm.toFixed(1),
+                note: '.afe7 的 UV 消光係數欄位',
+            },
+            { label: 'Trp (W)', value: result.extinction.nTrp },
+            { label: 'Tyr (Y)', value: result.extinction.nTyr },
+            { label: 'Cys (C)', value: result.extinction.nCys },
+            { label: '二硫鍵數', value: result.extinction.nDisulfide },
+        ])}
 
         <div class="formula-note">
             <i>ε</i><sub>mass</sub> = <i>ε</i> / MW（MW 以 Da 代入；Pace 1995 序列估計；BSA 文獻實測 0.667）
