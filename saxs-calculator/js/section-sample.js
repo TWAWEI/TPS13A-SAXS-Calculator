@@ -67,38 +67,21 @@ function initSampleSection() {
 }
 
 function sampleResultsHtml(data) {
+    const { tile, tiles, rows } = ResultTiles;
     return `
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">濃度</div>
-                <div class="result-value">${data.concentration.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">濃度 (μM)</div>
-                <div class="result-value">${data.concentrationMolar.toFixed(2)} <span style="font-size: 0.75rem;">μM</span></div>
-            </div>
-        </div>
-        
+        ${tiles([
+            tile({ label: '濃度', value: data.concentration.toFixed(4), unit: 'mg/mL', hero: true }),
+            tile({ label: '濃度 (μM)', value: data.concentrationMolar.toFixed(2), unit: 'μM' }),
+            tile({ label: '吸光值', value: data.absorbance, unit: 'AU' }),
+        ])}
+
         <div class="section-divider"><span>輸入參數</span></div>
-        
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">吸光值</div>
-                <div class="result-value">${data.absorbance} AU</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">光徑</div>
-                <div class="result-value">${data.pathLength} cm</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">消光係數</div>
-                <div class="result-value">${data.epsilon.toLocaleString()} M⁻¹ cm⁻¹</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">分子量</div>
-                <div class="result-value">${MassUnits.formatKDa(data.mw)} kDa</div>
-            </div>
-        </div>
+
+        ${rows([
+            { label: '光徑', value: data.pathLength, unit: 'cm' },
+            { label: '消光係數', value: data.epsilon.toLocaleString(), unit: 'M⁻¹ cm⁻¹' },
+            { label: '分子量', value: MassUnits.formatKDa(data.mw), unit: 'kDa' },
+        ])}
     `;
 }
 
@@ -112,34 +95,22 @@ function displaySampleResults(data) {
 }
 
 function dilutionFactorResultsHtml(data) {
+    const { tile, tiles, rows } = ResultTiles;
     const onColumnConc = (data.uvConcentration && data.uvConcentration > 0)
         ? (data.uvConcentration / data.dilutionFactor)
         : null;
+    const hasOnColumn = onColumnConc !== null;
 
     return `
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">稀釋因子 (DF)</div>
-                <div class="result-value">${data.dilutionFactor.toFixed(2)}</div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">注射體積</div>
-                <div class="result-value">${data.injectedVolume} <span style="font-size: 0.75rem;">μL</span></div>
-            </div>
-        </div>
-        ${onColumnConc !== null ? `
-        <div class="section-divider"><span>On-column 濃度估算</span></div>
-        <div class="result-grid">
-            <div class="result-item">
-                <div class="result-label">UV 量測濃度</div>
-                <div class="result-value">${data.uvConcentration.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
-            </div>
-            <div class="result-item">
-                <div class="result-label">On-column 濃度</div>
-                <div class="result-value">${onColumnConc.toFixed(4)} <span style="font-size: 0.75rem;">mg/mL</span></div>
-            </div>
-        </div>
-        ` : `
+        ${tiles([
+            tile({ label: '稀釋因子 (DF)', value: data.dilutionFactor.toFixed(2) }),
+            hasOnColumn && tile({ label: 'On-column 濃度', value: onColumnConc.toFixed(4), unit: 'mg/mL' }),
+        ])}
+        ${rows([
+            { label: '注射體積', value: data.injectedVolume, unit: 'μL' },
+            hasOnColumn && { label: 'UV 量測濃度', value: data.uvConcentration.toFixed(4), unit: 'mg/mL' },
+        ])}
+        ${hasOnColumn ? '' : `
         <div class="alert alert-info" style="margin-top: 0.75rem;">
             先計算 UV 濃度，即可同時顯示 on-column 濃度估算
         </div>
