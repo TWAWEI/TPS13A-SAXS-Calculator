@@ -1,20 +1,20 @@
 # SAS 模型擬合頁（A 版）— 設計規格
 
 - 日期：2026-11-17
-- 狀態：設計已與使用者逐段確認（共 5 段），待實作規劃
+- 狀態：v2——設計已與使用者逐段確認（共 5 段）；規格審查第 1 輪的 6 項問題已修正；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。待實作規劃
 - 目標產品：`saxs-calculator/`（GitHub Pages 單頁站），新版本 v5.3
-- 計算核心來源：SasView **sasmodels 1.0.12**（BSD-3-Clause）；擬合器對照 **bumps 1.0.4**
+- 計算核心來源：SasView **sasmodels 1.0.12**（BSD-3-Clause）；擬合器與誤差對照 **bumps 1.0.4**
 - 參考：中央大學磁性與能源材料實驗室的「SAS Studio」（Google Sites 內嵌單檔 HTML，sasmodels 手工移植成 JS）。只參考功能與版面，**不複製其程式碼**——該站「版權所有」且未附授權。
 
 ## 1. 目標與範圍
 
 在網站新增「SAS 模型擬合」分頁，讓 TPS13A 使用者在瀏覽器裡對一維 SAXS 曲線做 form factor／structure factor 模型擬合，不必安裝 SasView。全部計算在使用者的瀏覽器內完成（無後端），資料不離開使用者電腦。
 
-分兩階段：**A 版＝光束線現場快速判斷**（本規格），架構預留 **B 版＝正式分析**（更多模型、可選演算法、解析度修正等，見 §16）。
+分兩階段：**A 版＝光束線現場快速判斷**（本規格），架構預留 **B 版＝正式分析**（見 §16）。
 
 **在範圍內（A 版）**
 1. 讀官方 TPS13A `.dat`（含檔頭）與一般 2–4 欄文字檔；可一次載入多個。
-2. 15 個模型（§4.1）：形狀 8＋與形狀無關 5＋結構因子 2；多分散度；低 Q 冪律附加項。
+2. 15 個模型（§4.1）：形狀 8＋與形狀無關 5＋結構因子 2；多分散度（寬度可擬合）；低 Q 冪律附加項。
 3. 單組資料 Levenberg–Marquardt 擬合，含參數誤差、χ²ᵣ、殘差。
 4. 主圖三種模式：log-log、Guinier（ln I vs q²）、Kratky（q²I vs q）；殘差圖。
 5. 多組資料疊圖（可錯開）。
@@ -46,38 +46,58 @@
 
 ```
 .dat ─▶ data-io ─▶ Dataset（凍結物件）─┐
-                                     ├─▶ fit-worker（Web Worker：wasm＋kernel＋fitter）─▶ FitResult ─▶ 圖／3D／匯出／IUCr
+                                     ├─▶ Web Worker（wasm＋kernel＋fitter）─▶ FitResult ─▶ 圖／3D／匯出／IUCr
 模型＋參數（UI 狀態）──────────────────┘
 ```
 
-狀態一律以新物件取代舊物件（不就地修改）。主執行緒不做任何模型計算。
+狀態一律以新物件取代舊物件（不就地修改）。主執行緒**不執行**模型計算（純計算模組在主執行緒也會被載入，但只在 Worker 內被呼叫，見 §3.3）。
 
 ### 3.2 檔案
 
+比照現有 `dndc-*.js` 的慣例，全部平放在 `js/` 第一層、以 `sasfit-` 為前綴，讓既有守門測試（顏色字面值、token、escapeHtml 唯一實作、行內事件、`node --check`、800 行上限、頂層識別字衝突）自動涵蓋新程式。
+
 | 檔案 | 職責 | 依賴 |
 |---|---|---|
-| `wasm/sas-<model>.wasm` | sasmodels 生成的 C 原樣編譯；每模型一檔，進入本頁才載入 | — |
-| `wasm/manifest.json` | 各 wasm 的 SHA-256、sasmodels 版本、emscripten 版本 | — |
-| `wasm/LICENSE-sasmodels.txt` | sasmodels 授權全文（BSD-3 要求保留版權聲明） | — |
-| `js/sasfit/models-meta.js` | 15 個模型的參數表（名稱、單位、上下限、預設、類別、是否可多分散、`have_Fq`、有效半徑模式、說明）。**腳本產生，勿手改** | — |
-| `js/sasfit/weights.js` | 六種分布的取點與權重（移植 `weights.py`） | — |
-| `js/sasfit/kernel.js` | 調度層：組 details／values 緩衝、分段呼叫 wasm、讀回 F1／F2 與附加量（移植 `details.py`、`kerneldll.py`、`kernel.py` 的 1D 路徑） | weights、meta |
-| `js/sasfit/product.js` | P@S 組合、β 近似、有效半徑（移植 `product.py`） | kernel |
-| `js/sasfit/py-models.js` | Python 核心模型的手寫 JS：`guinier_porod`、`power_law` | — |
-| `js/sasfit/evaluate.js` | 單一入口 `evaluate(modelSpec, params, q)`：組合 P、S、低 Q 冪律 | kernel、product、py-models |
-| `js/sasfit/data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、清理規則、條件值擷取 | — |
-| `js/sasfit/sld.js` | 化學式解析、X 光 SLD、預設物質表 | — |
-| `js/sasfit/fitter.js` | LM（可抽換介面）、數值 Jacobian、上下限、誤差 | — |
-| `js/sasfit/fit-worker.js` | Worker 入口：載 wasm、處理 evaluate／fit 訊息 | evaluate、fitter |
-| `js/sasfit/worker-client.js` | 主執行緒端：Worker 生命週期、latest-wins、停止＝terminate 重建 | — |
-| `js/sasfit/sequence.js` | 序列擬合排程（主執行緒，逐筆送 Worker） | worker-client |
-| `js/sasfit/plots.js` | 主圖、殘差、疊圖、趨勢圖（Chart.js＋`ChartTheme`） | — |
-| `js/sasfit/shape3d.js` | Canvas 2D 3D 繪製器與各模型幾何 | — |
-| `js/sasfit/export.js` | CSV／TXT／PNG、IUCr 資料物件 | — |
+| `wasm/sas-<model>.wasm` | sasmodels 生成碼經 F64 前處理後編譯；每模型一檔，進入本頁才載入 | — |
+| `wasm/manifest.json` | 各 wasm 的 SHA-256、sasmodels 版本、emscripten 版本、編譯旗標 | — |
+| `wasm/LICENSE-sasmodels.txt` | sasmodels 授權全文 | — |
+| `js/sasfit-meta.js` | 15 個模型的參數表（名稱、單位、上下限、預設、類別、可否多分散、`have_Fq`、有效半徑模式、說明）。**腳本產生，勿手改** | — |
+| `js/sasfit-weights.js` | 六種分布的取點與權重（移植 `weights.py`） | — |
+| `js/sasfit-kernel.js` | 調度層：組 details／values、分段呼叫 wasm、讀回 F1／F2 與附加量（移植 `details.py`、`kerneldll.py`、`kernel.py` 的 1D 路徑） | weights、meta |
+| `js/sasfit-product.js` | P@S 組合、β 近似、有效半徑（移植 `product.py`） | kernel |
+| `js/sasfit-py-models.js` | Python 核心模型的手寫 JS：`guinier_porod`、`power_law` | — |
+| `js/sasfit-evaluate.js` | 單一入口 `evaluate(modelSpec, params, q, opts)`：組合 P、S、低 Q 冪律 | kernel、product、py-models |
+| `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、清理規則、條件值擷取 | — |
+| `js/sasfit-sld.js` | 化學式解析、X 光 SLD、預設物質表 | — |
+| `js/sasfit-fitter.js` | LM（可抽換介面）、數值 Jacobian、上下限、誤差 | — |
+| `js/sasfit-worker-core.js` | Worker 訊息處理的純邏輯（wasm 載入器以參數注入，Node 可測） | evaluate、fitter |
+| `js/sasfit-worker.js` | **Worker 入口**：`importScripts` 載入純模組、接上 `self.onmessage`。唯一不在 `index.html` 載入的 JS | worker-core |
+| `js/sasfit-worker-client.js` | 主執行緒端：Worker 生命週期、latest-wins、停止＝terminate 重建、版本號 | — |
+| `js/sasfit-sequence.js` | 序列擬合排程（主執行緒，逐筆送 Worker；排程邏輯為純函式） | worker-client |
+| `js/sasfit-plots.js` | 主圖、殘差、疊圖、趨勢圖（Chart.js＋`ChartTheme`） | — |
+| `js/sasfit-shape3d.js` | Canvas 2D 3D 繪製器與各模型幾何 | — |
+| `js/sasfit-export.js` | CSV／TXT／PNG、IUCr 資料物件（字串組裝為純函式） | — |
 | `js/section-sasfit.js` | 分頁 UI 串接 | 以上全部 |
-| `tools/sasfit/*` | 開發用：產生 meta、編 wasm、產生參考值（§10） | Python、emsdk |
 
-全域命名空間 `SasFit.*`（classic script，比照現有 `DndcCalculations` 等）。純計算模組（weights、kernel、product、py-models、evaluate、data-io、sld、fitter、sequence 的純函式部分、export 的字串組裝）必須能在 Node 以 `tests/load.js` 的 `vm.runInThisContext` 載入（不碰 `document`）；`LOAD_ORDER` 與 `index.html` 的相對順序一致（`tests/structure.test.js` 檢查）。檔案 200–400 行為原則、上限 800 行。
+- `wasm/` 放在 `saxs-calculator/` 底下（部署 workflow 只上傳 `./saxs-calculator`）。
+- 開發用 `tools/sasfit/` 放在 **repo 根目錄**，不會被部署。
+- 參考值 fixtures 放 `saxs-calculator/tests/fixtures/sasfit/`（與現有 fixtures 相同位置），以精簡 JSON 儲存。
+
+### 3.3 載入策略、模組慣例與守門測試
+
+**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、weights、kernel、product、py-models、evaluate、data-io、sld、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
+
+**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → weights → kernel → product → py-models → evaluate → data-io → sld → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
+
+**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → weights → kernel → product → py-models → evaluate → fitter → worker-core（與 `index.html` 相對順序一致）。
+
+**版本（快取）策略**：唯一來源是 `index.html` 的 `?v=`。`sasfit-worker-client.js` 在載入時讀 `document.currentScript.src` 的 `v` 參數；建立 Worker 時用 `js/sasfit-worker.js?v=<v>`；Worker 內讀 `self.location.search` 的 `v`，附加到每個 `importScripts` 與 wasm `fetch` 網址。程式中不得寫死版本字串。
+
+**守門測試的變更（僅限以下）**：
+1. `tests/structure.test.js`：新增常數 `WORKER_ONLY = ['sasfit-worker.js']`，從「index.html 引用每一個 js」的要求中排除；新增測試：`sasfit-worker.js` 的 `importScripts` 清單等於上述純模組清單、每檔存在、相對順序與 `index.html` 一致；新增測試：worker-client 與 worker 透過上述機制取得版本（不含寫死的 `?v=` 數字）。
+2. `tests/markup.test.js`：在 `ALLOWED_ADDITIONS` 之外加「前綴規則」——鍵符合 `id=sf…`、`for=sf…`、`aria-controls=sf…`、`aria-labelledby=sf…`、`aria-describedby=sf…`、`id=iucr-sf…`，以及 `data-section=sasfit` 時允許新增。**`fixtures/markup-v4.15.json` 不得重產**。
+3. `tests/load.js` 的 `LOAD_ORDER` 加入純計算模組（順序同 `index.html`）。
+4. 其他守門（style-scan、batch3、`node --check`、行數、頂層識別字）因檔案平放於 `js/`，不需修改即自動涵蓋。
 
 ## 4. 計算規格
 
@@ -106,13 +126,13 @@
 
 ### 4.2 強度定義與 kernel 介面
 
-與 sasmodels `kernel.py` 一致：
+與 sasmodels `kernel.py` 一致（P 單獨使用時）：
 
   I(q) = scale / ⟨V_shell⟩ · ⟨F²⟩(q) + background
 
-其中 ⟨·⟩ 為多分散度權重平均，實心物體 V_shell = V_form。A 版**一律使用 Fq 路徑**取得 ⟨F²⟩（`have_Fq` 模型另得 ⟨F⟩ 供 β 近似）。
+其中 ⟨·⟩ 為多分散度權重平均，實心物體 V_shell = V_form。A 版一律走 Fq 路徑取得 ⟨F²⟩（`have_Fq` 模型另得 ⟨F⟩ 供 β 近似）。
 
-wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序（`kerneldll.py` 實查）：
+wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序（`kerneldll.py:369-372、455-465` 實查）：
 
 ```
 (int32 nq, int32 pd_start, int32 pd_stop,
@@ -120,34 +140,45 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
  double cutoff, int32 radius_effective_mode)
 ```
 
-- `result` 長度 `nq·nout + 4`，`nout = have_Fq ? 2 : 1`；`have_Fq` 時偶數位為 F²、奇數位為 F；末 4 格依序為 total_weight、form_volume、shell_volume、radius_effective（皆未除權重；JS 端除以 total_weight，shell_volume 為 0 時以 1 代之，同 `kernel.py`）。
-- `details`／`values` 的版面逐行移植 sasmodels 1.0.12 `details.py`（`make_details`、`make_kernel_args`），1D 不需 `correct_theta_weights`。
+- `result` 長度 `nq·nout + 4`，`nout = have_Fq ? 2 : 1`；`have_Fq` 時偶數位為 F²、奇數位為 F；末 4 格依序為 total_weight、form_volume、shell_volume、radius_effective（皆未除權重）。JS 端：total_weight 為 0 時以 1 代之；其餘三者除以 total_weight；shell_volume 為 0 時以 1 代之（同 `kernel.py`）。
+- `kernel` 的 JS API 對外提供 Fq 全部輸出：F1、F2、radius_effective、shell_volume、form_volume／shell_volume（G3 需要）。
+- `details`／`values` 版面逐行移植 sasmodels 1.0.12 `details.py`（`make_details`、`make_kernel_args`）；1.0.12 的 `correct_theta_weights` 已停用，不移植。
 - 與 `kerneldll.py` 相同，以每段 100 個 pd 評估點分段呼叫（`pd_start`、`pd_stop`）。
-- `cutoff = 0`：整個分布全部積分（`direct_model` 預設）。
+- **cutoff：執行期預設 1e-5**——與 SasView GUI（`sasview_model.py:349`）、bumps `Experiment`、`DirectModel` 的預設相同（使用者 2026-11-17 決定）。`kernel`／`evaluate` API 以參數接收 cutoff，測試可傳其他值。
 - 雙精度（F64）。
 
 ### 4.3 多分散度
 
-移植 `weights.py` 的六種分布，預設值照 sasmodels：
+移植 `weights.py` 的六種分布。執行期（UI）預設：
 
-| 分布 | npts | nsigmas |
-|---|---|---|
-| gaussian | 35 | 3 |
-| rectangle | 35 | 1.73205 |
-| uniform | 35 | — |
-| lognormal | 80 | 8 |
-| schulz | 80 | 8 |
-| boltzmann | 35 | 3 |
+| 分布 | npts | nsigmas | 說明 |
+|---|---|---|---|
+| gaussian | 35 | 3 | 同 sasmodels |
+| rectangle | 35 | 1.73205 | 同 sasmodels |
+| uniform | 35 | — | 同 sasmodels |
+| lognormal | 80 | **3** | sasmodels 預設 8；使用者決定改 3 |
+| schulz | 80 | **3** | sasmodels 預設 8；使用者決定改 3 |
+| boltzmann | 35 | 3 | 同 sasmodels |
 
-- 寬度為相對值（PD 比例，σ／平均），與 SasView 相同；取點落在參數硬限制外者依 `weights.py` 的規則處理。
-- 每個參數的 PD 設定（分布、寬度、npts、nsigmas）在參數表該列展開編輯；寬度 0＝單分散。
+- schulz／lognormal 改 3 的理由：使用者在 SasView 6 實測 Nsigs=8 時 GUI 在低 q 發散（χ²→∞），Nsigs=3 時 sasmodels 與 SasView GUI 逐點相同；npts、nsigmas 在介面上可改。
+- 寬度為相對值（σ／平均），與 SasView 相同；取點落在參數硬限制外者依 `weights.py` 的規則處理。
+- **寬度可擬合**（使用者決定）：PD 展開列有「擬合 ☑」，預設上下限 [0, 0.4]（可改）。PD 寬度參數名稱沿用 sasmodels（例 `radius_pd`），在 fitter 參數向量、FitResult、序列結果表、IUCr 參數列中與一般參數同等對待。
+- 寬度 0＝單分散。
+- 以上是 **UI 預設**；測試轉接層（G3）另用 sasmodels API 預設（`_pd_n`=0、`_pd_nsigma`=3、`_pd_type`=gaussian），兩者分開。
 
 ### 4.4 結構因子 P@S（移植 `product.py`）
 
 - 組合方式 `structure_factor_mode`：0＝`P*S`（預設），1＝`P*(1+beta*(S-1))`（β 近似）。
 - 有效半徑 `radius_effective_mode`：預設 **1**（模型自身第一種定義，例如 sphere＝radius）；0＝unconstrained，由使用者輸入 `radius_effective`。選單文字直接用該模型的 `radius_effective_modes`。
-- 參數集＝P 的參數（不含 P 自身 scale／background）＋S 的參數＋兩個模式參數；`scale` 與 S 的 `volfraction` 是**兩個獨立參數**——介面以說明文字提示（SasView 原設計）。
-- 數學定義、何時使用 shell_volume、volfraction 如何進入，全部以 `product.py` 原文為準，並由 G1 驗證。
+- 強度（`product.py` 約 520-531 行）：
+
+  PS = ⟨F²⟩·S（P*S）或 ⟨F²⟩ + ⟨F⟩²·(S−1)（β）
+  I(q) = scale / ⟨V_shell⟩ · **volfraction** · PS + background
+
+  **例外**：P 自帶 `volfraction`（清單中為 vesicle）時，S 的 `volfraction` 自參數集省略，且不乘入前因子（P 已在絕對尺度）。
+- 參數集＝P 的參數＋S 的參數（S 中與 P 同名者依 `_tag_parameter` 加 `_S` 後綴；vesicle 時省略 S 的 volfraction）＋兩個模式參數。
+- 介面說明（依模型產生）：一般模型顯示「接 S(Q) 時強度同時乘上 scale 與 volfraction；volfraction 也決定 S(Q) 的形狀」；vesicle 顯示「使用模型本身的 volfraction」。
+- 其餘細節以 `product.py` 原文為準，由 G1 驗證。
 
 ### 4.5 低 Q 冪律附加項
 
@@ -162,42 +193,54 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - SLD = r_e · ρ_e，r_e = 2.8179403262×10⁻⁵ Å，ρ_e = N_A · ρ_mass · Σ(n_i Z_i) / M（e/Å³）；顯示單位 10⁻⁶ Å⁻²。
 - **f ≈ Z**（忽略異常散射 f′、f″）：在此近似下 SLD 與能量無關；檔頭能量只用於報告與 IUCr 的波長。
 - 限制（介面說明、報告註記）：含吸收邊靠近 15 keV 的元素（Au、Pt 的 L 邊、Br、Sr 的 K 邊等）時誤差較大。
-- 化學式語法：元素符號＋可選計數（含小數）、括號巢狀、水合點（例：`CuSO4·5H2O`、`CuSO4.5H2O`）；不認得的元素→欄位錯誤。原子量與 Z 內建表（來源：IUPAC 標準原子量，與 periodictable 交叉驗證，G6）。
-- 預設物質（化學式＋密度，由同一函式算出，數值與出處列在 `sld.js` 註解，經 science-reviewer 審查）：水、蛋白質（平均）、脂質頭基、脂質尾鏈、PEG、SiO₂、Au、Fe₃O₄。
+- 化學式語法：元素符號＋可選計數（含小數）、括號巢狀、水合點（`CuSO4·5H2O`、`CuSO4.5H2O`）；不認得的元素→欄位錯誤。原子量與 Z 內建表（IUPAC 標準原子量），以 periodictable 交叉驗證（G6）。
+- 預設物質（化學式＋密度，由同一函式算出；數值與出處寫在 `sasfit-sld.js` 註解，經 science-reviewer 審查）：水、蛋白質（平均）、脂質頭基、脂質尾鏈、PEG、SiO₂、Au、Fe₃O₄。
 - SLD 欄位可直接輸入數值；或開小面板輸入化學式＋密度後回填數值（參數本身永遠是數值）。
 
-### 4.8 資料讀取與清理（`data-io.js`）
+### 4.8 資料讀取、權重與清理（`sasfit-data-io.js`）
 
 **官方 `.dat` 判定**：第 1 行含 `Data Collection Mode`，且存在 `Single Frame Time` 行與其後 `Q I ERROR` 表頭。讀取檔頭欄位：輸出檔名、總幀數、Photon Energy (keV)、Scaling Factor、Sample／Empty Cell Transmission、Sample thickness (mm)、SDD (mm)、Starting Q-value（q_start）、Single Frame Time。Q 單位固定 Å⁻¹，強度為絕對強度 cm⁻¹。
 
 **一般文字檔**：略過空行與 `#`、`;`、非數字開頭的行；分隔符為空白、Tab、逗號、分號；2 欄（q, I）、3 欄（q, I, σ）、4 欄（第 4 欄 dQ 讀入但 A 版不使用）。Q 單位由使用者選 Å⁻¹（預設）或 nm⁻¹（讀入時 ÷10）；最大 q > 5 且選 Å⁻¹ 時提示「是否為 nm⁻¹？」。
 
+**權重**（與 SasView `residuals_help` 的四種相同）：
+
+| 選項 | w_i | 該點不參與擬合的條件 |
+|---|---|---|
+| 資料 σ（預設，有 σ 時） | σ_i | σ_i ≤ 0 或非有限 |
+| √\|I\| | √\|I_i\| | I_i = 0 |
+| \|I\| | \|I_i\| | I_i = 0 |
+| 不加權 | 1 | — |
+
+殘差 r_i = (I_i − I_model,i) / w_i。缺 σ 的檔案預設權重改為「不加權」並提示。
+
 **清理（不刪原始點，只標記）**：
 - 非有限值、q ≤ 0 → 排除。
-- σ ≤ 0 或缺 σ 的點在「資料 σ」權重下不參與擬合；缺 σ 的檔案預設權重改為「不加權」並提示。
-- I ≤ 0 的點**照常參與擬合**；log 模式與 Guinier 模式無法顯示，隱藏並顯示「隱藏了 N 點」。
-- 預設擬合範圍：Qmin＝max(q_start（僅官方檔）, 第一個 σ > 0 的點)，Qmax＝最後一個有效點。
+- 依上表，w_i ≤ 0 或非有限的點不參與擬合。
+- I < 0 但 w_i > 0 的點**照常參與擬合**；log 與 Guinier 模式無法顯示 I ≤ 0 的點，隱藏並顯示「隱藏了 N 點」。
+- 預設擬合範圍：Qmin＝max(q_start（僅官方檔）, 第一個在目前權重下可參與擬合的點)，Qmax＝最後一個可參與擬合的點。
 
 **條件值**：取檔名（去副檔名）最後一個數字（整數或小數，允許負號），例如 `B1216_1_10.dat` → 10；取不到則空白待填。
 
-**Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, valid（每點可否參與擬合）, defaultRange, condition }`。
+**Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, defaultRange, condition }`；「可否參與擬合」依權重即時計算，不存死在物件內。
 
-### 4.9 擬合器（`fitter.js`）
+### 4.9 擬合器（`sasfit-fitter.js`）
 
 - 介面：`fit(problem, options) → FitResult`，`options.method = 'lm'`（A 版唯一值；B 版新增 DE、DREAM、Nelder–Mead、BFGS 時不改呼叫端）。
-- LM：Marquardt 對角縮放；殘差 r_i = (I_i − I_model,i) / w_i。
-- Jacobian：數值前向差分，步長 h_j = √ε·max(|p_j|, typical_j)（typical_j 取參數預設值量級）。
-- 上下限：試探步超出時截回邊界（projected LM）；結果若落在邊界，該參數標「觸及上限／下限」。
-- 終止條件預設與 bumps 1.0.4 `lm` 相同：steps 200、ftol 1e-10、xtol 1e-10；達步數未收斂→標「未收斂」但照樣回報結果。
+- LM：Marquardt 對角縮放；殘差同 §4.8。
+- 上下限：試探步超出時截回邊界（projected LM）；結果落在邊界者標「觸及上限／下限」。
+- 終止條件預設與 bumps 1.0.4 `lm`（MPFit）相同：steps 200、ftol 1e-10、xtol 1e-10；達步數未收斂→標「未收斂」但照樣回報。
 - 模型輸出含非有限值→該步 χ² 視為 ∞、拒絕該步、加大阻尼。
-- 權重（與 SasView 相同四種）：資料 σ（預設）、√I、|I|、不加權。
-- **參數誤差**：σ_j = √C_jj，C = (JᵀWJ)⁻¹，**不乘 √χ²ᵣ**（bumps／SasView 慣例；使用者 2026-11-17 決定）。報告 TXT 另列乘上 √χ²ᵣ 的值。C 奇異→誤差顯示「—」並註明「參數相關性過高，無法估計」。
-- 自由度 = 有效點數 − 自由參數數；擬合範圍內點數必須 > 自由參數數，否則不允許開始。
-- FitResult（凍結）：`{ params, errors, scaledErrors, chi2, chi2r, dof, iterations, status: 'converged'|'maxiter'|'stopped'|'failed', atBound: {name: 'lower'|'upper'}, curve, residuals, settings }`。
+- **共變異與誤差（比照 bumps，以便與 SasView 顯示的誤差一致）**：bumps 的 lm 不用 MPFit 自己的共變異（`nocovar=True`），而是在最佳解處另算 `lsqerror.jacobian`＋`jacobian_cov`。本站照做：
+  - Jacobian：前向差分，h_j = 1e-4·|p_j|（p_j＝0 時 h_j＝1e-4）；若 p_j + h_j 超過上限則改往後差分。
+  - C = V·diag(1/s²)·Vᵀ（J 的 SVD），奇異值 ≤ 1e-8 者以 1e-8 代之；發生代換時標「參數相關性過高，誤差不可靠」。
+  - 原始誤差 σ_j = √C_jj。
+  - **顯示規則**（使用者決定）：權重＝資料 σ 時顯示原始誤差（不乘 √χ²ᵣ）；權重＝√|I|、|I|、不加權時顯示 σ_j·√χ²ᵣ，並標「已乘 √χ²ᵣ」。報告 TXT 一律兩種都列。
+- LM 迭代中的 Jacobian 也用同一個前向差分函式。
+- 自由度 = 可參與擬合的點數 − 自由參數數（含被勾選的 PD 寬度）；範圍內點數必須 > 自由參數數，否則不允許開始。
+- FitResult（凍結）：`{ params, errors, errorsScaled, displayErrorsScaled, chi2, chi2r, dof, iterations, status: 'converged'|'maxiter'|'stopped'|'failed', atBound: {name: 'lower'|'upper'}, illConditioned, curve, residuals, settings }`。
 
 ### 4.10 Worker 協定
-
-主執行緒與 `fit-worker.js` 以訊息溝通：
 
 | 方向 | 型別 | 內容 |
 |---|---|---|
@@ -208,14 +251,14 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 | ← | `result` | `{ jobId, fitResult }` |
 | ← | `error` | `{ reqId|jobId, code, message }` |
 
-- wasm 在 Worker 內以 `fetch` 載入並快取（每模型一次）。
+- wasm 在 Worker 內以 `fetch`（網址帶 `?v=`）載入並快取（每模型一次）。
 - 「停止」＝`worker.terminate()` 後重建 Worker（立即生效）；序列擬合停止亦同。
 - Worker 異常結束→提示並自動重建，可直接重試。
 - 單次 evaluate 超過 300 ms 時，預覽改為「計算中…」狀態顯示（不阻擋操作）。
 
 ## 5. 介面規格
 
-元素 id 前綴 `sf`。沿用 v5.2 設計系統：`.card`、分組圓角輸入列、分段控制、`ResultTiles`、`ChartTheme.colorize`、語意色 token；**不新增顏色字面值**（`tests/no-color-literals.test.js`）、不加裝飾圖示、不用行內 script／onclick（CSP）。
+元素 id 前綴 `sf`（IUCr 頁新增者用 `iucr-sf`）。沿用 v5.2 設計系統：`.card`、分組圓角輸入列、分段控制、`ResultTiles`、`ChartTheme.colorize`、語意色 token；**不新增顏色字面值**、不加裝飾圖示、不用行內 script／onclick（CSP）。
 
 ### 5.1 版面
 
@@ -244,19 +287,19 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 ### 5.3 模型分段
 
 - 模型選單：搜尋框＋依類別分組（形狀／與形狀無關）；選中後顯示模型說明與 SasView 文件連結（外部連結，`rel="noopener"`）。
-- S(Q) 選單（無／hardsphere／hayter_msa）；不可接 S(Q) 的模型停用並說明。選了 S(Q) 時顯示組合方式與有效半徑模式選單。
+- S(Q) 選單（無／hardsphere／hayter_msa）；不可接 S(Q) 的模型停用並說明。選了 S(Q) 時顯示組合方式、有效半徑模式選單與 §4.4 的說明文字。
 - 低 Q 冪律開關。
-- 參數表欄位：擬合（☑）｜參數（名稱＋單位）｜數值｜±（擬合後）｜下限｜上限｜PD（僅可多分散參數；點擊展開：分布、寬度、npts、nsigmas）。SLD 參數的數值欄旁有「化學式」按鈕開小面板。
-- 數值輸入即時檢查（模型硬限制、下限 < 上限、PD 寬度 ≥ 0、npts 正整數），錯誤以欄位層級提示，不送預覽。
+- 參數表欄位：擬合（☑）｜參數（名稱＋單位）｜數值｜±（擬合後；若已乘 √χ²ᵣ 則表頭註明）｜下限｜上限｜PD（僅可多分散參數；點擊展開一列：擬合寬度 ☑、寬度、寬度上下限（預設 0–0.4）、分布、npts、nsigmas）。SLD 參數的數值欄旁有「化學式」按鈕開小面板。
+- 數值輸入即時檢查（模型硬限制、下限 < 上限、PD 寬度 ≥ 0、npts 正整數、nsigmas > 0），錯誤以欄位層級提示，不送預覽。
 - 參數單位沿用 sasmodels（長度 Å、SLD 10⁻⁶ Å⁻²、scale／background 依模型）。
 
 ### 5.4 擬合分段
 
 - Q 範圍（Qmin、Qmax 輸入＋「全範圍」「預設範圍」按鈕；主圖上以灰色顯示範圍外）。
-- 權重選單、最大步數（預設 200）。
+- 權重選單（§4.8 四種）、最大步數（預設 200）。
 - 「開始擬合」「停止」「回復擬合前參數」。
 - 進度：迭代次數與目前 χ²ᵣ。
-- 結果：主角磚＝χ²ᵣ；一般磚＝各擬合參數 值 ± 誤差（單位）；狀態標記（未收斂、觸及上下限、誤差無法估計）。
+- 結果：主角磚＝χ²ᵣ；一般磚＝各擬合參數 值 ± 誤差（單位）；狀態標記（未收斂、觸及上下限、誤差不可靠、已乘 √χ²ᵣ）。
 - 「送進 IUCr 表格」（擬合成功才啟用）、「匯出擬合曲線 CSV」「匯出報告 TXT」。
 
 ### 5.5 序列分段（§7）
@@ -264,11 +307,11 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 ### 5.6 圖區
 
 - 主圖模式：log-log（I vs q，雙對數）、Guinier（ln I vs q²，線性軸）、Kratky（q²I vs q，線性軸）。三種模式套用到所有顯示中的資料與其模型曲線。
-- 疊圖：沿用 8 色系列，第 9 組起重複色並改虛線（站內既有規則）；作用中資料加粗；有擬合結果者畫曲線。
-- 殘差圖：(I − I_model)/w，x 軸跟隨主圖模式（log-log、Kratky 用 q；Guinier 用 q²）；只畫作用中資料。
-- 縮放沿用 chartjs-plugin-zoom；「重設縮放」。PNG 匯出一律淺色白底（站內規則）。
+- 疊圖：沿用 8 色系列，第 9 組起重複色並改虛線；作用中資料加粗；有擬合結果者畫曲線。
+- 殘差圖：r_i（§4.8），x 軸跟隨主圖模式（log-log、Kratky 用 q；Guinier 用 q²）；只畫作用中資料。
+- 縮放沿用 chartjs-plugin-zoom；「重設縮放」。PNG 匯出一律淺色白底。
 
-## 6. 3D 結構示意圖（`shape3d.js`）
+## 6. 3D 結構示意圖（`sasfit-shape3d.js`）
 
 - 自寫 Canvas 2D 繪製器：參數化曲面網格→旋轉投影→由遠到近排序（painter's algorithm）→Lambert 明暗；滑鼠拖曳旋轉、滾輪縮放、「重設視角」、「自動旋轉」開關；PNG 匯出。不引入 three.js。
 - 顏色只從 `chart-theme.js` 取（新增 3D 用的角色色，兩主題各一組），主題切換時重畫。
@@ -289,9 +332,9 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - 多分散度與 S(Q) 不畫入幾何，在圖下方以文字標示（例：「R = 5.0 ± 0.5 nm（Schulz）」「S(Q)：hardsphere，φ = 0.20，R_eff = 5.0 nm」）。
 - 渲染上限：每物件 ≤ 4000 個面，維持拖曳流暢。
 
-## 7. 序列擬合（`sequence.js`）
+## 7. 序列擬合（`sasfit-sequence.js`）
 
-- 範圍：清單中「序列」勾選的資料；沿用目前的模型規格、擬合勾選、上下限、Q 範圍、權重、最大步數。Q 範圍若超出某組資料的有效範圍，該組自動截到可用範圍並在結果列註記。
+- 範圍：清單中「序列」勾選的資料；沿用目前的模型規格、擬合勾選（含 PD 寬度）、上下限、Q 範圍、權重、最大步數。Q 範圍若超出某組資料的可用範圍，該組自動截到可用範圍並在結果列註記。
 - 選項（預設皆開）：「以前一筆結果作為下一筆初值」「依條件值排序」（條件值空白者排最後並警告）。
 - 某筆失敗或未收斂：標記於該列；若開啟「以前一筆為初值」，下一筆改用**最後一次收斂的結果**為初值；序列不中斷。
 - 進度：目前第 k／N 筆＋該筆迭代進度；「停止」立即結束（已完成的結果保留）。
@@ -307,34 +350,34 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 {
   datasetName, model,               // model 例：'core_shell_sphere@hardsphere'
   structureFactorMode,              // 'P*S' | 'P*(1+beta*(S-1))' | null
-  params: [{ name, value, error, unit, fitted }],
+  params: [{ name, value, error, errorScaled, unit, fitted }],   // 含被擬合的 PD 寬度
   chi2r, qMin, qMax, npoints, weighting,
   software                          // 'sasmodels 1.0.12 (WebAssembly), TPS13A SAXS Calculator v5.3'
 }
 ```
 
-- IUCr 頁在 Molecular-mass determination 之後新增段落「Model fitting」，列：Data file｜Model｜各參數（Value、±、Unit；固定參數 ± 欄填 fixed）｜q-range for fitting｜χ²ᵣ｜Software。
-- 列由 JS 動態產生；所有字串進 `innerHTML` 前經 `FormUtils.escapeHtml`（唯一實作）。現有「複製表格」須包含此段（驗收項）。
+- IUCr 頁在 Molecular-mass determination 之後新增段落「Model fitting」，列：Data file｜Model｜各參數（Value、±、Unit；固定參數 ± 欄填 fixed；±依 §4.9 顯示規則）｜q-range for fitting｜χ²ᵣ｜Software。元素 id 前綴 `iucr-sf`。
+- 列由 JS 動態產生；所有字串進 `innerHTML` 前經 `FormUtils.escapeHtml`。現有「複製表格」須包含此段（驗收項）。
 - 未送出前此段顯示「尚未送入擬合結果」。
 
-## 9. 匯出（`export.js`）
+## 9. 匯出（`sasfit-export.js`）
 
 | 檔案 | 檔名 | 內容 |
 |---|---|---|
-| 擬合曲線 CSV | `<資料名>_<模型>_fit.csv` | q、I、σ、I_model、殘差、in_range（0/1）；開頭 `#` 註解列出模型與參數 |
-| 報告 TXT | `<資料名>_<模型>_report.txt` | 資料檔名與檔頭（能量、q_start、厚度、SF、透射率）；模型、S(Q) 組合與有效半徑模式；多分散設定；各參數值、誤差（不乘／乘 √χ²ᵣ 兩欄）、擬合或固定、觸及邊界；χ²、χ²ᵣ、自由度、點數、q 範圍、權重；演算法與設定、迭代數、狀態；SLD 近似 f≈Z 的註記；軟體與版本 |
+| 擬合曲線 CSV | `<資料名>_<模型>_fit.csv` | q、I、σ、I_model、殘差、in_fit（0/1）；開頭 `#` 註解列出模型與參數 |
+| 報告 TXT | `<資料名>_<模型>_report.txt` | 資料檔名與檔頭（能量、q_start、厚度、SF、透射率）；模型、S(Q) 組合與有效半徑模式；多分散設定（分布、寬度、npts、nsigmas、cutoff）；各參數值、誤差（不乘／乘 √χ²ᵣ 兩欄）、擬合或固定、觸及邊界；χ²、χ²ᵣ、自由度、點數、q 範圍、權重；演算法與設定、迭代數、狀態；SLD 近似 f≈Z 的註記；軟體與版本 |
 | 序列結果 CSV | `<條件名>_sequence.csv` | 序列結果表全部欄位 |
 | PNG | 各圖 | 主圖、殘差、3D、趨勢圖；淺色白底 |
 
 CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 
-## 10. 建置流程（`tools/sasfit/`）
+## 10. 建置流程（repo 根目錄 `tools/sasfit/`，不部署）
 
-- Python 環境：`tools/sasfit/requirements.txt` 鎖定 `sasmodels==1.0.12`、`bumps==1.0.4`、`periodictable`（版本於 Phase 0 鎖定）；`README.md` 說明建立方式。
+- Python 環境：`tools/sasfit/requirements.txt` 鎖定 `sasmodels==1.0.12`、`bumps==1.0.4`、`periodictable`（Phase 0 鎖版）；`README.md` 說明建立方式。
 - emscripten：官方 **emsdk** 安裝於 repo 外（`~/emsdk`），版本於 Phase 0 選定後鎖定並寫入 README 與 `manifest.json`。不用 Homebrew（會自動升級、會拉入 openjdk）。
-- `gen_meta.py` → `js/sasfit/models-meta.js`（檔頭：自動產生、勿手改、產生器與 sasmodels 版本）。
-- `build_wasm.py` → 以 `sasmodels.generate.make_source(info)['dll']` 取得生成碼 → emcc 編成 `wasm/sas-<model>.wasm`（standalone、無 JS glue、匯出 `<model>_Iq` 與記憶體配置函式）＋`manifest.json`。**禁止 `-ffast-math`** 等改變 IEEE 語意的選項。
-- `gen_reference.py` → `tests/fixtures/sasfit/*.json`：以 sasmodels（強制 DLL 雙精度、不走 OpenCL：`SAS_OPENCL=none`）算的參考曲線，及 bumps LM 的參考擬合（§11 G4）。
+- `gen_meta.py` → `js/sasfit-meta.js`（檔頭：自動產生、勿手改、產生器與 sasmodels 版本）。
+- `build_wasm.py`：**重現 `kerneldll.make_dll` 的前處理**——`source = generate.convert_type(generate.make_source(info)['dll'], F64)`（前置 `#define FLOAT_SIZE 8`、修正 tgmath 整數參數）；腳本斷言前處理後原始碼以 `#define FLOAT_SIZE 8` 開頭。編譯旗標比照 `kerneldll` 的 unix 預設 `-std=c99 -O2`；**不用 OpenMP、不用 `-ffast-math`** 等改變 IEEE 語意的選項；standalone、無 JS glue、匯出 `<model>_Iq` 與記憶體配置函式。產出 `saxs-calculator/wasm/sas-<model>.wasm`＋`manifest.json`。
+- `gen_reference.py` → `saxs-calculator/tests/fixtures/sasfit/*.json`：sasmodels 強制 DLL 雙精度、不走 OpenCL（`SAS_OPENCL=none`）；**每個呼叫都明確傳 cutoff**（G1、G4 用 1e-5；G3 用 sasmodels `model_test` 的 0）——不得依賴 `DirectModel`／`Experiment` 的建構子預設。
 - 只有新增模型或升級 sasmodels 才需要重跑 `build_wasm.py`；改 JS 不需要 emsdk。產物（meta、wasm、fixtures）皆提交進 repo。
 
 ## 11. 測試與驗證
@@ -343,17 +386,17 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 
 | 門檻 | 內容 | 通過標準 |
 |---|---|---|
-| G1 | wasm＋調度層 vs sasmodels：每模型預設值；每個可多分散參數 × {gaussian, schulz}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點＋官方測試點 | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\| |
+| G1 | wasm＋調度層 vs sasmodels（cutoff＝1e-5）：每模型預設值；每個可多分散參數 × {gaussian, schulz(nsigmas 3), schulz(nsigmas 8, 寬度 0.3 與 0.4)}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；vesicle@S 的 volfraction 例外；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點 | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\| |
 | G2 | 手寫 JS（guinier_porod、power_law） | 同 G1 |
-| G3 | sasmodels 內附官方測試（清單 15 模型的部分） | sasmodels 自身容許誤差 |
-| G4 | 擬合器 vs bumps LM：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值 | 參數差 < 0.01σ；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
-| G5 | data-io：合成官方格式檔與一般檔（公開 fixtures）；真實 `.dat`（`tests/fixtures-local/sasfit/`，`.gitignore` 已擋，缺檔即 skip） | 檔頭欄位、點數、清理標記、預設範圍、條件值正確 |
+| G3 | sasmodels 內附官方測試（清單 15 模型）：**只跑 1D、非磁性案例**；包含 `@S` 乘積測試與 Fq 多輸出測試（F、F²、R_eff、V、form:shell 比值）。轉接層用 sasmodels API 預設（`_pd_n`=0、`_pd_nsigma`=3、`_pd_type`=gaussian、cutoff＝0），與 UI 預設分開 | sasmodels 自身容許誤差 |
+| G4 | 擬合器 vs bumps lm（`Experiment(..., cutoff=1e-5)`、`FitDriver` 的 cov／stderr）：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值；含 1 組擬合 PD 寬度的案例 | 參數差 < 0.01σ；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
+| G5 | data-io：合成官方格式檔與一般檔（公開 fixtures）；真實 `.dat`（`tests/fixtures-local/sasfit/`，已被 `.gitignore` 擋，缺檔即 skip）；四種權重的可參與點判定 | 檔頭欄位、點數、清理標記、預設範圍、條件值正確 |
 | G6 | SLD：化學式解析與數值 vs periodictable 的原子量與 Z 獨立計算（例：水 1.0 g/cm³ ≈ 9.420×10⁻⁶ Å⁻²） | 相對差 ≤ 1e-6 |
-| G7 | 站內既有測試全部綠燈；`result-golden` fixture 不得重產；版本號一致（`structure.test.js`） | 全過 |
-| G8 | Playwright（本機 http.server，text-to-cad venv）：無 console 錯誤；載入合成 `.dat`→預覽→擬合→序列（3 組）→送 IUCr→複製表格→各匯出→3D 渲染非空；淺／深兩主題 axe 0 違規 | 全過 |
+| G7 | 站內既有測試全部綠燈；`result-golden` 與 `markup-v4.15` fixture 不得重產；守門測試只依 §3.3 修改；版本號一致 | 全過 |
+| G8 | Playwright（本機 http.server，text-to-cad venv）：無 console 錯誤；載入合成 `.dat`→預覽→擬合→序列（3 組）→送 IUCr→複製表格→各匯出→3D 渲染非空；淺／深兩主題 axe 0 違規；Worker 與 wasm 請求網址帶 `?v=` | 全過 |
 
 - 效能：Phase 0 量測最重組態（core_shell_cylinder＋兩個多分散參數、400 點）的單次評估與一次典型擬合時間，寫進報告；據此訂定預覽／擬合的效能預算，超出者以「計算中…」與進度呈現。
-- 科學審查：science-reviewer 審 weights／kernel／product 移植、SLD 公式與預設物質、誤差慣例、清理規則。
+- 科學審查：science-reviewer 審 weights／kernel／product 移植、SLD 公式與預設物質、誤差慣例、權重與清理規則。
 - 程式審查：每任務規格＋品質雙審；收尾 code review（CRITICAL／HIGH 必修）。
 
 ## 12. 錯誤處理
@@ -361,11 +404,11 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 情況 | 行為 |
 |---|---|
 | 檔案無法解析 | 該檔列顯示原因與行號；其他檔照常 |
-| 有效點不足（≤ 自由參數數） | 擬合按鈕停用並說明 |
+| 可參與擬合的點 ≤ 自由參數數 | 擬合按鈕停用並說明 |
 | wasm 載入失敗（網路、MIME、`file://`） | 擬合頁顯示原因與解法；其他分頁不受影響（wasm 只在本頁載入） |
 | Worker 異常結束 | 提示、自動重建、可重試 |
-| 模型輸出 NaN／Inf | 該步拒絕；預覽時曲線不更新並提示參數可能不合理 |
-| C 奇異 | 誤差「—」＋說明 |
+| 模型輸出 NaN／Inf | 擬合時拒絕該步；預覽時曲線不更新並提示參數可能不合理 |
+| 奇異值被代換（§4.9） | 誤差照常顯示並標「參數相關性過高，誤差不可靠」 |
 | 未收斂／觸及邊界 | 結果照常顯示＋狀態標記 |
 | 輸入不合法 | 欄位層級錯誤訊息；不送預覽、不允許擬合 |
 
@@ -373,33 +416,43 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 
 ## 13. 安全與 CSP
 
-現行 CSP（2026-11-17 實查）已滿足需求，**不需修改**：`script-src 'self' … 'wasm-unsafe-eval'`（WebAssembly）、`connect-src 'self' …`（fetch 本機 .wasm）、`worker-src 'self' blob:`（本機 Worker）。新程式不得使用行內 script、`onclick=""`、`eval`；所有來自檔案名稱、檔頭、使用者輸入的字串進 `innerHTML` 前經 `FormUtils.escapeHtml`。
+現行 CSP（2026-11-17 實查）已滿足需求，**不需修改**：`script-src 'self' … 'wasm-unsafe-eval'`（WebAssembly）、`connect-src 'self' …`（fetch 本機 .wasm）、`worker-src 'self' blob:`（本機 Worker；`importScripts` 皆同源）。新程式不得使用行內 script、`onclick=""`、`eval`；所有來自檔案名稱、檔頭、使用者輸入的字串進 `innerHTML` 前經 `FormUtils.escapeHtml`。
 
 ## 14. 開發順序與發佈
 
-1. **Phase 0（可行性閘門）**：安裝並鎖定 emsdk；編 sphere、cylinder、hayter_msa；在 Node 跑出 G1 等級一致性；量測效能。產出簡短報告。
+1. **Phase 0（可行性閘門）**：安裝並鎖定 emsdk；依 §10 前處理編 sphere、cylinder、hayter_msa；在 Node 跑出 G1 等級一致性；量測效能。產出簡短報告。
    - 通過→進入正式實作。
    - 某模型無法編譯或無法達 G1→該模型退回手寫 JS（方案二），**先回報使用者再繼續**。
-2. 正式實作：依實作計畫（writing-plans 產出）逐任務 TDD、雙審。
-3. 分支 `feat/sasfit`；完成後版本 v5.3（footer `Version` 與所有本機 `?v=` 同步）。
+2. 正式實作，依里程碑（每個里程碑結束時全測試綠燈）：
+   - M1 計算核心：meta、weights、kernel、product、py-models、evaluate、全部 15 模型的 wasm；G1–G3。
+   - M2 Worker＋擬合器：worker-core、worker、worker-client、fitter；G4。
+   - M3 資料／模型／擬合分段與圖區：data-io、sld、plots、section-sasfit；G5、G6；守門測試依 §3.3 修改。
+   - M4 3D、序列、IUCr、匯出。
+   - M5 E2E（G8）、版本 v5.3、合併、部署、線上冒煙測試。
+3. 分支 `feat/sasfit`；版本 v5.3（footer `Version` 與所有本機 `?v=` 同步）。
 4. 依使用者 2026-10-15 授權：規格與計畫核准後，實作→驗證→審查→合併→push→線上冒煙測試一路完成，最後一次回報；**新的科學判斷仍須詢問**。
 
 ## 15. 科學決策紀錄
 
 | # | 決策 | 理由 | 日期／來源 |
 |---|---|---|---|
-| 1 | 計算核心＝sasmodels C 原樣編成 wasm（方案一） | 與 SasView 同一份程式碼、擴充 B 版成本低、速度 | 使用者 2026-11-17 |
-| 2 | 參數誤差不乘 √χ²ᵣ；報告兩種都列 | 13A 資料有實測 σ；與 bumps／SasView 一致 | 使用者 2026-11-17 |
+| 1 | 計算核心＝sasmodels C 原樣（F64 前處理）編成 wasm（方案一） | 與 SasView 同一份程式碼、擴充 B 版成本低、速度 | 使用者 2026-11-17 |
+| 2 | 權重＝資料 σ 時誤差不乘 √χ²ᵣ；報告兩種都列 | 13A 資料有實測 σ；與 bumps／SasView 一致 | 使用者 2026-11-17 |
 | 3 | X 光 SLD 取 f ≈ Z | A 版夠用；f′ 表留 B 版 | 設計第 3 段，使用者同意 |
-| 4 | 預設 Qmin 取 q_start 與首個 σ>0 點的較大者 | 避開 beamstop 區（實查 B1216 檔前段 I<0、σ=0） | 同上 |
-| 5 | I ≤ 0 點參與擬合、僅 log 顯示時隱藏 | σ 權重的 χ² 對負值無問題；刪點會偏差 | 同上 |
-| 6 | S(Q) 僅開放 6 個有 Fq＋有效半徑模式的形狀模型；PD 只開 P 的尺寸參數 | 與 sasmodels product 的完整能力對齊、避免無定義組合 | 同上 |
-| 7 | cutoff = 0 | 與 `direct_model` 預設一致，數值可對齊 | 同上 |
+| 4 | 預設 Qmin 取 q_start 與首個可參與擬合點的較大者 | 避開 beamstop 區（實查 B1216 檔前段 I<0、σ=0） | 同上 |
+| 5 | I < 0 但權重有效的點參與擬合、僅 log 顯示時隱藏 | σ 權重的 χ² 對負值無問題；刪點會偏差 | 同上 |
+| 6 | S(Q) 僅開放 6 個有 Fq＋有效半徑模式的形狀模型；PD 只開 P 的尺寸參數 | 與 sasmodels product 能力對齊、避免無定義組合 | 同上 |
+| 7 | 低 Q 冪律與模型共用 background | 等價 sasmodels 和模型，可驗證 | 設計第 3 段 |
 | 8 | LM 預設 steps 200、ftol／xtol 1e-10 | bumps 1.0.4 實查預設 | 同上 |
-| 9 | 低 Q 冪律與模型共用 background | 等價 sasmodels 和模型，可驗證 | 設計第 3 段 |
-| 10 | IUCr 需手動送出 | 試錯擬合不覆蓋表格 | 設計第 4 段 |
-| 11 | 3D 自寫 Canvas | 避免 600 KB 以上的 three.js 與模組／CSP 成本 | 設計第 2 段 |
-| 12 | 不支援 `file://` | 使用者確認不會這樣開 | 使用者 2026-11-17 |
+| 9 | IUCr 需手動送出 | 試錯擬合不覆蓋表格 | 設計第 4 段 |
+| 10 | 3D 自寫 Canvas | 避免 600 KB 以上的 three.js 與模組／CSP 成本 | 設計第 2 段 |
+| 11 | 不支援 `file://` | 使用者確認不會這樣開 | 使用者 2026-11-17 |
+| 12 | 權重四種照 SasView（√\|I\|、\|I\| 取絕對值），w=0 的點排除 | 與 SasView 一致、定義完整 | 審查第 1 輪 |
+| 13 | PD 寬度可擬合，預設上界 0.4 | 使用者 NTT-04 經驗：放開但綁上界避免發散 | 使用者 2026-11-17 |
+| 14 | schulz、lognormal 的 nsigmas 預設 3（sasmodels 為 8） | 使用者 SasView 6 實測：8 會低 q 發散；3 時與 SasView GUI 逐點相同 | 使用者 2026-11-17 |
+| 15 | 多分散積分 cutoff 預設 1e-5 | 與 SasView GUI、bumps、DirectModel 預設一致，曲線可與 SasView 對照；較快 | 使用者 2026-11-17（更正先前「direct_model 預設 0」的錯誤前提） |
+| 16 | 權重非資料 σ 時，顯示誤差乘 √χ²ᵣ 並標明 | 此時 σ 未知，不乘的誤差量級無意義（bumps 文件建議） | 使用者 2026-11-17 |
+| 17 | 共變異算法照 bumps（前向差分 1e-4·\|p\|、SVD 奇異值下限 1e-8） | 讓誤差與 SasView 顯示一致 | 審查第 1 輪 |
 
 ## 16. 已知限制與 B 版候選
 
@@ -414,5 +467,6 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 
 ## 17. 授權與致謝
 
-- `wasm/LICENSE-sasmodels.txt` 放 sasmodels 1.0.12 授權全文（取自其 dist-info `licenses/`）。
+- `saxs-calculator/wasm/LICENSE-sasmodels.txt` 放 sasmodels 1.0.12 授權全文（取自其 dist-info `licenses/`）。
+- 移植自 sasmodels 原始碼的 JS 檔（`sasfit-weights.js`、`sasfit-kernel.js`、`sasfit-product.js`、`sasfit-py-models.js`）屬衍生作品，檔頭保留 sasmodels 的 BSD-3 版權聲明並註明移植來源檔。
 - 分頁說明與報告 TXT 註明：「模型計算核心：SasView sasmodels 1.0.12（BSD-3-Clause），C 原始碼原樣編譯為 WebAssembly」。
