@@ -1,7 +1,7 @@
 # SAS 模型擬合頁（A 版）— 設計規格
 
 - 日期：2026-11-17
-- 狀態：v3——設計已與使用者逐段確認（共 5 段）；規格審查第 1 輪 6 項、第 2 輪 2 項問題已修正；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。待實作規劃
+- 狀態：v3——設計已與使用者逐段確認（共 5 段）；規格審查 3 輪（第 1 輪 6 項、第 2 輪 2 項問題已修正，第 3 輪核准）；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。待實作規劃
 - 目標產品：`saxs-calculator/`（GitHub Pages 單頁站），新版本 v5.3
 - 計算核心來源：SasView **sasmodels 1.0.12**（BSD-3-Clause）；擬合器與誤差對照 **bumps 1.0.4**
 - 參考：中央大學磁性與能源材料實驗室的「SAS Studio」（Google Sites 內嵌單檔 HTML，sasmodels 手工移植成 JS）。只參考功能與版面，**不複製其程式碼**——該站「版權所有」且未附授權。
@@ -68,7 +68,7 @@
 | `js/sasfit-py-models.js` | Python 核心模型的手寫 JS：`guinier_porod`、`power_law` | — |
 | `js/sasfit-evaluate.js` | 單一入口 `evaluate(modelSpec, params, q, opts)`：組合 P、S、低 Q 冪律；`opts.cutoff` 預設 1e-5 | kernel、product、py-models |
 | `js/sasfit-weighting.js` | 權重 w_i、可參與擬合遮罩、`defaultRange(dataset, weighting)`（§4.8；純函式，主執行緒與 Worker 共用） | — |
-| `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、非有限值與 q ≤ 0 標記、條件值擷取 | — |
+| `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、格式錯誤回報、條件值擷取 | — |
 | `js/sasfit-sld.js` | 化學式解析、X 光 SLD、預設物質表 | — |
 | `js/sasfit-fitter.js` | LM（可抽換介面）、數值 Jacobian、上下限、誤差 | — |
 | `js/sasfit-worker-core.js` | Worker 訊息處理的純邏輯（wasm 載入器以參數注入，Node 可測） | evaluate、fitter |
@@ -96,7 +96,7 @@
 
 **守門測試的變更（僅限以下）**：
 1. `tests/structure.test.js`：新增常數 `WORKER_ONLY = ['sasfit-worker.js']`，從「index.html 引用每一個 js」的要求中排除；新增測試：`sasfit-worker.js` 的 `importScripts` 清單等於上述純模組清單、每檔存在、相對順序與 `index.html` 一致；新增測試：worker-client 與 worker 透過上述機制取得版本（不含寫死的 `?v=` 數字）。
-2. `tests/markup.test.js`：改用「區段規則」。`index.html` 中本功能新增的標記一律包在成對註解 `<!-- sasfit:begin -->`、`<!-- sasfit:end -->` 之間，共 3 段：側欄導覽按鈕（`data-section="sasfit"`）、`<section id="section-sasfit">` 整段、IUCr 頁的「Model fitting」段落。比對 v4.15 fixture 前先移除這 3 段，其餘必須與 fixture 完全相同（原有的主題切換白名單與分子量改名規則不變）。另加測試：成對標記恰好 3 組且不巢狀；區段內的 id 不重複，也不與區段外的 id 衝突。區段內照站內慣例自由使用 `aria-label`、`aria-live`、`aria-expanded` 等屬性。**`fixtures/markup-v4.15.json` 不得重產**。
+2. `tests/markup.test.js`：改用「區段規則」。`index.html` 中本功能新增的標記一律包在成對註解 `<!-- sasfit:begin -->`、`<!-- sasfit:end -->` 之間，共 3 段：側欄導覽按鈕（`data-section="sasfit"`）、`<section id="section-sasfit">` 整段、IUCr 頁的「Model fitting」段落。比對 v4.15 fixture 前先在**原始 HTML 上**移除這 3 段，之後才呼叫 `markupCounts`（它會先剝掉 HTML 註解，順序反過來會找不到標記），其餘必須與 fixture 完全相同（原有的主題切換白名單與分子量改名規則不變）。另加測試：成對標記恰好 3 組且不巢狀；區段內的 id 不重複，也不與區段外的 id 衝突。區段內照站內慣例自由使用 `aria-label`、`aria-live`、`aria-expanded` 等屬性。**`fixtures/markup-v4.15.json` 不得重產**。
 3. `tests/load.js` 的 `LOAD_ORDER` 加入純計算模組（順序同 `index.html`，含 weighting）。
 4. 其他守門（style-scan、batch3、`node --check`、行數、頂層識別字）因檔案平放於 `js/`，不需修改即自動涵蓋。
 
@@ -223,7 +223,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 **條件值**：取檔名（去副檔名）最後一個數字（整數或小數，允許負號），例如 `B1216_1_10.dat` → 10；取不到則空白待填。
 
-**Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, condition }`。w_i、可參與擬合遮罩、預設範圍都由 weighting 模組依當下權重即時計算，不存在物件內。
+**Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, condition }`。w_i、可參與擬合遮罩、預設範圍都由 weighting 模組依當下權重即時計算，不存在物件內。遮罩一次涵蓋全部條件：finite(q)、q > 0、finite(I)、finite(w_i)、w_i > 0。data-io 只負責解析與錯誤回報（格式錯誤的行列入該檔的錯誤訊息），Worker 端不需要 data-io。
 
 ### 4.9 擬合器（`sasfit-fitter.js`）
 
