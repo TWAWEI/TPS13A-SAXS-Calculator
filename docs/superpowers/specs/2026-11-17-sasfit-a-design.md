@@ -1,7 +1,7 @@
 # SAS 模型擬合頁（A 版）— 設計規格
 
 - 日期：2026-11-17
-- 狀態：v2——設計已與使用者逐段確認（共 5 段）；規格審查第 1 輪的 6 項問題已修正；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。待實作規劃
+- 狀態：v3——設計已與使用者逐段確認（共 5 段）；規格審查第 1 輪 6 項、第 2 輪 2 項問題已修正；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。待實作規劃
 - 目標產品：`saxs-calculator/`（GitHub Pages 單頁站），新版本 v5.3
 - 計算核心來源：SasView **sasmodels 1.0.12**（BSD-3-Clause）；擬合器與誤差對照 **bumps 1.0.4**
 - 參考：中央大學磁性與能源材料實驗室的「SAS Studio」（Google Sites 內嵌單檔 HTML，sasmodels 手工移植成 JS）。只參考功能與版面，**不複製其程式碼**——該站「版權所有」且未附授權。
@@ -61,13 +61,14 @@
 | `wasm/sas-<model>.wasm` | sasmodels 生成碼經 F64 前處理後編譯；每模型一檔，進入本頁才載入 | — |
 | `wasm/manifest.json` | 各 wasm 的 SHA-256、sasmodels 版本、emscripten 版本、編譯旗標 | — |
 | `wasm/LICENSE-sasmodels.txt` | sasmodels 授權全文 | — |
-| `js/sasfit-meta.js` | 15 個模型的參數表（名稱、單位、上下限、預設、類別、可否多分散、`have_Fq`、有效半徑模式、說明）。**腳本產生，勿手改** | — |
+| `js/sasfit-meta.js` | 15 個模型的參數表（名稱、單位、上下限、預設、類別、可否多分散、`have_Fq`、有效半徑模式、說明）。**腳本產生，勿手改**；精簡格式（每個參數一行），受 800 行上限約束——B 版擴充時改為每模型一檔 | — |
 | `js/sasfit-weights.js` | 六種分布的取點與權重（移植 `weights.py`） | — |
 | `js/sasfit-kernel.js` | 調度層：組 details／values、分段呼叫 wasm、讀回 F1／F2 與附加量（移植 `details.py`、`kerneldll.py`、`kernel.py` 的 1D 路徑） | weights、meta |
 | `js/sasfit-product.js` | P@S 組合、β 近似、有效半徑（移植 `product.py`） | kernel |
 | `js/sasfit-py-models.js` | Python 核心模型的手寫 JS：`guinier_porod`、`power_law` | — |
-| `js/sasfit-evaluate.js` | 單一入口 `evaluate(modelSpec, params, q, opts)`：組合 P、S、低 Q 冪律 | kernel、product、py-models |
-| `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、清理規則、條件值擷取 | — |
+| `js/sasfit-evaluate.js` | 單一入口 `evaluate(modelSpec, params, q, opts)`：組合 P、S、低 Q 冪律；`opts.cutoff` 預設 1e-5 | kernel、product、py-models |
+| `js/sasfit-weighting.js` | 權重 w_i、可參與擬合遮罩、`defaultRange(dataset, weighting)`（§4.8；純函式，主執行緒與 Worker 共用） | — |
+| `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、非有限值與 q ≤ 0 標記、條件值擷取 | — |
 | `js/sasfit-sld.js` | 化學式解析、X 光 SLD、預設物質表 | — |
 | `js/sasfit-fitter.js` | LM（可抽換介面）、數值 Jacobian、上下限、誤差 | — |
 | `js/sasfit-worker-core.js` | Worker 訊息處理的純邏輯（wasm 載入器以參數注入，Node 可測） | evaluate、fitter |
@@ -85,18 +86,18 @@
 
 ### 3.3 載入策略、模組慣例與守門測試
 
-**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、weights、kernel、product、py-models、evaluate、data-io、sld、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
+**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
 
-**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → weights → kernel → product → py-models → evaluate → data-io → sld → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
+**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
 
-**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → weights → kernel → product → py-models → evaluate → fitter → worker-core（與 `index.html` 相對順序一致）。
+**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → weights → kernel → product → py-models → evaluate → weighting → fitter → worker-core（與 `index.html` 相對順序一致）。Worker 依 `fit` 訊息中的權重選項，自行用 weighting 模組算 w_i 與遮罩。
 
 **版本（快取）策略**：唯一來源是 `index.html` 的 `?v=`。`sasfit-worker-client.js` 在載入時讀 `document.currentScript.src` 的 `v` 參數；建立 Worker 時用 `js/sasfit-worker.js?v=<v>`；Worker 內讀 `self.location.search` 的 `v`，附加到每個 `importScripts` 與 wasm `fetch` 網址。程式中不得寫死版本字串。
 
 **守門測試的變更（僅限以下）**：
 1. `tests/structure.test.js`：新增常數 `WORKER_ONLY = ['sasfit-worker.js']`，從「index.html 引用每一個 js」的要求中排除；新增測試：`sasfit-worker.js` 的 `importScripts` 清單等於上述純模組清單、每檔存在、相對順序與 `index.html` 一致；新增測試：worker-client 與 worker 透過上述機制取得版本（不含寫死的 `?v=` 數字）。
-2. `tests/markup.test.js`：在 `ALLOWED_ADDITIONS` 之外加「前綴規則」——鍵符合 `id=sf…`、`for=sf…`、`aria-controls=sf…`、`aria-labelledby=sf…`、`aria-describedby=sf…`、`id=iucr-sf…`，以及 `data-section=sasfit` 時允許新增。**`fixtures/markup-v4.15.json` 不得重產**。
-3. `tests/load.js` 的 `LOAD_ORDER` 加入純計算模組（順序同 `index.html`）。
+2. `tests/markup.test.js`：改用「區段規則」。`index.html` 中本功能新增的標記一律包在成對註解 `<!-- sasfit:begin -->`、`<!-- sasfit:end -->` 之間，共 3 段：側欄導覽按鈕（`data-section="sasfit"`）、`<section id="section-sasfit">` 整段、IUCr 頁的「Model fitting」段落。比對 v4.15 fixture 前先移除這 3 段，其餘必須與 fixture 完全相同（原有的主題切換白名單與分子量改名規則不變）。另加測試：成對標記恰好 3 組且不巢狀；區段內的 id 不重複，也不與區段外的 id 衝突。區段內照站內慣例自由使用 `aria-label`、`aria-live`、`aria-expanded` 等屬性。**`fixtures/markup-v4.15.json` 不得重產**。
+3. `tests/load.js` 的 `LOAD_ORDER` 加入純計算模組（順序同 `index.html`，含 weighting）。
 4. 其他守門（style-scan、batch3、`node --check`、行數、頂層識別字）因檔案平放於 `js/`，不需修改即自動涵蓋。
 
 ## 4. 計算規格
@@ -197,7 +198,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - 預設物質（化學式＋密度，由同一函式算出；數值與出處寫在 `sasfit-sld.js` 註解，經 science-reviewer 審查）：水、蛋白質（平均）、脂質頭基、脂質尾鏈、PEG、SiO₂、Au、Fe₃O₄。
 - SLD 欄位可直接輸入數值；或開小面板輸入化學式＋密度後回填數值（參數本身永遠是數值）。
 
-### 4.8 資料讀取、權重與清理（`sasfit-data-io.js`）
+### 4.8 資料讀取、權重與清理（`sasfit-data-io.js`、`sasfit-weighting.js`）
 
 **官方 `.dat` 判定**：第 1 行含 `Data Collection Mode`，且存在 `Single Frame Time` 行與其後 `Q I ERROR` 表頭。讀取檔頭欄位：輸出檔名、總幀數、Photon Energy (keV)、Scaling Factor、Sample／Empty Cell Transmission、Sample thickness (mm)、SDD (mm)、Starting Q-value（q_start）、Single Frame Time。Q 單位固定 Å⁻¹，強度為絕對強度 cm⁻¹。
 
@@ -218,11 +219,11 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - 非有限值、q ≤ 0 → 排除。
 - 依上表，w_i ≤ 0 或非有限的點不參與擬合。
 - I < 0 但 w_i > 0 的點**照常參與擬合**；log 與 Guinier 模式無法顯示 I ≤ 0 的點，隱藏並顯示「隱藏了 N 點」。
-- 預設擬合範圍：Qmin＝max(q_start（僅官方檔）, 第一個在目前權重下可參與擬合的點)，Qmax＝最後一個可參與擬合的點。
+- 預設擬合範圍由純函式 `defaultRange(dataset, weighting)`（weighting 模組）計算：Qmin＝max(q_start（僅官方檔）, 第一個在該權重下可參與擬合的點)，Qmax＝最後一個可參與擬合的點。權重改變時重新計算（使用者未手動改過範圍時才套用新預設）。
 
 **條件值**：取檔名（去副檔名）最後一個數字（整數或小數，允許負號），例如 `B1216_1_10.dat` → 10；取不到則空白待填。
 
-**Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, defaultRange, condition }`；「可否參與擬合」依權重即時計算，不存死在物件內。
+**Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, condition }`。w_i、可參與擬合遮罩、預設範圍都由 weighting 模組依當下權重即時計算，不存在物件內。
 
 ### 4.9 擬合器（`sasfit-fitter.js`）
 
@@ -233,7 +234,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - 模型輸出含非有限值→該步 χ² 視為 ∞、拒絕該步、加大阻尼。
 - **共變異與誤差（比照 bumps，以便與 SasView 顯示的誤差一致）**：bumps 的 lm 不用 MPFit 自己的共變異（`nocovar=True`），而是在最佳解處另算 `lsqerror.jacobian`＋`jacobian_cov`。本站照做：
   - Jacobian：前向差分，h_j = 1e-4·|p_j|（p_j＝0 時 h_j＝1e-4）；若 p_j + h_j 超過上限則改往後差分。
-  - C = V·diag(1/s²)·Vᵀ（J 的 SVD），奇異值 ≤ 1e-8 者以 1e-8 代之；發生代換時標「參數相關性過高，誤差不可靠」。
+  - C = V·diag(1/s²)·Vᵀ（J 的 SVD），奇異值 ≤ 1e-8 者以 1e-8 代之；發生代換時標「參數相關性過高，誤差不可靠」。JS 沒有內建 SVD：fitter 內實作 one-sided Jacobi SVD（自由參數僅十幾個，足夠快且數值穩定），以 numpy `linalg.svd` 的結果為測試基準，並列入 science-reviewer 審查。
   - 原始誤差 σ_j = √C_jj。
   - **顯示規則**（使用者決定）：權重＝資料 σ 時顯示原始誤差（不乘 √χ²ᵣ）；權重＝√|I|、|I|、不加權時顯示 σ_j·√χ²ᵣ，並標「已乘 √χ²ᵣ」。報告 TXT 一律兩種都列。
 - LM 迭代中的 Jacobian 也用同一個前向差分函式。
@@ -244,7 +245,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 | 方向 | 型別 | 內容 |
 |---|---|---|
-| → | `evaluate` | `{ reqId, modelSpec, params, q }`；Worker 只處理最新的 reqId（latest-wins，舊請求丟棄） |
+| → | `evaluate` | `{ reqId, modelSpec, params, q, opts }`（`opts.cutoff`）；Worker 只處理最新的 reqId（latest-wins，舊請求丟棄） |
 | ← | `curve` | `{ reqId, I, extras }` |
 | → | `fit` | `{ jobId, modelSpec, params, fitFlags, bounds, data, range, weighting, options }` |
 | ← | `progress` | `{ jobId, iteration, chi2r }`（每步） |
@@ -314,7 +315,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 ## 6. 3D 結構示意圖（`sasfit-shape3d.js`）
 
 - 自寫 Canvas 2D 繪製器：參數化曲面網格→旋轉投影→由遠到近排序（painter's algorithm）→Lambert 明暗；滑鼠拖曳旋轉、滾輪縮放、「重設視角」、「自動旋轉」開關；PNG 匯出。不引入 three.js。
-- 顏色只從 `chart-theme.js` 取（新增 3D 用的角色色，兩主題各一組），主題切換時重畫。
+- 顏色只從 `chart-theme.js` 取：新增 3D 角色色（兩主題各一組）與明暗函式 `ChartTheme.shade3d(role, k)`（k＝Lambert 亮度係數 0–1，回傳顏色字串）。`sasfit-shape3d.js` 內不得出現任何顏色字面值或 `rgb(`／`rgba(` 等顏色函式（`no-color-literals` 會擋）。主題切換時重畫。
 - 依目前參數**按比例**繪製；標註用 nm（1 位小數）並附比例尺；參數表仍為 Å。
 
 | 模型 | 畫法與標註 |
@@ -390,9 +391,9 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | G2 | 手寫 JS（guinier_porod、power_law） | 同 G1 |
 | G3 | sasmodels 內附官方測試（清單 15 模型）：**只跑 1D、非磁性案例**；包含 `@S` 乘積測試與 Fq 多輸出測試（F、F²、R_eff、V、form:shell 比值）。轉接層用 sasmodels API 預設（`_pd_n`=0、`_pd_nsigma`=3、`_pd_type`=gaussian、cutoff＝0），與 UI 預設分開 | sasmodels 自身容許誤差 |
 | G4 | 擬合器 vs bumps lm（`Experiment(..., cutoff=1e-5)`、`FitDriver` 的 cov／stderr）：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值；含 1 組擬合 PD 寬度的案例 | 參數差 < 0.01σ；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
-| G5 | data-io：合成官方格式檔與一般檔（公開 fixtures）；真實 `.dat`（`tests/fixtures-local/sasfit/`，已被 `.gitignore` 擋，缺檔即 skip）；四種權重的可參與點判定 | 檔頭欄位、點數、清理標記、預設範圍、條件值正確 |
+| G5 | data-io 與 weighting：合成官方格式檔與一般檔（公開 fixtures）；真實 `.dat`（`tests/fixtures-local/sasfit/`，已被 `.gitignore` 擋，缺檔即 skip）；四種權重的 w_i、可參與點判定與 `defaultRange` | 檔頭欄位、點數、清理標記、預設範圍、條件值正確 |
 | G6 | SLD：化學式解析與數值 vs periodictable 的原子量與 Z 獨立計算（例：水 1.0 g/cm³ ≈ 9.420×10⁻⁶ Å⁻²） | 相對差 ≤ 1e-6 |
-| G7 | 站內既有測試全部綠燈；`result-golden` 與 `markup-v4.15` fixture 不得重產；守門測試只依 §3.3 修改；版本號一致 | 全過 |
+| G7 | 站內既有測試全部綠燈；`result-golden` 與 `markup-v4.15` fixture 不得重產；守門測試只依 §3.3 修改（含 markup 區段規則與 Worker 清單測試）；版本號一致 | 全過 |
 | G8 | Playwright（本機 http.server，text-to-cad venv）：無 console 錯誤；載入合成 `.dat`→預覽→擬合→序列（3 組）→送 IUCr→複製表格→各匯出→3D 渲染非空；淺／深兩主題 axe 0 違規；Worker 與 wasm 請求網址帶 `?v=` | 全過 |
 
 - 效能：Phase 0 量測最重組態（core_shell_cylinder＋兩個多分散參數、400 點）的單次評估與一次典型擬合時間，寫進報告；據此訂定預覽／擬合的效能預算，超出者以「計算中…」與進度呈現。
@@ -424,9 +425,10 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
    - 通過→進入正式實作。
    - 某模型無法編譯或無法達 G1→該模型退回手寫 JS（方案二），**先回報使用者再繼續**。
 2. 正式實作，依里程碑（每個里程碑結束時全測試綠燈）：
+   - 通則：每新增一個 `sasfit-*.js`（Worker 入口除外），**同一個任務內**就加入 `index.html` 的 `<script>`（依 §3.3 順序、帶 `?v=`）與 `tests/load.js` 的 `LOAD_ORDER`，否則既有的 structure 測試會失敗。
    - M1 計算核心：meta、weights、kernel、product、py-models、evaluate、全部 15 模型的 wasm；G1–G3。
-   - M2 Worker＋擬合器：worker-core、worker、worker-client、fitter；G4。
-   - M3 資料／模型／擬合分段與圖區：data-io、sld、plots、section-sasfit；G5、G6；守門測試依 §3.3 修改。
+   - M2 Worker＋擬合器：weighting、worker-core、worker、worker-client、fitter（含 Jacobi SVD）；G4；structure 測試的 `WORKER_ONLY`、Worker 清單與版本機制測試（§3.3 第 1 點）與 Worker 入口同一任務加入。
+   - M3 資料／模型／擬合分段與圖區：data-io、sld、plots、section-sasfit；G5、G6；markup 區段規則（§3.3 第 2 點）與第一個新增的頁面標記同一任務加入。
    - M4 3D、序列、IUCr、匯出。
    - M5 E2E（G8）、版本 v5.3、合併、部署、線上冒煙測試。
 3. 分支 `feat/sasfit`；版本 v5.3（footer `Version` 與所有本機 `?v=` 同步）。
