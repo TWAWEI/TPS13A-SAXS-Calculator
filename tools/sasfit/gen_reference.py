@@ -31,146 +31,39 @@ and `S`.  They let the JS tests gate P@S at component level: hardsphere.c
 cancels catastrophically for 2qR ~ 0.05-0.13, where a 1-ulp change of R_eff
 moves S(q) by 2.3e-9, so the end-to-end I(q) cannot be held to 1e-9.
 
+Cases added after the M1 review are appended to g1 (label prefixes `hmsa:`,
+`dist:`, `pd3:`), so every earlier case keeps its bytes.  Two optional fields:
+`gate: "component"` (P@hayter_msa with non-default S parameters: upstream
+hayter_msa.c is erratic at low q, so only the component layers are gated and
+the end-to-end curve is not compared -- spec 16) and a per-case `q` where the
+grid differs from the top-level one.
+
+The generator is three modules: ref_common.py (build setup, model lists, JSON
+writer), this file (weights, fq, g1, g2, main) and gen_reference_g3.py (g3,
+kernel-args).
+
 sasmodels 1.0.12 is the source of truth.  Spec: docs/superpowers/specs/
 2026-11-17-sasfit-a-design.md section 4 and 11; plan: docs/superpowers/plans/
 2026-11-18-sasfit-m1-compute-core.md Task 2.
 """
-import json
 import math
 import os
-import re
 import sys
 
-sys.dont_write_bytecode = True  # keep tools/sasfit free of __pycache__
+sys.dont_write_bytecode = True  # keep tools/sasfit free of __pycache__ (before the local imports)
 
-import sas_env  # noqa: E402  (same directory)
+import ref_common  # noqa: E402,F401  (first: configures the strict-IEEE build before sasmodels is imported)
+from ref_common import (CUTOFF, EXPECTED_VERSION, FIRST_SIZE, INF, MODEL_ORDER, PD_DISTS,
+                        PD_PARAMS, Q_FQ, Q_GRID, REPO, S_CAPABLE, STRUCTURE_MODELS,
+                        _MODEL_CACHE, assert_finite, direct, get_model, np, pd_block, sas_env,
+                        write_fixture)
 
-sas_env.configure()  # strict-IEEE DLL build; must precede the sasmodels import
-
-import numpy as np  # noqa: E402
 import sasmodels  # noqa: E402
 from scipy.special import gammaln  # noqa: E402
 from sasmodels import weights  # noqa: E402
-from sasmodels.core import load_model  # noqa: E402
-from sasmodels.data import empty_data1D  # noqa: E402
-from sasmodels.details import make_kernel_args  # noqa: E402
-from sasmodels.direct_model import DirectModel, call_Fq, call_kernel, get_mesh  # noqa: E402
-from sasmodels.model_test import is_near  # noqa: E402
-from sasmodels.modelinfo import expand_pars  # noqa: E402
+from sasmodels.direct_model import call_Fq  # noqa: E402
 
-EXPECTED_VERSION = "1.0.12"
-CUTOFF = 1e-5          # runtime default (spec 4.2); every DirectModel/call_Fq call passes it
-Q_GRID = np.logspace(-3, 0, 200)
-Q_FQ = np.logspace(-3, 0, 100)
-INF = float("inf")
-
-REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-OUT_DIR = os.path.join(REPO, "saxs-calculator", "tests", "fixtures", "sasfit")
-
-MODEL_ORDER = [
-    "sphere", "core_shell_sphere", "vesicle", "ellipsoid", "cylinder",
-    "core_shell_cylinder", "flexible_cylinder", "lamellar", "guinier",
-    "guinier_porod", "power_law", "mono_gauss_coil", "gaussian_peak",
-    "hardsphere", "hayter_msa",
-]
-STRUCTURE_MODELS = ("hardsphere", "hayter_msa")
-# The six models that can take S(Q): have_Fq and radius_effective_modes (spec 4.1).
-S_CAPABLE = ["sphere", "core_shell_sphere", "vesicle", "ellipsoid", "cylinder",
-             "core_shell_cylinder"]
-FIRST_SIZE = {"sphere": "radius", "core_shell_sphere": "radius", "vesicle": "radius",
-              "ellipsoid": "radius_polar", "cylinder": "radius",
-              "core_shell_cylinder": "radius"}
-# Polydisperse (1D) parameters per spec 4.1 table (hayter_msa excluded on purpose).
-PD_PARAMS = {
-    "sphere": ["radius"],
-    "core_shell_sphere": ["radius", "thickness"],
-    "vesicle": ["radius", "thickness"],
-    "ellipsoid": ["radius_polar", "radius_equatorial"],
-    "cylinder": ["radius", "length"],
-    "core_shell_cylinder": ["radius", "thickness", "length"],
-    "flexible_cylinder": ["length", "kuhn_length", "radius"],
-    "lamellar": ["thickness"],
-    "mono_gauss_coil": ["rg"],
-}
-# (distribution, n, nsigma, relative width) -- spec 11 G1
-PD_DISTS = [("gaussian", 35, 3, 0.15), ("schulz", 80, 3, 0.2),
-            ("schulz", 80, 8, 0.3), ("schulz", 80, 8, 0.4)]
-# Official-test counts kept after dropping 2D and magnetic cases (plan Task 2 Step 5).
-EXPECTED_G3_KEPT = {
-    "sphere": 12, "core_shell_sphere": 2, "vesicle": 4, "ellipsoid": 5,
-    "cylinder": 16, "core_shell_cylinder": 1, "flexible_cylinder": 4,
-    "lamellar": 1, "guinier": 1, "guinier_porod": 1, "power_law": 1,
-    "mono_gauss_coil": 1, "gaussian_peak": 0, "hardsphere": 1, "hayter_msa": 2,
-}
-MAGNETIC_KEY = re.compile(r"(_M0|_mphi|_mtheta)$|^up_")
-
-_MODEL_CACHE = {}
-_DIRECT_CACHE = {}
-
-
-# ---------------------------------------------------------------- JSON output
-
-def _enc(obj):
-    """Make *obj* JSON-safe: numpy -> python, non-finite floats -> strings."""
-    if isinstance(obj, dict):
-        return {str(k): _enc(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_enc(v) for v in obj]
-    if isinstance(obj, np.ndarray):
-        return [_enc(v) for v in obj.tolist()]
-    if isinstance(obj, (bool, np.bool_)):
-        return bool(obj)
-    if isinstance(obj, (int, np.integer)):
-        return int(obj)
-    if isinstance(obj, (float, np.floating)):
-        value = float(obj)
-        if math.isnan(value):
-            return "nan"
-        if math.isinf(value):
-            return "inf" if value > 0 else "-inf"
-        return value
-    return obj
-
-
-def write_fixture(name, payload):
-    os.makedirs(OUT_DIR, exist_ok=True)
-    path = os.path.join(OUT_DIR, name + ".json")
-    text = json.dumps(_enc(payload), separators=(",", ":"), allow_nan=False)
-    with open(path, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(text + "\n")
-    print("wrote %s (%d bytes)" % (os.path.relpath(path, REPO), len(text) + 1))
-
-
-def assert_finite(values, label, allow_at=None):
-    """All entries finite; entries at indices in *allow_at* may be non-finite."""
-    arr = np.asarray(values, dtype=float).ravel()
-    bad = np.flatnonzero(~np.isfinite(arr))
-    if allow_at is not None:
-        bad = np.array([i for i in bad if i not in set(allow_at)], dtype=int)
-    if bad.size:
-        raise AssertionError("non-finite reference value(s) in %s at %s: %s"
-                             % (label, bad[:5].tolist(), arr[bad[:5]].tolist()))
-
-
-# ------------------------------------------------------------ model helpers
-
-def get_model(spec):
-    if spec not in _MODEL_CACHE:
-        _MODEL_CACHE[spec] = load_model(spec, dtype="double", platform="dll")
-    return _MODEL_CACHE[spec]
-
-
-def direct(spec, q):
-    key = (spec, tuple(q.tolist()))
-    if key not in _DIRECT_CACHE:
-        _DIRECT_CACHE[key] = DirectModel(empty_data1D(q), get_model(spec), cutoff=CUTOFF)
-    return _DIRECT_CACHE[key]
-
-
-def pd_block(name, dist, n, nsigma, width):
-    """All four polydispersity keys (omitting _pd_n would silently mean mono)."""
-    return {name + "_pd": width, name + "_pd_n": n,
-            name + "_pd_nsigma": nsigma, name + "_pd_type": dist}
+from gen_reference_g3 import gen_g3, gen_kernel_args  # noqa: E402
 
 
 def sasmodels_call(model_string, flat, low_q):
@@ -186,8 +79,11 @@ def sasmodels_call(model_string, flat, low_q):
     return model_string + "+power_law", kwargs
 
 
-def model_case(label, model, structure, flat, q, low_q=False):
-    """Run one DirectModel case and wrap it as a fixture entry."""
+def model_case(label, model, structure, flat, q, low_q=False, gate=None, own_q=False):
+    """Run one DirectModel case and wrap it as a fixture entry.
+
+    *gate* and *own_q* add the optional `gate` / `q` fields (after the others).
+    """
     base = model + ("@" + structure if structure else "")
     spec, kwargs = sasmodels_call(base, flat, low_q)
     calc = direct(spec, q)
@@ -204,6 +100,10 @@ def model_case(label, model, structure, flat, q, low_q=False):
     }
     if structure:
         entry["intermediates"] = product_intermediates(label, calc.results(), structure, flat)
+    if gate:
+        entry["gate"] = gate
+    if own_q:
+        entry["q"] = q
     return entry
 
 
@@ -452,11 +352,102 @@ def _g1_two_pd(q):
     return [model_case("cylinder radius+length gaussian n15", "cylinder", None, pars, q)]
 
 
+def _hmsa(charge, salt, volfraction, temperature=298.15, dielectconst=78.5):
+    return {"charge": charge, "concentration_salt": salt, "volfraction": volfraction,
+            "temperature": temperature, "dielectconst": dielectconst}
+
+
+# A protein-sized ellipsoid.  The default (20 x 400 A) has R_eff = 270.7 A, and with
+# charge 12, salt 0.1 M, volfraction 0.15 hayter_msa.c then returns garbage near
+# 2qR = 70 (S = 0.856 native / 0.816 wasm at q = 0.1290 and 1.818 at q = 0.1335,
+# between neighbours at 1.0000): not a case any tolerance can gate (spec 16).
+ELLIPSOID = {"radius_polar": 40.0, "radius_equatorial": 25.0}
+# (P, P parameters, P polydisperse, structure_factor_mode, S parameters): protein-like regimes.
+# The mono ellipsoid case has volfraction 0.05 because with 0.15 (R_eff = 29.8 A) the wasm
+# and the native S(q) differ by 1.3e-9 at 2qR = 0.09 for identical inputs (libm, 1 ulp):
+# the 1e-9 component gate cannot hold there, and it is not loosened.
+HMSA_PRODUCTS = [
+    ("sphere", {}, False, 0, _hmsa(10.0, 0.05, 0.05)),
+    ("sphere", {}, True, 1, _hmsa(16.3, 0.056, 0.056, 318.16, 71.08)),
+    ("core_shell_sphere", {}, True, 0, _hmsa(8.0, 0.15, 0.1)),
+    ("core_shell_sphere", {}, False, 1, _hmsa(20.0, 0.02, 0.02, 310.15, 74.2)),
+    ("ellipsoid", ELLIPSOID, False, 0, _hmsa(12.0, 0.1, 0.05)),
+    ("ellipsoid", ELLIPSOID, True, 1, _hmsa(9.0, 0.03, 0.08, 283.15, 83.8)),
+    ("cylinder", {}, False, 1, _hmsa(15.0, 0.03, 0.08)),
+    ("cylinder", {}, True, 0, _hmsa(18.0, 0.12, 0.2, 310.15, 74.2)),
+]
+# radius_effective and S parameters of the plain S(q) cases
+HMSA_PLAIN = [
+    (20.75, _hmsa(10.0, 0.05, 0.05)),
+    (30.0, _hmsa(8.0, 0.15, 0.1, 310.15, 74.2)),
+    (45.0, _hmsa(20.0, 0.02, 0.02)),
+    (93.0, _hmsa(16.3, 0.056, 0.056, 318.16, 71.08)),
+]
+HMSA_MIN_2QR = 0.15   # below ~0.1 a 1-ulp change of R moves S by up to 4.5e-4 (spec 16)
+
+
+def _g1_hayter(q):
+    """hayter_msa with non-default parameters (the defaults leave salt at 0).
+
+    P@hayter_msa is gated at component level only (`gate`); the plain S(q)
+    cases are strict on a grid of their own that starts at 2qR = 0.15.
+    """
+    out = []
+    for name, p_pars, poly, mode, s_pars in HMSA_PRODUCTS:
+        pars = dict(p_pars, **s_pars, structure_factor_mode=mode,
+                    **(_schulz_first(name) if poly else {}))
+        label = ("hmsa: %s@hayter_msa sfmode %d %s charge %g salt %g volfraction %g"
+                 % (name, mode, "schulz0.2" if poly else "mono", s_pars["charge"],
+                    s_pars["concentration_salt"], s_pars["volfraction"]))
+        out.append(model_case(label, name, "hayter_msa", pars, q, gate="component"))
+    for radius, s_pars in HMSA_PLAIN:
+        own_q = np.logspace(np.log10(HMSA_MIN_2QR / (2.0 * radius)), 0.0, len(q))
+        assert 2.0 * own_q[0] * radius >= HMSA_MIN_2QR * (1 - 1e-12), (radius, own_q[0])
+        label = ("hmsa: hayter_msa S(q) R %g charge %g salt %g volfraction %g"
+                 % (radius, s_pars["charge"], s_pars["concentration_salt"], s_pars["volfraction"]))
+        out.append(model_case(label, "hayter_msa", None, dict(s_pars, radius_effective=radius),
+                              own_q, own_q=True))
+    return out
+
+
+# (distribution, n, nsigma, relative width) evaluated inside the kernel loop
+KERNEL_DISTS = [("lognormal", 80, 3, 0.2), ("rectangle", 35, 1.73205, 0.15),
+                ("uniform", 35, 3, 0.2), ("boltzmann", 35, 3, 0.1)]
+
+
+def _g1_distributions(q):
+    """The four distributions G1 did not yet run through a kernel."""
+    return [model_case("dist: %s %s %s n%d ns%s w%s" % (name, par, dist, n, nsig, width),
+                       name, None, pd_block(par, dist, n, nsig, width), q)
+            for name, par in (("sphere", "radius"), ("cylinder", "length"))
+            for dist, n, nsig, width in KERNEL_DISTS]
+
+
+def _g1_three_pd(q):
+    """Three polydisperse parameters at once: 8^3 = 512 mesh points, 6 chunks of 100."""
+    out = []
+    for name, blocks in (
+            ("core_shell_cylinder", [("radius", "gaussian", 8, 3, 0.15),
+                                     ("thickness", "schulz", 8, 3, 0.2),
+                                     ("length", "lognormal", 8, 3, 0.1)]),
+            ("flexible_cylinder", [("length", "lognormal", 8, 3, 0.15),
+                                   ("kuhn_length", "gaussian", 8, 3, 0.1),
+                                   ("radius", "schulz", 8, 3, 0.2)])):
+        pars = {}
+        for block in blocks:
+            pars.update(pd_block(*block))
+        label = "pd3: %s %s n8" % (name, " ".join("%s-%s" % b[:2] for b in blocks))
+        out.append(model_case(label, name, None, pars, q))
+    return out
+
+
 def gen_g1():
     q = Q_GRID
     groups = [_g1_defaults(q), _g1_single_pd(q), _g1_structure_modes(q),
               _g1_reff_modes(q), _g1_vesicle(q), _g1_low_q(q), _g1_two_pd(q),
-              _g1_s_polydisperse(q)]
+              _g1_s_polydisperse(q),
+              # appended after the M1 review; keep them last
+              _g1_hayter(q), _g1_distributions(q), _g1_three_pd(q)]
     cases = [c for g in groups for c in g]
     write_fixture("g1", {"sasmodelsVersion": sasmodels.__version__, "cutoff": CUTOFF,
                          "q": q, "cases": cases})
@@ -510,178 +501,6 @@ def gen_g2():
     assert math.isinf(by_label["power_law default q includes 0 (inf)"]["Iq"][0])
     write_fixture("g2", {"sasmodelsVersion": sasmodels.__version__, "cutoff": CUTOFF,
                          "q": Q_GRID, "qZero": Q_ZERO, "cases": cases})
-    return len(cases)
-
-
-# ------------------------------------------------------------------ g3.json
-
-# The three 1D smoke tests of model_test.py run_all (the 2D ones are skipped).
-SMOKE = [
-    ("smoke Iq q=0.1", ({}, 0.1, None)),
-    ("smoke Iq q=[0.001,0.01,0.1]", ({}, [0.001, 0.01, 0.1], [None] * 3)),
-    ("smoke Fq q=0.1", ({}, 0.1, None, None, None, None, None)),
-]
-
-
-def _as_list(value):
-    return value if isinstance(value, list) else [value]
-
-
-def _expect_fq(test):
-    return {"F1": _as_list(test[2]), "F2": _as_list(test[3]), "radiusEffective": test[4],
-            "shellVolume": test[5], "volumeRatio": test[6]}
-
-
-def interpret_test(name, label, source, test, stats):
-    """Return a fixture entry, or None when the test is skipped (see run_one)."""
-    user_pars = dict(test[0])
-    x = _as_list(test[1])
-    if isinstance(x[0], tuple):
-        stats["2d"] += 1
-        return None
-    if any(MAGNETIC_KEY.search(k) for k in user_pars):
-        stats["magnetic"] += 1
-        return None
-    structure = user_pars.pop("@S", None)
-    if len(test) == 4:
-        stats["intermediates"] += 1
-    if len(test) in (3, 4):
-        kind, expected, mode = "Iq", _as_list(test[2]), None
-    elif len(test) == 7:
-        kind, expected = "Fq", _expect_fq(test)
-        mode = int(user_pars.pop("radius_effective_mode", 1))
-        assert structure is None, "%s: Fq test on a product is not supported" % label
-    else:
-        raise AssertionError("%s: unexpected test tuple length %d" % (label, len(test)))
-    model = name + ("@" + structure if structure else "")
-    return {"model": name, "structure": structure, "pars": user_pars,
-            "q": [float(v) for v in x], "kind": kind, "expected": expected,
-            "radiusEffectiveMode": mode, "source": source, "label": label,
-            "sasmodels": {"model": model, "pars": dict(user_pars)}}
-
-
-def _check_vector(target, actual, label):
-    if target is None:
-        return
-    assert len(target) == len(actual), label
-    for t, a in zip(target, actual):
-        assert is_near(t, a, 5), "%s: expected %r actual %r" % (label, t, a)
-
-
-def verify_entry(entry):
-    """Re-run sasmodels' own run_one checks (cutoff 0) so the fixture is self-proving."""
-    model = get_model(entry["sasmodels"]["model"])
-    pars = expand_pars(model.info.parameters, entry["sasmodels"]["pars"])
-    q = np.array(entry["q"])
-    kernel = model.make_kernel([q])
-    label = "%s/%s" % (entry["model"], entry["label"])
-    if entry["kind"] == "Iq":
-        _check_vector(entry["expected"], call_kernel(kernel, pars), label)
-        return
-    pars = dict(pars)
-    pars["radius_effective_mode"] = entry["radiusEffectiveMode"]
-    F1, F2, reff, vshell, ratio = call_Fq(kernel, pars)
-    exp = entry["expected"]
-    if F1 is not None:
-        _check_vector(exp["F1"], F1, label + " F")
-    _check_vector(exp["F2"], F2, label + " F2")
-    for key, got in (("radiusEffective", reff), ("shellVolume", vshell), ("volumeRatio", ratio)):
-        assert is_near(exp[key], got, 5), "%s %s: %r vs %r" % (label, key, exp[key], got)
-
-
-def _expected_values(entry):
-    exp = entry["expected"]
-    if entry["kind"] == "Iq":
-        return exp
-    return exp["F1"] + exp["F2"] + [exp[k] for k in ("radiusEffective", "shellVolume", "volumeRatio")]
-
-
-def gen_g3():
-    entries, table = [], []
-    for name in MODEL_ORDER:
-        info = get_model(name).info
-        official = list(info.tests or [])
-        stats = {"2d": 0, "magnetic": 0, "intermediates": 0}
-        kept = 0
-        for idx, test in enumerate(official):
-            e = interpret_test(name, "official #%d" % idx, "official", test, stats)
-            if e is not None:
-                entries.append(e)
-                kept += 1
-        for label, test in SMOKE:
-            entries.append(interpret_test(name, label, "smoke", test, dict(stats)))
-        table.append((name, len(official), kept, len(official) - kept, stats))
-    return finish_g3(entries, table)
-
-
-def finish_g3(entries, table):
-    for name, _total, kept, _skipped, _stats in table:
-        assert kept == EXPECTED_G3_KEPT[name], (
-            "G3 kept-count mismatch for %s: got %d, plan expects %d"
-            % (name, kept, EXPECTED_G3_KEPT[name]))
-    for e in entries:
-        verify_entry(e)
-        vals = [v for v in _expected_values(e) if v is not None]
-        assert_finite(vals, "g3 %s %s expected" % (e["model"], e["label"]))
-    print("G3 model              total kept skipped  (2D, magnetic; 4-tuple intermediates dropped)")
-    for name, total, kept, skipped, st in table:
-        print("   %-20s %5d %4d %7d  2D=%d mag=%d intermediates=%d"
-              % (name, total, kept, skipped, st["2d"], st["magnetic"], st["intermediates"]))
-    tol = {"source": "sasmodels.model_test.is_near (digits=5)", "digits": 5,
-           "rules": {"targetNone": "actual must not be NaN",
-                     "targetZero": "actual must equal 0 exactly",
-                     "targetFinite": "|t-a| < 1.5*10^(ceil(log10|t|)-digits)",
-                     "targetInf": "actual must equal target",
-                     "targetNaN": "actual must be NaN"}}
-    write_fixture("g3", {"sasmodelsVersion": sasmodels.__version__, "cutoff": 0.0,
-                         "tolerance": tol, "cases": entries})
-    return {t[0]: sum(1 for e in entries if e["model"] == t[0]) for t in table}, len(entries)
-
-
-# --------------------------------------------------------- kernel-args.json
-
-def _pd_n(name, n, width):
-    return pd_block(name, "gaussian", n, 3, width)
-
-
-def _kernel_args_inputs():
-    """(label, model, pars): the ordering cases of np.argsort(length)[::-1] (details.py:207)."""
-    return [
-        ("sphere default", "sphere", {}),
-        ("cylinder default", "cylinder", {}),
-        ("cylinder scale and background", "cylinder", {"scale": 2.5, "background": 0.125}),
-        ("cylinder radius n35 length n35 (tie)", "cylinder",
-         dict(_pd_n("radius", 35, 0.15), **_pd_n("length", 35, 0.2))),
-        ("cylinder radius n35 length n15", "cylinder",
-         dict(_pd_n("radius", 35, 0.15), **_pd_n("length", 15, 0.2))),
-        ("cylinder radius n15 length n35", "cylinder",
-         dict(_pd_n("radius", 15, 0.15), **_pd_n("length", 35, 0.2))),
-        ("core_shell_cylinder radius n20 thickness n35 length n20", "core_shell_cylinder",
-         dict(_pd_n("radius", 20, 0.15), **_pd_n("thickness", 35, 0.1),
-              **_pd_n("length", 20, 0.2))),
-        ("hayter_msa default", "hayter_msa", {}),
-        ("guinier default", "guinier", {}),
-    ]
-
-
-def kernel_args_case(label, name, pars):
-    """call_kernel's path (direct_model.py:53-56): get_mesh, then make_kernel_args."""
-    kernel = get_model(name).make_kernel([Q_FQ])
-    mesh = get_mesh(kernel.info, dict(pars), dim=kernel.dim)
-    details, values, is_magnetic = make_kernel_args(kernel, mesh)
-    assert not is_magnetic, label
-    assert values.dtype == np.float64 and details.buffer.dtype == np.int32, label
-    return {"label": label, "model": name, "pars": dict(pars),
-            "details": [int(v) for v in details.buffer],
-            "values": [float(v) for v in values],
-            "numEval": int(details.num_eval), "numWeights": int(details.num_weights),
-            "sasmodels": {"model": name, "pars": dict(pars),
-                          "call": "details.make_kernel_args(kernel, direct_model.get_mesh(...))"}}
-
-
-def gen_kernel_args():
-    cases = [kernel_args_case(*c) for c in _kernel_args_inputs()]
-    write_fixture("kernel-args", {"sasmodelsVersion": sasmodels.__version__, "cases": cases})
     return len(cases)
 
 

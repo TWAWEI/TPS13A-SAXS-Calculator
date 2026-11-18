@@ -2,13 +2,26 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SasFitMeta, SasFitKernel, SasFitProduct } = require('./load.js');
-const { loadFixture, assertClose, assertCloseRel, loadWasm } = require('./sasfit-helpers.js');
+const { loadFixture, isComponentGated, assertClose, assertCloseRel, loadWasm } = require('./sasfit-helpers.js');
 
 const g1 = loadFixture('g1');
 // 2 defaults + 24 structure-factor-mode + 28 effective-radius-mode + 1 vesicle with its own
-// volfraction + 3 with a polydisperse S.radius_effective ("spd:")
-const G1_PRODUCT_CASES = 58;
-const G1_GROUPS = Object.freeze({ default: 2, sfmode: 24, reff: 28, vesicle: 1, spd: 3 });
+// volfraction + 3 with a polydisperse S.radius_effective ("spd:"): gated in all three layers.
+// 8 P@hayter_msa with non-default S parameters ("hmsa:", gate "component"): components and
+// composition only -- upstream hayter_msa.c is erratic, so no end-to-end tolerance holds
+// (design spec 16; the characterisation tests below are the evidence).
+const G1_PRODUCT_CASES = 66;
+const G1_END_TO_END_CASES = 58;
+const G1_COMPONENT_ONLY_CASES = 8;
+const G1_GROUPS = Object.freeze({ default: 2, sfmode: 24, reff: 28, vesicle: 1, spd: 3, hmsa: 8 });
+// The scan of the characterisation test (M1 scientific review)
+const HMSA_SCAN = Object.freeze({ q: 1e-3, from: 80, to: 105, steps: 201,
+    pars: Object.freeze({ charge: 16.3, concentration_salt: 0.056, volfraction: 0.056 }) });
+// A second erratic region found while choosing the "hmsa:" cases: the default ellipsoid's
+// R_eff with charge 12, salt 0.1 M, volfraction 0.15. Native sasmodels (no FMA) returns
+// S = 0.8556 at g1.q[140] and 1.8182 at g1.q[141], between neighbours at 1.0000.
+const HMSA_SPIKE = Object.freeze({ qIndex: 141, pars: Object.freeze({ radius_effective: 270.74504487588047,
+    volfraction: 0.15, charge: 12, temperature: 298.15, concentration_salt: 0.1, dielectconst: 78.5 }) });
 // P@S is gated in two layers (see assertCloseRel in sasfit-helpers.js): components and the
 // composition with the reference R_eff injected at 1e-9, the end-to-end curve at 1e-7.
 const END_TO_END_REL = 1e-7;
@@ -27,6 +40,7 @@ const q = Float64Array.from(g1.q);
 
 function groupOf(label) {
     if (/^spd: /.test(label)) return 'spd';
+    if (/^hmsa: /.test(label)) return 'hmsa';
     if (/ default$/.test(label)) return 'default';
     if (/ sfmode [01] /.test(label)) return 'sfmode';
     if (/ reff mode \d+$/.test(label)) return 'reff';
@@ -49,13 +63,21 @@ async function productFor(p, s) {
 
 test('g1 has the expected P@S cases', () => {
     assert.equal(g1Product.length, G1_PRODUCT_CASES);
-    const groups = { default: 0, sfmode: 0, reff: 0, vesicle: 0, spd: 0 };
+    const groups = { default: 0, sfmode: 0, reff: 0, vesicle: 0, spd: 0, hmsa: 0 };
     g1Product.forEach((c) => {
         const group = groupOf(c.label);
         assert.ok(group in groups, 'unclassified case ' + c.label);
         groups[group] += 1;
+        assert.equal(c.q, undefined, c.label + ': P@S cases use the common q grid');
+        // the component-only gate is exactly the "hmsa:" group, nothing else may opt out
+        assert.equal(isComponentGated(c), group === 'hmsa', c.label);
     });
     assert.deepEqual(groups, G1_GROUPS);
+    assert.equal(g1Product.filter((c) => !isComponentGated(c)).length, G1_END_TO_END_CASES);
+    assert.equal(g1Product.filter(isComponentGated).length, G1_COMPONENT_ONLY_CASES);
+    assert.equal(G1_END_TO_END_CASES + G1_COMPONENT_ONLY_CASES, G1_PRODUCT_CASES);
+    // an opt-out outside P@S would be silent: there is none
+    assert.equal(g1.cases.filter(isComponentGated).length, G1_COMPONENT_ONLY_CASES);
     assert.deepEqual([...new Set(g1Product.map((c) => c.modelSpec.model))].sort(), [...S_CAPABLE].sort());
     assert.deepEqual([...new Set(g1Product.map((c) => c.modelSpec.structure))].sort(), [...STRUCTURES]);
 });
@@ -78,7 +100,8 @@ function withReferenceRadius(c) {
         { radius_effective_mode: 0, radius_effective: c.intermediates.radiusEffectiveUsed });
 }
 
-const ran = { components: 0, composition: 0, endToEnd: 0 };
+const ran = { components: 0, composition: 0, endToEnd: 0, componentOnly: 0 };
+const componentOnlyReport = [];
 g1Product.forEach((c) => {
     test('P@S components match sasmodels (1e-9): ' + c.label, async () => {
         const product = await productFor(c.modelSpec.model, c.modelSpec.structure);
@@ -99,6 +122,21 @@ g1Product.forEach((c) => {
         ran.composition += 1;
     });
 
+    if (isComponentGated(c)) {
+        test('P@S end to end runs; not compared (component gate): ' + c.label, async () => {
+            const product = await productFor(c.modelSpec.model, c.modelSpec.structure);
+            const got = product.Iq(q, c.pars, CUT);
+            assert.ok(got instanceof Float64Array);
+            assert.equal(got.length, c.Iq.length);
+            const finite = Array.from(got, (v, i) => (Number.isFinite(v) ? Math.abs(v - c.Iq[i]) / Math.abs(c.Iq[i]) : -1))
+                .filter((d) => d >= 0);
+            componentOnlyReport.push({ label: c.label, nonFinite: got.length - finite.length,
+                worstRel: Math.max(...finite) });
+            ran.componentOnly += 1;
+        });
+        return;
+    }
+
     test('P@S end to end matches sasmodels (1e-7): ' + c.label, async () => {
         const product = await productFor(c.modelSpec.model, c.modelSpec.structure);
         const got = product.Iq(q, c.pars, CUT);
@@ -108,10 +146,16 @@ g1Product.forEach((c) => {
     });
 });
 
-test('every P@S g1 case was exercised in all three layers', () => {
-    assert.deepEqual(ran, { components: g1Product.length, composition: g1Product.length,
-        endToEnd: g1Product.length });
-    assert.equal(ran.endToEnd, G1_PRODUCT_CASES);
+test('every P@S g1 case was exercised: components and composition always, end to end unless component-gated', (t) => {
+    assert.deepEqual(ran, { components: G1_PRODUCT_CASES, composition: G1_PRODUCT_CASES,
+        endToEnd: G1_END_TO_END_CASES, componentOnly: G1_COMPONENT_ONLY_CASES });
+    assert.equal(ran.components, g1Product.length);
+    assert.equal(ran.endToEnd + ran.componentOnly, g1Product.length, 'no P@S case may be skipped');
+    assert.equal(componentOnlyReport.length, G1_COMPONENT_ONLY_CASES);
+    componentOnlyReport.forEach((r) => {
+        t.diagnostic('component-only, end to end NOT gated: ' + r.label + ' -- non-finite points '
+            + r.nonFinite + ', worst relative difference of the finite ones ' + r.worstRel.toExponential(2));
+    });
     g1Product.forEach((c) => {
         assert.equal(c.intermediates.S.length, g1.q.length, c.label);
         const mode = 'radius_effective_mode' in c.pars ? c.pars.radius_effective_mode : 1;
@@ -151,6 +195,42 @@ test('hardsphere S(q) is ill-conditioned just above its Taylor cutoff (why end t
     assert.ok(change > 1e-10 && change < 1e-7, 'relative change of S for a 1-ulp change of R_eff: ' + change);
     const c = g1Product.find((k) => k.label === 'core_shell_cylinder@hardsphere reff mode 3');
     assert.equal(c.intermediates.radiusEffectiveUsed, radiusEffective);
+});
+
+test('upstream hayter_msa is erratic at low q -- known limitation, spec 16 (outliers and NaN in a radius scan)', async (t) => {
+    // Evidence for the component-only gate of the "hmsa:" cases, and a tripwire: sasmodels'
+    // hayter_msa.c is compiled unchanged, so this fails the day upstream (or a rebuild) fixes it.
+    // Then re-read design spec 16 and 15 (decisions 18, 19) and gate P@hayter_msa end to end.
+    const sKernel = await kernelFor('hayter_msa');
+    const at = Float64Array.of(HMSA_SCAN.q);
+    const S = [];
+    for (let i = 0; i < HMSA_SCAN.steps; i++) {
+        const radius = HMSA_SCAN.from + (HMSA_SCAN.to - HMSA_SCAN.from) * i / (HMSA_SCAN.steps - 1);
+        const pars = Object.assign({ scale: 1, background: 0, radius_effective: radius }, HMSA_SCAN.pars);
+        S.push(sKernel.Iq(at, pars, CUT)[0]);
+    }
+    const finite = S.filter(Number.isFinite).sort((a, b) => a - b);
+    const median = finite[Math.floor(finite.length / 2)];
+    const nonFinite = S.length - finite.length;
+    const off = finite.filter((v) => Math.abs(v - median) > 0.1 * median).length;
+    t.diagnostic('hayter_msa radius scan ' + HMSA_SCAN.from + '..' + HMSA_SCAN.to + ' A, ' + HMSA_SCAN.steps
+        + ' steps, q = ' + HMSA_SCAN.q + ': median S = ' + median.toFixed(4) + ', non-finite ' + nonFinite
+        + ', off the median by > 10% ' + off);
+    assert.ok(median > 0.5 && median < 0.8, 'S of the smooth majority: ' + median);
+    assert.ok(nonFinite + off >= 1, 'no outlier any more: upstream hayter_msa may have been fixed');
+    assert.ok(nonFinite + off < S.length / 4, 'the outliers are a minority: ' + (nonFinite + off));
+});
+
+test('upstream hayter_msa also spikes at large qR -- known limitation, spec 16', async (t) => {
+    const sKernel = await kernelFor('hayter_msa');
+    const i = HMSA_SPIKE.qIndex;
+    const at = Float64Array.from(g1.q.slice(i - 3, i + 2));
+    const S = sKernel.Iq(at, Object.assign({ scale: 1, background: 0 }, HMSA_SPIKE.pars), CUT);
+    t.diagnostic('hayter_msa S at g1.q[' + (i - 3) + '..' + (i + 1) + '] (2qR = '
+        + (2 * at[0] * HMSA_SPIKE.pars.radius_effective).toFixed(1) + '..'
+        + (2 * at[4] * HMSA_SPIKE.pars.radius_effective).toFixed(1) + '): ' + Array.from(S).join(', '));
+    [0, 1, 4].forEach((k) => assert.ok(Math.abs(S[k] - 1) < 1e-5, 'smooth neighbour ' + k + ': ' + S[k]));
+    assert.ok(Math.abs(S[3] - 1) > 0.1, 'no spike any more: upstream hayter_msa may have been fixed');
 });
 
 test('paramNames follow the product.py order', async () => {

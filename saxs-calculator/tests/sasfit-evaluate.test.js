@@ -2,14 +2,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SasFitMeta, SasFitKernel, SasFitProduct, SasFitEvaluate, SasFitValidate } = require('./load.js');
-const { loadFixture, assertClose, assertCloseRel, loadWasm } = require('./sasfit-helpers.js');
+const { loadFixture, qOf, isComponentGated, assertClose, assertCloseRel, loadWasm } = require('./sasfit-helpers.js');
 
 const g1 = loadFixture('g1');
-// 86 without S(Q) (17 defaults incl. the two S(q) alone, 68 single-pd, 1 two-pd, minus the two
-// P@S defaults, plus 2 low-Q) and 59 with S(Q) (the 58 of sasfit-product.test.js + 1 low-Q)
-const G1_CASES = 145;
-const G1_STRICT_CASES = 86;
+// 100 without S(Q): 86 (17 defaults incl. the two S(q) alone, 68 single-pd, 1 two-pd, minus the
+// two P@S defaults, plus 2 low-Q) and, from the M1 review, 4 hayter_msa S(q) with non-default
+// parameters ("hmsa:"), 8 with the other four distributions ("dist:"), 2 with three pd ("pd3:").
+// 67 with S(Q): 59 gated end to end (the 58 of sasfit-product.test.js + 1 low-Q) and 8
+// P@hayter_msa with non-default S parameters (gate "component"), which are NOT compared end to
+// end here or anywhere: their gate is the component layer of sasfit-product.test.js (spec 16).
+const G1_CASES = 167;
+const G1_STRICT_CASES = 100;
 const G1_PRODUCT_CASES = 59;
+const G1_COMPONENT_ONLY_CASES = 8;
+const G1_END_TO_END_GATED_CASES = 159;   // strict + product
+const G1_ADDED = Object.freeze({ hmsa: 12, dist: 8, pd3: 2 });
 const G1_LOWQ_CASES = 3;
 // End-to-end P@S only (plan rule 6, spec 15 decision 19); the component layer at 1e-9 is in
 // sasfit-product.test.js.
@@ -51,17 +58,46 @@ test('g1 has the expected number of cases', () => {
     assert.equal(g1.q.length, 200);
     assert.equal(g1.cases.length, G1_CASES);
     assert.equal(g1.cases.filter((c) => c.modelSpec.structure === null).length, G1_STRICT_CASES);
-    assert.equal(g1.cases.filter((c) => c.modelSpec.structure !== null).length, G1_PRODUCT_CASES);
+    assert.equal(g1.cases.filter((c) => c.modelSpec.structure !== null && !isComponentGated(c)).length,
+        G1_PRODUCT_CASES);
+    const componentOnly = g1.cases.filter(isComponentGated);
+    assert.equal(componentOnly.length, G1_COMPONENT_ONLY_CASES);
+    componentOnly.forEach((c) => {
+        assert.ok(/^hmsa: /.test(c.label) && c.modelSpec.structure === 'hayter_msa' && !c.modelSpec.lowQPowerLaw,
+            'only P@hayter_msa "hmsa:" cases may be component-gated: ' + c.label);
+    });
+    assert.equal(G1_STRICT_CASES + G1_PRODUCT_CASES, G1_END_TO_END_GATED_CASES);
+    assert.equal(G1_END_TO_END_GATED_CASES + G1_COMPONENT_ONLY_CASES, G1_CASES);
+    const added = { hmsa: 0, dist: 0, pd3: 0 };
+    g1.cases.forEach((c) => {
+        const prefix = /^(hmsa|dist|pd3): /.exec(c.label);
+        if (prefix) added[prefix[1]] += 1;
+    });
+    assert.deepEqual(added, G1_ADDED);
+    assert.equal(new Set(g1.cases.map((c) => c.label)).size, g1.cases.length, 'labels are unique');
     assert.equal(g1.cases.filter((c) => c.modelSpec.lowQPowerLaw).length, G1_LOWQ_CASES);
     assert.equal(WASM_MODELS.length, 13);
 });
 
-test('G1: every g1 case through evaluate (1e-9; end-to-end P@S 1e-7)', async (t) => {
+test('G1: every g1 case through evaluate (1e-9; end-to-end P@S 1e-7; component-gated cases only run)', async (t) => {
     const kernels = await loadKernels();
-    const ran = { strict: 0, product: 0 };
+    const ran = { strict: 0, product: 0, componentOnly: 0 };
     const worst = { strict: { ratio: -1, label: '' }, product: { ratio: -1, label: '' } };
+    const notCompared = { nonFinite: 0, worstRel: 0, label: '' };
     for (const c of g1.cases) {
-        const out = SasFitEvaluate.evaluate(c.modelSpec, c.pars, q, CUT, kernels);
+        const out = SasFitEvaluate.evaluate(c.modelSpec, c.pars, qOf(g1, c), CUT, kernels);
+        if (isComponentGated(c)) {
+            // evaluate must run and return a full curve; the numbers are reported, not gated
+            assert.ok(out.I instanceof Float64Array && out.I.length === c.Iq.length, c.label);
+            assert.equal(out.extras.S.length, c.Iq.length, c.label);
+            out.I.forEach((v, i) => {
+                const rel = Math.abs(v - c.Iq[i]) / Math.abs(c.Iq[i]);
+                if (!Number.isFinite(v)) notCompared.nonFinite += 1;
+                else if (rel > notCompared.worstRel) Object.assign(notCompared, { worstRel: rel, label: c.label });
+            });
+            ran.componentOnly += 1;
+            continue;
+        }
         const isProduct = c.modelSpec.structure !== null;
         const group = isProduct ? 'product' : 'strict';
         if (isProduct) assertCloseRel(out.I, c.Iq, c.label, END_TO_END_REL);
@@ -70,9 +106,14 @@ test('G1: every g1 case through evaluate (1e-9; end-to-end P@S 1e-7)', async (t)
         if (ratio > worst[group].ratio) worst[group] = { ratio, label: c.label };
         ran[group] += 1;
     }
-    assert.deepEqual(ran, { strict: G1_STRICT_CASES, product: G1_PRODUCT_CASES });
-    assert.equal(ran.strict + ran.product, G1_CASES);
-    assert.equal(ran.strict + ran.product, g1.cases.length, 'no g1 case may be skipped');
+    assert.deepEqual(ran, { strict: G1_STRICT_CASES, product: G1_PRODUCT_CASES,
+        componentOnly: G1_COMPONENT_ONLY_CASES });
+    assert.equal(ran.strict + ran.product, G1_END_TO_END_GATED_CASES);
+    assert.equal(ran.strict + ran.product + ran.componentOnly, G1_CASES);
+    assert.equal(ran.strict + ran.product + ran.componentOnly, g1.cases.length, 'no g1 case may be skipped');
+    t.diagnostic('G1 component-only (P@hayter_msa, non-default S parameters): ' + ran.componentOnly
+        + ' cases run but NOT compared end to end; non-finite points ' + notCompared.nonFinite
+        + ', worst relative difference ' + notCompared.worstRel.toExponential(3) + ' at "' + notCompared.label + '"');
     t.diagnostic('G1 strict (1e-9): ' + ran.strict + ' cases, worst |d|/tol = '
         + worst.strict.ratio.toExponential(3) + ' at "' + worst.strict.label + '"');
     t.diagnostic('G1 P@S end-to-end (1e-7): ' + ran.product + ' cases, worst |d|/tol = '

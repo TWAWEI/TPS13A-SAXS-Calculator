@@ -2,14 +2,19 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { SasFitMeta, SasFitKernel, SasFitValidate } = require('./load.js');
-const { loadFixture, assertClose, loadWasm } = require('./sasfit-helpers.js');
+const { loadFixture, qOf, assertClose, loadWasm } = require('./sasfit-helpers.js');
 
 const fq = loadFixture('fq');
 const g1 = loadFixture('g1');
 const kernelArgs = loadFixture('kernel-args');
 const VALUES_ALIGN = 32;
 const PD_STEP = 100;
-const G1_PLAIN_C_CASES = 82;   // 13 defaults + 68 single-parameter pd + 1 two-parameter pd
+// 13 defaults + 68 single-parameter pd + 1 two-parameter pd, and from the M1 review:
+// 4 hayter_msa S(q) with non-default parameters ("hmsa:", on a q grid of their own),
+// 8 with the other four distributions ("dist:"), 2 with three pd parameters ("pd3:")
+const G1_PLAIN_C_CASES = 96;
+const G1_PLAIN_GROUPS = Object.freeze({ base: 82, hmsa: 4, dist: 8, pd3: 2 });
+const HMSA_MIN_2QR = 0.15;
 
 const isPlainC = (c) => c.modelSpec.structure === null && !c.modelSpec.lowQPowerLaw
     && SasFitMeta.models[c.modelSpec.model].kind === 'c';
@@ -68,7 +73,7 @@ let g1Ran = 0;
 g1Plain.forEach((c) => {
     test('Iq matches sasmodels DirectModel: ' + c.label, async () => {
         const kernel = await kernelFor(c.modelSpec.model);
-        const got = kernel.Iq(Float64Array.from(g1.q), c.pars, { cutoff: g1.cutoff });
+        const got = kernel.Iq(qOf(g1, c), c.pars, { cutoff: g1.cutoff });
         assert.ok(got instanceof Float64Array);
         assertClose(got, c.Iq, c.label);
         g1Ran += 1;
@@ -81,6 +86,50 @@ test('every plain C-kernel g1 case was exercised', () => {
     assert.equal(g1Ran, g1Plain.length);
     const models = new Set(g1Plain.map((c) => c.modelSpec.model));
     assert.deepEqual([...models].sort(), [...cModels].sort());
+    const groups = { base: 0, hmsa: 0, dist: 0, pd3: 0 };
+    g1Plain.forEach((c) => {
+        const prefix = /^(hmsa|dist|pd3): /.exec(c.label);
+        groups[prefix ? prefix[1] : 'base'] += 1;
+    });
+    assert.deepEqual(groups, G1_PLAIN_GROUPS);
+});
+
+test('the added g1 groups cover what they claim', () => {
+    const byPrefix = (p) => g1Plain.filter((c) => c.label.startsWith(p + ': '));
+    // hayter_msa alone: every S parameter away from its default, own grid from 2qR = 0.15 up
+    const defaults = Object.fromEntries(SasFitMeta.models.hayter_msa.params.map((p) => [p.name, p.def]));
+    byPrefix('hmsa').forEach((c) => {
+        assert.equal(c.modelSpec.model, 'hayter_msa', c.label);
+        assert.equal(c.q.length, g1.q.length, c.label);
+        assert.ok(2 * c.q[0] * c.pars.radius_effective >= HMSA_MIN_2QR * (1 - 1e-12), c.label);
+        assert.equal(c.q[c.q.length - 1], 1, c.label);
+        const changed = Object.keys(defaults).filter((k) => c.pars[k] !== undefined && c.pars[k] !== defaults[k]);
+        assert.ok(changed.includes('charge') && changed.includes('concentration_salt')
+            && changed.includes('volfraction'), c.label + ': ' + changed);
+    });
+    const hmsaChanged = new Set(byPrefix('hmsa').flatMap((c) => Object.keys(c.pars)
+        .filter((k) => c.pars[k] !== defaults[k])));
+    for (const name of ['charge', 'temperature', 'concentration_salt', 'dielectconst', 'volfraction']) {
+        assert.ok(hmsaChanged.has(name), name + ' is varied by some plain hayter_msa case');
+    }
+    // only these, and only the plain S(q) cases, bring their own q
+    assert.deepEqual(g1.cases.filter((c) => c.q !== undefined).map((c) => c.label),
+        byPrefix('hmsa').map((c) => c.label));
+    const distTypes = (model, par) => byPrefix('dist').filter((c) => c.modelSpec.model === model)
+        .map((c) => c.pars[par + '_pd_type']).sort();
+    const four = ['boltzmann', 'lognormal', 'rectangle', 'uniform'];
+    assert.deepEqual(distTypes('sphere', 'radius'), four);
+    assert.deepEqual(distTypes('cylinder', 'length'), four);
+    const pd3 = byPrefix('pd3');
+    assert.deepEqual(pd3.map((c) => c.modelSpec.model), ['core_shell_cylinder', 'flexible_cylinder']);
+    pd3.forEach((c) => {
+        const args = SasFitKernel.makeKernelArgs(SasFitMeta.models[c.modelSpec.model], c.pars);
+        assert.equal(args.numEval, 512, c.label);
+        const counts = Object.keys(c.pars).filter((k) => k.endsWith('_pd_n'));
+        assert.equal(counts.length, 3, c.label);
+        counts.forEach((k) => assert.equal(c.pars[k], 8, c.label));
+        assert.ok(new Set(counts.map((k) => c.pars[k.replace('_pd_n', '_pd_type')])).size >= 2, c.label);
+    });
 });
 
 test('models without F(q) return F1 null', async () => {

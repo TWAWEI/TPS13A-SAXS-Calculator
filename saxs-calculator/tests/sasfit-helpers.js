@@ -4,6 +4,10 @@
  *
  *   loadFixture(name)        parse tests/fixtures/sasfit/<name>.json as-is
  *   num(v)                   map the fixture's "inf" / "-inf" / "nan" strings to numbers
+ *   qOf(fixture, c)          the q grid of a case as a Float64Array: its own `q` when it
+ *                            has one (g1 "hmsa:" S(q) cases), else the fixture's
+ *   isComponentGated(c)      g1 case with gate "component": P@hayter_msa with non-default
+ *                            S parameters, never compared end to end (design spec 16)
  *   assertClose(got, ref, label)
  *                            element-wise |got - ref| <= 1e-9*|ref| + 1e-12*max|ref|,
  *                            lengths equal, every value finite (plan rule 6; never loosen)
@@ -31,6 +35,15 @@ function num(v) {
         return NON_FINITE[v];
     }
     return v;
+}
+
+function qOf(fixture, c) {
+    return Float64Array.from(c.q === undefined ? fixture.q : c.q);
+}
+
+function isComponentGated(c) {
+    if (c.gate !== undefined && c.gate !== 'component') throw new Error('unknown gate ' + c.gate + ': ' + c.label);
+    return c.gate === 'component';
 }
 
 function loadWasm(model) {
@@ -84,4 +97,4 @@ function assertCloseRel(got, ref, label, rel) {
     assertWithin(got, ref, label, rel);
 }
 
-module.exports = { loadFixture, num, assertClose, assertCloseRel, loadWasm };
+module.exports = { loadFixture, num, qOf, isComponentGated, assertClose, assertCloseRel, loadWasm };
