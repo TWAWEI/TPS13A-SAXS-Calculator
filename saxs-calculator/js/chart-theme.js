@@ -6,7 +6,8 @@
  *            tpsSeries: 0..n（多通道，依實體編號，不依勾選順序）或 'byIndex'（圓餅圖，每片一色；
  *            tpsOthersIndex 指出「Others」那片，用 reference 灰）
  *   scale：  tpsRole／tpsSeries → 只有軸線（border）上色；刻度與標題一律用 text 色
- *   annotation：tpsRole: 'region' | 'regionAlt' | 'marker' | 'residual'
+ *   annotation：tpsRole: 'region' | 'regionAlt' | 'outOfRange' | 'marker' | 'residual'
+ *            （outOfRange：中性的範圍外遮罩，例如 SAS 擬合頁的擬合範圍外）
  *
  * 載入時機：Chart.js 在 <head> 以 defer 載入，比所有本地 script 晚執行。所以本檔頂層只定義
  * 常數與函式，不碰 Chart、document、matchMedia；用到時才取用（Node 測試也會載入本檔）。
@@ -32,6 +33,7 @@
         fit: '#B91C1C',
         region: 'rgba(240, 78, 78, 0.08)',
         regionAlt: 'rgba(180, 83, 9, 0.08)',
+        outOfRange: 'rgba(0, 0, 0, 0.10)',
         marker: '#C27A7A',
         tooltipBg: 'rgba(29, 29, 31, 0.92)',
         tooltipText: '#FFFFFF',
@@ -49,6 +51,7 @@
         fit: '#F58A8A',
         region: 'rgba(232, 88, 88, 0.14)',
         regionAlt: 'rgba(245, 183, 84, 0.12)',
+        outOfRange: 'rgba(255, 255, 255, 0.12)',
         marker: 'rgba(238, 144, 144, 0.6)',
         tooltipBg: '#2C2C2E',
         tooltipText: '#F5F5F7',
