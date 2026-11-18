@@ -36,6 +36,8 @@
  *                          with or without data
  *     no-sigma             SasFitWeighting.defaultMode(dataset) is 'none'
  *                          (item 13): decided from the data, not from a flag
+ *     invalid-sigma        official file with sigma = 0 rows and a weighting other
+ *                          than sigma: those rows are never fitted (decision D1)
  *     nonpositive-weight   sqrtI / absI weighting with I <= 0 in the range (item 11)
  *     suspect-nm           notes.suspectNm of the file
  *   excludedCounts(dataset) -> { sigma, sqrtI, absI, none }: points each
@@ -85,7 +87,7 @@
     const FIT_HINT_IDS = Object.freeze(['stopped', 'blocked', 'failed', 'maxiter', 'zero-steps', 'local-minimum',
         'overestimated-errors', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'strong-correlation', 'non-finite-curve',
         'scaled-errors']);
-    const PRE_FIT_HINT_IDS = Object.freeze(['hayter', 'no-sigma', 'nonpositive-weight', 'suspect-nm']);
+    const PRE_FIT_HINT_IDS = Object.freeze(['hayter', 'no-sigma', 'invalid-sigma', 'nonpositive-weight', 'suspect-nm']);
     const TEXT = Object.freeze({
         blocked: '在這組參數附近模型無法計算，擬合無法繼續；下列為目前最好的參數。請調整起始值或上下限後重試',
         failed: '擬合失敗，請調整起始值或上下限後重試',
@@ -238,18 +240,29 @@
 
     // ------------------------------------------------------------- before a fit
 
-    /** { zero, negative }: points with I = 0 and I < 0 among the finite points with qMin <= q <= qMax. */
+    /**
+     * { zero, negative } in qMin <= q <= qMax: points left out because I = 0, and points with I < 0 that DO take
+     * part. Both only among the points that are valid otherwise (the mask of weighting 'none': an official file's
+     * sigma = 0 rows are not among them).
+     */
     function nonPositiveCounts(dataset, range) {
+        const valid = globalThis.SasFitWeighting.mask(dataset, NO_WEIGHT_MODE);
         const counts = { zero: 0, negative: 0 };
         for (let i = 0; i < dataset.q.length; i++) {
             const q = dataset.q[i];
-            const I = dataset.I[i];
-            if (Number.isFinite(q) && q > 0 && q >= range.qMin && q <= range.qMax && Number.isFinite(I)) {
-                if (I === 0) counts.zero += 1;
-                else if (I < 0) counts.negative += 1;
-            }
+            if (valid[i] !== 1 || !(q >= range.qMin && q <= range.qMax)) continue;
+            if (dataset.I[i] === 0) counts.zero += 1;
+            else if (dataset.I[i] < 0) counts.negative += 1;
         }
         return counts;
+    }
+
+    /** Official files: the rows that no weighting uses (decision D1). Not shown with sigma weighting, where it is plain. */
+    function invalidSigmaHint(dataset, weighting) {
+        if (weighting === SIGMA_MODE) return null;
+        const count = globalThis.SasFitWeighting.countInvalidSigma(dataset);
+        if (count === 0) return null;
+        return hint('invalid-sigma', 'ok', '此檔有 ' + count + ' 點 σ＝0（光束擋片區或無效的點）：官方檔的這些點在任何權重下都不參與擬合', { count });
     }
 
     function nonPositiveHint(dataset, range, weighting) {
@@ -258,7 +271,7 @@
         if (zero + negative === 0) return null;
         const parts = [];
         if (zero > 0) parts.push('I＝0 的 ' + zero + ' 點被排除');
-        if (negative > 0) parts.push('I < 0 的 ' + negative + ' 點以 |I| 當權重，接近 0 的負值會主導 χ²');
+        if (negative > 0) parts.push('I < 0 的 ' + negative + ' 點以 |I| 當權重，接近 0 的負值權重極小，會主導擬合');
         const text = '擬合範圍內有 ' + (zero + negative) + ' 點 I ≤ 0：' + parts.join(SEPARATOR);
         return hint('nonpositive-weight', 'warn', text, { zero, negative });
     }
@@ -272,7 +285,7 @@
         const { modelSpec, dataset, range, weighting, notes } = isObject(input) ? input : {};
         const hints = [isObject(modelSpec) && modelSpec.structure === HAYTER ? hint('hayter', 'warn', TEXT.hayter) : null];
         if (isObject(dataset)) {
-            hints.push(noSigmaHint(dataset, weighting), nonPositiveHint(dataset, range, weighting),
+            hints.push(noSigmaHint(dataset, weighting), invalidSigmaHint(dataset, weighting), nonPositiveHint(dataset, range, weighting),
                 isObject(notes) && notes.suspectNm === true ? hint('suspect-nm', 'warn', TEXT.suspectNm) : null);
         }
         return Object.freeze(hints.filter((h) => h !== null));

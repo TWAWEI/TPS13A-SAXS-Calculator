@@ -300,7 +300,7 @@ test('fitJob: flags in table order, bounds of the fitted names only, data { q, I
         ['sld_solvent', false], ['radius', true], ['radius_pd', true], ['lowq_scale', false], ['lowq_power', true]]);
     assert.deepEqual(JSON.parse(JSON.stringify(job.bounds, (k, v) => (v === Infinity ? 'inf' : v === -Infinity ? '-inf' : v))),
         { scale: [0, 'inf'], background: ['-inf', 'inf'], radius: [0, 200], radius_pd: [0, 0.4], lowq_power: [0, 6] });
-    assert.deepEqual(Object.keys(job.data), ['q', 'I', 'sigma']);
+    assert.deepEqual(Object.keys(job.data), ['q', 'I', 'sigma', 'kind']);
     assert.equal(job.data.q, ds.q);
     assert.equal(job.data.I, ds.I);
     assert.equal(job.data.sigma, ds.sigma);

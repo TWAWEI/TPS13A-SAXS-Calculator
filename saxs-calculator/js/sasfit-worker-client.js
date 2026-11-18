@@ -342,7 +342,10 @@
     /** The fit message of a job: only the protocol's fields, and of data only what the Worker reads. */
     function fitMessage(jobId, job) {
         const data = isObject(job.data)
-            ? { q: job.data.q, I: job.data.I, sigma: job.data.sigma === undefined ? null : job.data.sigma }
+            ? {
+                q: job.data.q, I: job.data.I, sigma: job.data.sigma === undefined ? null : job.data.sigma,
+                kind: job.data.kind === undefined ? 'generic' : job.data.kind,
+            }
             : job.data;
         const { modelSpec, params, fitFlags, bounds, range, weighting, options } = job;
         return { type: 'fit', jobId, modelSpec, params, fitFlags, bounds, data, range, weighting, options };

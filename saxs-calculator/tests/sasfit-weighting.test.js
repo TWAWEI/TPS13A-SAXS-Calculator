@@ -103,19 +103,26 @@ test('defaultRange: qMin = max(qStart, first usable q) -- sigma mode, usable sta
     assert.deepEqual(W.defaultRange(d, 'sigma'), { qMin: 0.006, qMax: 0.009 });
 });
 
-test('defaultRange: none mode, first usable point 0.001 < qStart -> qMin = qStart (spec 15 row 4)', () => {
-    const d = ds(oq, oI, oS, 'official', { qStart: 0.005 });
+test('defaultRange: first usable point 0.001 < qStart -> qMin = qStart (spec 15 row 4)', () => {
+    const valid = oS.map((s) => (s === 0 ? 0.5 : s));               // an official file whose low-q rows carry a real sigma
+    const d = ds(oq, oI, valid, 'official', { qStart: 0.005 });
     assert.deepEqual(W.defaultRange(d, 'none'), { qMin: 0.005, qMax: 0.009 });
+    assert.deepEqual(W.defaultRange(d, 'sigma'), { qMin: 0.005, qMax: 0.009 });
+});
+
+test('defaultRange: official sigma = 0 rows are invalid in every mode (decision D1), so none starts at 0.006 too', () => {
+    const d = ds(oq, oI, oS, 'official', { qStart: 0.005 });
+    for (const mode of W.MODES) assert.deepEqual(W.defaultRange(d, mode), { qMin: 0.006, qMax: 0.009 }, mode);
 });
 
 test('defaultRange: generic kind ignores header.qStart; bad qStart (0, negative, NaN, string) ignored', () => {
     const g = ds(oq, oI, oS, 'generic', { qStart: 0.005 });
     assert.deepEqual(W.defaultRange(g, 'none'), { qMin: 0.001, qMax: 0.009 });
     for (const bad of [0, -0.005, NaN, Infinity, '0.005', null]) {
-        const d = ds(oq, oI, oS, 'official', { qStart: bad });
+        const d = ds(oq, oI, oS.map((s) => (s === 0 ? 0.5 : s)), 'official', { qStart: bad });
         assert.deepEqual(W.defaultRange(d, 'none'), { qMin: 0.001, qMax: 0.009 }, String(bad));
     }
-    assert.deepEqual(W.defaultRange(ds(oq, oI, oS, 'official', null), 'none'), { qMin: 0.001, qMax: 0.009 });
+    assert.deepEqual(W.defaultRange(ds(oq, oI, oS.map((s) => (s === 0 ? 0.5 : s)), 'official', null), 'none'), { qMin: 0.001, qMax: 0.009 });
 });
 
 test('defaultRange: qMax is the last usable point (trailing sigma=0 point excluded)', () => {

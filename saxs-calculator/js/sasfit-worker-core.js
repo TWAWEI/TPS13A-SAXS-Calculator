@@ -24,7 +24,8 @@
  * Incoming (plain data, as structured clone delivers it; never modified):
  *   { type: 'evaluate', reqId, modelSpec, params, q: Float64Array, opts?: { cutoff } }
  *   { type: 'fit', jobId, modelSpec, params, fitFlags: { name: true }, bounds: { name: [lo, hi] },
- *     data: { q, I: Float64Array, sigma: Float64Array | null }, range: { qMin, qMax },
+ *     data: { q, I: Float64Array, sigma: Float64Array | null, kind?: 'official' | 'generic' },
+ *     range: { qMin, qMax },
  *     weighting: one of SasFitWeighting.MODES, options?: { maxSteps, cutoff } }
  *     options.maxSteps: integer 1..MAX_STEPS (10000), default 200; options.cutoff:
  *     finite, >= 0, default 1e-5. ftol and xtol are fixed (SasFitFitter.DEFAULTS)
@@ -201,7 +202,7 @@
         return { lower: pairs.map((pair) => pair[0]), upper: pairs.map((pair) => pair[1]) };
     }
 
-    /** The dataset as SasFitWeighting wants it: { q, I, sigma | null }. */
+    /** The dataset as SasFitWeighting wants it: { q, I, sigma | null, kind } (kind 'generic' when absent). */
     function readData(data) {
         if (!isPlainObject(data)) throw fail('BAD_DATA', 'data must be an object');
         const { q, I } = data;
@@ -213,7 +214,11 @@
         if (sigma !== null && (!(sigma instanceof Float64Array) || sigma.length !== q.length)) {
             throw fail('BAD_DATA', 'data.sigma must be null or a Float64Array of ' + q.length + ' values');
         }
-        return { q, I, sigma };
+        const kind = data.kind === undefined ? 'generic' : data.kind;
+        if (globalThis.SasFitWeighting.KINDS.indexOf(kind) < 0) {
+            throw fail('BAD_DATA', 'data.kind must be one of ' + globalThis.SasFitWeighting.KINDS.join(', ') + ', got ' + String(data.kind));
+        }
+        return { q, I, sigma, kind };
     }
 
     function readRange(range) {

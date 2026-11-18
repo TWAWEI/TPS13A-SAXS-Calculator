@@ -226,7 +226,10 @@
             fitFlags: Object.freeze(Object.fromEntries(items.map((item) => [item.name, item.fit]))),
             bounds: Object.freeze(Object.fromEntries(fitted.map((item) => [item.name,
                 Object.freeze([boundOf(item.lower, -Infinity), boundOf(item.upper, Infinity)])]))),
-            data: Object.freeze({ q: dataset.q, I: dataset.I, sigma: dataset.sigma === undefined ? null : dataset.sigma }),
+            data: Object.freeze({
+                q: dataset.q, I: dataset.I, sigma: dataset.sigma === undefined ? null : dataset.sigma,
+                kind: dataset.kind === undefined ? 'generic' : dataset.kind,       // decides the mask in the Worker (decision D1)
+            }),
             range: Object.freeze({ qMin: range.qMin, qMax: range.qMax }),
             weighting,
             options: Object.freeze({ maxSteps, cutoff: CUTOFF }),

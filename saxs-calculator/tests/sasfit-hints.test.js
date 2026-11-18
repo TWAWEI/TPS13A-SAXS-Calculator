@@ -284,7 +284,7 @@ test('5.7-11: I <= 0 inside the range under sqrtI / absI weighting', () => {
     const range = { qMin: 0.01, qMax: 0.05 };
     ['sqrtI', 'absI'].forEach((weighting) => {
         const hint = byId(pre({ dataset: ds, range, weighting }), 'nonpositive-weight');
-        assert.equal(hint.text, '擬合範圍內有 3 點 I ≤ 0：I＝0 的 2 點被排除；I < 0 的 1 點以 |I| 當權重，接近 0 的負值會主導 χ²');
+        assert.equal(hint.text, '擬合範圍內有 3 點 I ≤ 0：I＝0 的 2 點被排除；I < 0 的 1 點以 |I| 當權重，接近 0 的負值權重極小，會主導擬合');
         assert.equal(hint.tone, 'warn');
         assert.deepEqual([hint.zero, hint.negative], [2, 1]);
     });
@@ -296,7 +296,7 @@ test('5.7-11: I <= 0 inside the range under sqrtI / absI weighting', () => {
     const onlyZero = byId(pre({ dataset: ds, range: { qMin: 0.04, qMax: 0.04 }, weighting: 'absI' }), 'nonpositive-weight');
     assert.equal(onlyZero.text, '擬合範圍內有 1 點 I ≤ 0：I＝0 的 1 點被排除');
     const onlyNegative = byId(pre({ dataset: ds, range: { qMin: 0.06, qMax: 0.06 }, weighting: 'absI' }), 'nonpositive-weight');
-    assert.equal(onlyNegative.text, '擬合範圍內有 1 點 I ≤ 0：I < 0 的 1 點以 |I| 當權重，接近 0 的負值會主導 χ²');
+    assert.equal(onlyNegative.text, '擬合範圍內有 1 點 I ≤ 0：I < 0 的 1 點以 |I| 當權重，接近 0 的負值權重極小，會主導擬合');
 });
 
 test('5.7-11: excludedCounts per weighting mode, from SasFitWeighting.countExcluded', () => {
@@ -334,7 +334,7 @@ test('preFitHints: fixed order', () => {
         modelSpec: { ...SPEC, structure: 'hayter_msa' }, dataset: ds, weighting: 'sqrtI', notes: { ...NOTES, suspectNm: true },
     });
     assert.deepEqual(ids(hints), ['hayter', 'no-sigma', 'nonpositive-weight', 'suspect-nm']);
-    assert.deepEqual([...H.PRE_FIT_HINT_IDS], ['hayter', 'no-sigma', 'nonpositive-weight', 'suspect-nm']);
+    assert.deepEqual([...H.PRE_FIT_HINT_IDS], ['hayter', 'no-sigma', 'invalid-sigma', 'nonpositive-weight', 'suspect-nm']);
 });
 
 // ------------------------------------------------------------------ plot status

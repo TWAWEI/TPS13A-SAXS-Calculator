@@ -125,7 +125,7 @@ test('fit: progress goes to onProgress, the result resolves frozen, ids are not 
         ['bounds', 'data', 'fitFlags', 'jobId', 'modelSpec', 'options', 'params', 'range', 'type', 'weighting']);
     assert.equal(sent.type, 'fit');
     assert.equal(sent.jobId, 1);
-    assert.deepEqual(Object.keys(sent.data).sort(), ['I', 'q', 'sigma']);
+    assert.deepEqual(Object.keys(sent.data).sort(), ['I', 'kind', 'q', 'sigma']);
     assert.equal(sent.data.q, job.data.q);
     assert.equal(sent.weighting, 'sigma');
     assert.deepEqual(sent.bounds, job.bounds);

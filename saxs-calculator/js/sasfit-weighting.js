@@ -8,6 +8,13 @@
  *
  * A point is usable when finite(q), q > 0, finite(I), finite(w) and w > 0.
  * The residual of a usable point is (I - I_model) / w.
+ *
+ * Official TPS 13A files (dataset.kind 'official', owner decision D1, spec 15):
+ * the beamline writes sigma = 0 for bins without valid data (the beamstop
+ * region). In such a file a row whose sigma is 0, negative or not finite is
+ * therefore unusable in EVERY mode, not only with weighting 'sigma'. Generic
+ * files (kind 'generic' or absent) and files without an error column keep
+ * the rule above. weights() is not affected: the mask is.
  */
 
 (function () {
@@ -16,6 +23,7 @@
     const { assertObject } = globalThis.SasFitValidate;
 
     const MODES = Object.freeze(['sigma', 'sqrtI', 'absI', 'none']);
+    const KINDS = Object.freeze(['official', 'generic']);
 
     function assertMode(mode) {
         if (MODES.indexOf(mode) < 0) {
@@ -38,6 +46,22 @@
                     + ', got length ' + (sigma && sigma.length));
             }
         }
+        if (dataset.kind !== undefined && KINDS.indexOf(dataset.kind) < 0) {
+            throw new Error('dataset.kind must be one of ' + KINDS.join(', ') + ' (or absent), got ' + String(dataset.kind));
+        }
+    }
+
+    /** The error column that decides validity by itself: that of an official file; null otherwise. */
+    function validitySigma(dataset) {
+        return dataset.kind === 'official' && dataset.sigma instanceof Float64Array ? dataset.sigma : null;
+    }
+
+    /** How many rows of an official file are invalid by their sigma alone (0 for any other dataset). */
+    function countInvalidSigma(dataset) {
+        assertDataset(dataset);
+        const sigma = validitySigma(dataset);
+        if (sigma === null) return 0;
+        return sigma.reduce((count, s) => count + (Number.isFinite(s) && s > 0 ? 0 : 1), 0);
     }
 
     /** w_i for the mode; mode 'sigma' needs dataset.sigma. */
@@ -61,9 +85,11 @@
     /** The mask for weights w that were already computed for this dataset. */
     function maskOf(dataset, w) {
         const { q, I } = dataset;
+        const sigma = validitySigma(dataset);
         const m = new Uint8Array(q.length);
         for (let i = 0; i < q.length; i++) {
-            m[i] = (Number.isFinite(q[i]) && q[i] > 0 && Number.isFinite(I[i])
+            const valid = sigma === null || (Number.isFinite(sigma[i]) && sigma[i] > 0);
+            m[i] = (valid && Number.isFinite(q[i]) && q[i] > 0 && Number.isFinite(I[i])
                 && Number.isFinite(w[i]) && w[i] > 0) ? 1 : 0;
         }
         return m;
@@ -139,5 +165,7 @@
         };
     }
 
-    globalThis.SasFitWeighting = Object.freeze({ MODES, weights, mask, countExcluded, defaultMode, defaultRange, select });
+    globalThis.SasFitWeighting = Object.freeze({
+        MODES, KINDS, weights, mask, countExcluded, countInvalidSigma, defaultMode, defaultRange, select,
+    });
 })();
