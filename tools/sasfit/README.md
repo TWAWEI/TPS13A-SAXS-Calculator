@@ -77,3 +77,12 @@ tools/sasfit/.venv/bin/python tools/sasfit/gen_reference_fit.py
 檢查項目：1 首頁（淺色與深色主題）無 console error／pageerror；2 Worker 與主執行緒的 sphere evaluate 逐點完全相同；3 `sphere@hayter_msa` 曲線有限；4 含雜訊 sphere 資料擬合收斂、radius 在真值 3σ 內、χ²ᵣ 0.5–1.6、至少 2 則 progress；5 `stop()` 在 1 秒內以 `stopped` 結束且之後可再 evaluate；6 由伺服器紀錄確認 Worker 腳本、11 個 `importScripts` 模組與所有 `.wasm` 都帶 `?v=<footer 版本>`，並記錄 `.wasm` 的 Content-Type；7 瀏覽器內計時表（僅供參考，超過 300 ms 會標註）。
 
 注意：只涵蓋 Chromium；未驗證 GitHub Pages 上的 Content-Type 與快取行為。擬合案例的 q 範圍刻意限在 q·R ≲ 3.6——起始值偏 20 % 時範圍拉到 q·R ≥ 6 會落入局部極小值（屬 LM 的正常行為）。
+
+## 7. G6 的 SLD 參考值與合成官方 `.dat`（`gen_reference_sld.py`、`gen_fixture_dat.py`）
+
+```bash
+tools/sasfit/.venv/bin/python tools/sasfit/gen_reference_sld.py   # → tests/fixtures/sasfit/sld.json
+tools/sasfit/.venv/bin/python tools/sasfit/gen_fixture_dat.py     # → tests/fixtures/sasfit/dat/SYNTH_sphere_{10,20,30}.dat ＋ SYNTH_sphere-truth.json
+```
+
+`gen_reference_sld.py` 只向 periodictable 取元素的 Z 與標準原子量（84 個有 CIAAW 標準原子量的元素），X 光 SLD 照規格 §4.7 的式子與常數（r_e＝2.8179403262e-5 Å、f≈Z）自行計算，不呼叫 `periodictable.xsf`；化學式案例涵蓋括號巢狀、小數計數、水合物（`·` 與括號兩種寫法，組成由腳本手動展開，因為 periodictable 不認得 `·`）、「ASCII 句點一律是小數點」（`CuSO4.5H2O` → O 5.5），並附無效字串與預期的失敗類別。`gen_fixture_dat.py` 以 sasmodels 的 sphere（半徑 50／52／54 Å）加固定種子雜訊，產生版面與官方檔相同（25 行參數回顯、`Single Frame Time` 行、`Q I ERROR` 行、Fortran E 格式、CRLF、5 列 beamstop、1 列 `000 000 000` 佔位、300 列正常資料）的合成檔，所有數值與檔頭值皆為編造，不含任何真實量測資料；sidecar `SYNTH_sphere-truth.json` 記錄真值參數與讀檔應得的結果（點數、檔頭欄位、條件值）。兩支腳本的輸出逐位元穩定，自我檢查失敗一律丟 `RuntimeError`。
