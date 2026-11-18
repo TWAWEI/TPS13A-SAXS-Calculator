@@ -42,6 +42,7 @@ const LOAD_ORDER = Object.freeze([
     'liposome-results-table.js',   // 頂層無 DOM 存取；只用 rowsToCsv / csvCell
     'dndc-astra-ui.js',            // UI 檔，但頂層只有函式宣告；純文案函式從 window.DndcAstraUi 取用
     'sasfit-meta.js',              // 產生檔；IIFE，只掛 globalThis.SasFitMeta
+    'sasfit-weights.js',           // IIFE，只掛 globalThis.SasFitWeights
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -70,4 +71,5 @@ module.exports = {
     MassUnits: window.MassUnits,
     ResultTiles: window.ResultTiles,
     SasFitMeta: globalThis.SasFitMeta,
+    SasFitWeights: globalThis.SasFitWeights,
 };
