@@ -17,6 +17,7 @@
  *       line. Points whose q cannot be on the axis are left out. nonFinite counts the non-finite values of
  *       the whole I (hayter_msa: expected input, design spec 16).
  *   rangeBoxes(mode, range)             annotation boxes outside the fit range, role 'outOfRange'; {} without one
+ *   logTickLabel(value)                 ticks.callback of the logarithmic axes (called with the scale as `this`)
  *   mainConfig(view), residualConfig(view)   Chart.js configs
  *   viewStats(view) -> { hidden, displayStride, nonFinite, points } for the status line (SasFitHints.plotStatus)
  *       view = { mode, series: [{ id, index, label, active, data: Dataset, fitCurve: { q, I } | null }],
@@ -60,6 +61,14 @@
     const RESIDUAL_TITLE = '殘差';
     const MODEL_LABEL = '模型';
     const CURVE_SUFFIX = '（模型）';
+    const LAYOUT_PADDING = Object.freeze({ top: 6, right: 12 });      // room for a point on the edge; the same in both charts
+    const LOG_TICK_MANTISSAS = Object.freeze([1, 2, 5]);
+    const LOG_TICK_SPARSE = Object.freeze([1]);
+    const LOG_TICK_SPARSE_DECADES = 3;        // a longer axis labels only the powers of ten
+    const LOG_TICK_PLAIN = Object.freeze([-3, 5]);      // exponents written without an exponent: 0.001 ... 10000
+    const LOG_TICK_DIGITS = 3;
+    const LOG_TICK_EPS = 1e-9;
+    const LOG_TICK_ROUND = 1e6;
 
     const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const isObject = (v) => v !== null && typeof v === 'object';
@@ -183,12 +192,42 @@
         return data.datasets[item.datasetIndex].sfKind !== 'curve';
     }
 
+    const plainNumber = (value) => String(Number(value.toPrecision(LOG_TICK_DIGITS)));
+
+    /**
+     * ticks.callback of a logarithmic axis; Chart.js calls it with its scale as `this`. Chart.js would print every
+     * tick with the decimals of the smallest one ("1,000.0000"). Here: the powers of ten on a long axis, 1-2-5
+     * per decade on a shorter one, every tick on an axis of less than one decade; no trailing zeros.
+     */
+    function logTickLabel(value) {
+        if (!(value > 0) || !Number.isFinite(value)) return '';
+        const decades = isObject(this) && this.min > 0 && Number.isFinite(this.max) ? Math.log10(this.max / this.min) : 0;
+        if (decades > 0 && decades < 1) return plainNumber(value);
+        const exponent = Math.floor(Math.log10(value) + LOG_TICK_EPS);
+        const mantissa = Math.round(value / Math.pow(10, exponent) * LOG_TICK_ROUND) / LOG_TICK_ROUND;
+        const wanted = decades > LOG_TICK_SPARSE_DECADES ? LOG_TICK_SPARSE : LOG_TICK_MANTISSAS;
+        if (wanted.indexOf(mantissa) < 0) return '';
+        return exponent >= LOG_TICK_PLAIN[0] && exponent < LOG_TICK_PLAIN[1] ? plainNumber(value) : mantissa + 'e' + exponent;
+    }
+
+    /**
+     * afterBuildTicks of a logarithmic axis: keep only the ticks logTickLabel names, so that the unnamed ones do
+     * not draw grid lines (nine per decade) or crowd the labels. Chart.js hands over its scale and reads
+     * scale.ticks back; a filter that would leave fewer than two ticks changes nothing.
+     */
+    function keepLabelledTicks(scale) {
+        const kept = scale.ticks.filter((tick) => logTickLabel.call(scale, tick.value) !== '');
+        if (kept.length >= 2) scale.ticks = kept;
+    }
+
     function axis(type, title, extra) {
         const theme = host().ChartTheme;
+        const font = { family: theme.MONO, size: 10 };
         return {
             type, tpsRole: AXIS_ROLE,
             title: { display: true, text: title, font: { family: theme.FONT, size: 11 } },
-            ticks: { font: { family: theme.MONO, size: 10 } },
+            ticks: type === 'logarithmic' ? { font, autoSkip: false, callback: logTickLabel } : { font },
+            ...(type === 'logarithmic' ? { afterBuildTicks: keepLabelledTicks } : {}),
             ...extra,
         };
     }
@@ -197,6 +236,8 @@
         const theme = host().ChartTheme;
         return {
             responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+            // Chart.js pads a chart by the radius of its largest point; the two charts would then differ by a few pixels
+            layout: { autoPadding: false, padding: { ...LAYOUT_PADDING } },
             plugins: {
                 legend: { labels: { font: { family: theme.FONT, size: 12 }, usePointStyle: true, filter: legendFilter } },
                 tooltip: { cornerRadius: 8, padding: 10, titleFont: { family: theme.FONT, size: 12 }, bodyFont: { family: theme.MONO, size: 11 } },
@@ -332,6 +373,6 @@
 
     globalThis.SasFitPlotData = Object.freeze({
         MODES, DISPLAY_MAX_POINTS, Y_AXIS_WIDTH, POINT_STYLES,
-        displayStride, staggerFactor, transform, curve, rangeBoxes, mainConfig, residualConfig, viewStats,
+        logTickLabel, displayStride, staggerFactor, transform, curve, rangeBoxes, mainConfig, residualConfig, viewStats,
     });
 })();

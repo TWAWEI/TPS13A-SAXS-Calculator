@@ -519,3 +519,62 @@ test('configs work from frozen views and from the shown files of a real page sta
     assert.deepEqual(config.data.datasets.map((d) => d.tpsSeries), [0, 2], 'the series index is the position in the list');
     assert.deepEqual(config.data.datasets.map((d) => d.sfErrorBars === true), [true, false]);
 });
+
+// ---------------------------------------------------------------- 對數軸的刻度文字（Task 11 瀏覽器實看後補）
+test('[sasfit-plot-data] 對數軸刻度：長軸只標 10 的次方，短軸標 1-2-5，不到一個級距時每個刻度都標；沒有尾端的 0', () => {
+    const label = (scale, v) => P.logTickLabel.call(scale, v);
+    const long = { min: 1e-3, max: 1e6 };
+    assert.deepEqual([0.001, 0.002, 0.005, 0.01, 1, 5, 1000, 1e4, 1e5, 1e6].map((v) => label(long, v)),
+        ['0.001', '', '', '0.01', '1', '', '1000', '10000', '1e5', '1e6']);
+    const short = { min: 0.005, max: 0.4 };
+    assert.deepEqual([0.005, 0.006, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.4].map((v) => label(short, v)),
+        ['0.005', '', '0.01', '0.02', '', '0.05', '0.1', '0.2', '', '']);
+    const narrow = { min: 0.11, max: 0.19 };
+    assert.deepEqual([0.11, 0.125, 0.19].map((v) => label(narrow, v)), ['0.11', '0.125', '0.19']);
+    assert.equal(label({ min: 1e-6, max: 1e-4 }, 2e-5), '2e-5');
+    assert.equal(label(long, 0), '');
+    assert.equal(label(long, NaN), '');
+    assert.equal(label(undefined, 100), '100', '沒有 scale（this）時照 1-2-5 規則');
+});
+
+test('[sasfit-plot-data] 只有對數軸帶刻度 callback 並關掉 autoSkip；線性軸沿用 Chart.js 的格式', () => {
+    const d = { kind: 'official', q: Float64Array.from([0.01, 0.02, 0.03]), I: Float64Array.from([3, 2, 1]), sigma: null };
+    const v = (mode) => ({ mode, series: [{ id: 'd1', index: 0, label: 'a', active: true, data: d, fitCurve: null }], preview: null,
+        range: null, stagger: { on: false, decades: 1 }, residuals: null });
+    const log = P.mainConfig(v('loglog')).options.scales;
+    assert.equal(log.x.ticks.callback, P.logTickLabel);
+    assert.equal(log.y.ticks.callback, P.logTickLabel);
+    assert.equal(log.x.ticks.autoSkip, false);
+    assert.equal(P.residualConfig(v('loglog')).options.scales.x.ticks.callback, P.logTickLabel);
+    assert.equal(P.residualConfig(v('loglog')).options.scales.y.ticks.callback, undefined);
+    const linear = P.mainConfig(v('kratky')).options.scales;
+    assert.equal(linear.x.ticks.callback, undefined);
+    assert.equal(linear.y.ticks.callback, undefined);
+});
+
+test('[sasfit-plot-data] 對數軸只留有標文字的刻度（沒標的不畫格線）；會剩不到兩個刻度時不動', () => {
+    const d = { kind: 'official', q: Float64Array.from([0.01, 0.02, 0.03]), I: Float64Array.from([3, 2, 1]), sigma: null };
+    const config = P.mainConfig({ mode: 'loglog', series: [{ id: 'd1', index: 0, label: 'a', active: true, data: d, fitCurve: null }],
+        preview: null, range: null, stagger: { on: false, decades: 1 }, residuals: null });
+    const { afterBuildTicks } = config.options.scales.x;
+    assert.equal(typeof afterBuildTicks, 'function');
+    assert.equal(config.options.scales.y.afterBuildTicks, afterBuildTicks);
+    const scale = { min: 0.005, max: 0.4, ticks: [0.005, 0.006, 0.007, 0.01, 0.02, 0.03, 0.1, 0.4].map((value) => ({ value })) };
+    afterBuildTicks(scale);
+    assert.deepEqual(scale.ticks.map((t) => t.value), [0.005, 0.01, 0.02, 0.1]);
+    const sparse = { min: 0.3, max: 40, ticks: [0.3, 0.4, 1, 30].map((value) => ({ value })) };
+    const before = sparse.ticks;
+    afterBuildTicks(sparse);
+    assert.equal(sparse.ticks, before, '1-2-5 規則在這四個刻度裡只留得下 1：不足兩個，所以原樣保留');
+});
+
+test('[sasfit-plot-data] 兩張圖的版面留白相同且不讓 Chart.js 依點的大小自動加（否則繪圖區右緣差幾個像素）', () => {
+    const d = { kind: 'official', q: Float64Array.from([0.01, 0.02, 0.03]), I: Float64Array.from([3, 2, 1]), sigma: null };
+    const v = { mode: 'loglog', series: [{ id: 'd1', index: 0, label: 'a', active: true, data: d, fitCurve: null }], preview: null,
+        range: null, stagger: { on: false, decades: 1 }, residuals: null };
+    const main = P.mainConfig(v).options.layout;
+    const residual = P.residualConfig(v).options.layout;
+    assert.equal(main.autoPadding, false);
+    assert.deepEqual(main, residual);
+    assert.notEqual(main.padding, residual.padding, '各自一份，Chart.js 寫入其中一份不影響另一份');
+});
