@@ -56,6 +56,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-worker-core.js',      // IIFE，只掛 globalThis.SasFitWorkerCore；wasm 載入、post、yieldTask 皆由呼叫端注入
     'sasfit-worker-client.js',    // IIFE，只掛 globalThis.SasFitWorkerClient；頂層只在有 document 時讀 currentScript，呼叫時才建 Worker
     'sasfit-form.js',             // IIFE，只掛 globalThis.SasFitForm；模型表單與驗證，呼叫時才讀 SasFitMeta／SasFitValidate
+    'sasfit-state.js',            // IIFE，只掛 globalThis.SasFitState；頁面狀態 reducer，呼叫時才讀 SasFitWeighting／SasFitFitter／SasFitWorkerCore
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -98,4 +99,5 @@ module.exports = {
     SasFitWorkerCore: globalThis.SasFitWorkerCore,
     SasFitWorkerClient: globalThis.SasFitWorkerClient,
     SasFitForm: globalThis.SasFitForm,
+    SasFitState: globalThis.SasFitState,
 };
