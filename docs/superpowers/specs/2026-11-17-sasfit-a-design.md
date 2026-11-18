@@ -387,7 +387,7 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 
 | 門檻 | 內容 | 通過標準 |
 |---|---|---|
-| G1 | wasm＋調度層 vs sasmodels（cutoff＝1e-5）：每模型預設值；每個可多分散參數 × {gaussian, schulz(nsigmas 3), schulz(nsigmas 8, 寬度 0.3 與 0.4)}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；vesicle@S 的 volfraction 例外；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點 | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\| |
+| G1 | wasm＋調度層 vs sasmodels（cutoff＝1e-5）：每模型預設值；每個可多分散參數 × {gaussian, schulz(nsigmas 3), schulz(nsigmas 8, 寬度 0.3 與 0.4)}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；vesicle@S 的 volfraction 例外；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點。**P@S 案例分兩層**：元件層——有效半徑、體積比、殼層體積，以及把參考有效半徑代入後的 I(q) 與 S(q)——用同一條 1e-9 規則；端到端 I(q) 用 1e-7（見 §15 決策 19） | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\|；P@S 端到端為 1e-7·\|ref\| + 1e-12·max\|ref\| |
 | G2 | 手寫 JS（guinier_porod、power_law） | 同 G1 |
 | G3 | sasmodels 內附官方測試（清單 15 模型）：**只跑 1D、非磁性案例**；包含 `@S` 乘積測試與 Fq 多輸出測試（F、F²、R_eff、V、form:shell 比值）。轉接層用 sasmodels API 預設（`_pd_n`=0、`_pd_nsigma`=3、`_pd_type`=gaussian、cutoff＝0），與 UI 預設分開 | sasmodels 自身容許誤差 |
 | G4 | 擬合器 vs bumps lm（`Experiment(..., cutoff=1e-5)`、`FitDriver` 的 cov／stderr）：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值；含 1 組擬合 PD 寬度的案例 | 參數差 < 0.01σ；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
@@ -456,6 +456,7 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 16 | 權重非資料 σ 時，顯示誤差乘 √χ²ᵣ 並標明 | 此時 σ 未知，不乘的誤差量級無意義（bumps 文件建議） | 使用者 2026-11-17 |
 | 17 | 共變異算法照 bumps（前向差分 1e-4·\|p\|、SVD 奇異值下限 1e-8） | 讓誤差與 SasView 顯示一致 | 審查第 1 輪 |
 | 18 | 參考值以關閉 FMA 的編譯產生（嚴格 IEEE） | WebAssembly 沒有 FMA；arm64 編譯器預設合併乘加，hayter_msa 在低 q 的條件數使兩者差到 3e-9。關閉後原生與 wasm 逐位元相同（194/200 點）；門檻維持 1e-9 | 2026-11-18 M1 Task 4 實測 |
+| 19 | P@S 的 G1 分兩層：元件層 1e-9，端到端 1e-7 | sasmodels 的 hardsphere.c 在 2qR≈0.05–0.13 有相消誤差，有效半徑差 1 ulp 就使 S(q) 變動 2.3e-9（原生 sasmodels 實測）；JS 多分散權重與 numpy 差在第 14 位，無法逐位元相同。以參考有效半徑代入後組合與 S(q) 仍符合 1e-9 | 2026-11-18 M1 Task 6 實測 |
 
 ## 16. 已知限制與 B 版候選
 

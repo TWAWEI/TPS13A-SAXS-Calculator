@@ -22,7 +22,7 @@
    - 這個階段 index.html **只加 `<script>` 標籤**，不加任何其他標記（markup 測試比對的是 v4.15 fixture；若 `<script>` 標籤本身讓 `tests/markup.test.js` 失敗，停下來回報，不要改測試或 fixture）。
 4. **授權檔頭**（規格 §17）：`sasfit-weights.js`、`sasfit-kernel.js`、`sasfit-product.js`、`sasfit-py-models.js` 是 sasmodels 的衍生作品，檔頭註明移植來源檔與「Copyright (c) 2009-2022, SasView Developers — BSD 3-Clause, see wasm/LICENSE-sasmodels.txt」。
 5. **測試**：`node --test saxs-calculator/tests/*.test.js` 從 repo 根目錄執行，每個任務結束時必須全綠。**不得重產或修改** `tests/fixtures/` 下既有的 fixture（`result-golden*`、`markup-v4.15.json`）。新的參考值放 `saxs-calculator/tests/fixtures/sasfit/`，只能由 `tools/sasfit/gen_reference.py` 產生，不得手改數字、不得為了讓測試通過放寬容許誤差。
-6. **容許誤差（G1／G2）**：`|got − ref| ≤ 1e-9·|ref| + 1e-12·max|ref|`，逐點、且輸出必須全為有限值。共用的比對函式放在 `tests/sasfit-helpers.js`（Task 3 建立）。
+6. **容許誤差（G1／G2）**：`|got − ref| ≤ 1e-9·|ref| + 1e-12·max|ref|`，逐點、且輸出必須全為有限值。共用的比對函式放在 `tests/sasfit-helpers.js`（Task 3 建立）。**唯一例外是 P@S 案例的端到端 I(q)**：相對項改為 1e-7（`assertCloseRel(got, ref, label, 1e-7)`），因為 hardsphere.c 在 2qR≈0.05–0.13 相消，有效半徑差 1 ulp 就讓 S(q) 變動 2.3e-9；P@S 的元件層（有效半徑、體積比、殼層體積、代入參考有效半徑後的 I(q) 與 S(q)）仍用 1e-9，由 `sasfit-product.test.js` 檢查（規格 §15 決策 19）。`assertCloseRel` 不得用在其他地方。
 7. **Commit**：conventional 格式（`feat:`／`test:`／`chore:`），**不加任何 Co-Authored-By 或署名行**；留在 `feat/sasfit` 分支，不 push。
 8. 做不到或數值對不上時：停下來回報實際差異（哪個案例、差多少、你查到的原因），不要繞過。
 
@@ -234,7 +234,7 @@ SasFitEvaluate.evaluate(modelSpec, params, q, opts, kernels) → { I: Float64Arr
 來源：`$SM/product.py`——`make_product_info`（參數集合併、`_tag_parameter` 的 `_S` 後綴、P 自帶 volfraction 時省略 S 的 volfraction、`structure_factor_mode` 與 `radius_effective_mode` 兩個參數及其預設）、`ProductKernel.Iq`／`Fq`（約 440–560 行：先算 P 的 Fq、取得 R_eff 與 volume ratio、把它們填進 S 的參數、算 S、組合、套 scale／volfraction／background）。S 的 volfraction 要乘上 volume ratio 的那一步照原文。
 
 - [ ] **Step 1：** 寫失敗的測試：
-  - `g1.json` 全部 `structure !== null && !lowQPowerLaw` 案例 `assertClose`（P*S、β、各有效半徑模式、vesicle 例外）。
+  - `g1.json` 全部 `structure !== null && !lowQPowerLaw` 案例（58 個：P*S、β、各有效半徑模式、vesicle 例外、3 個 `spd:` S 參數多分散），每案三層：(a) `parts()` 的有效半徑、體積比、殼層體積對 fixture 的 `intermediates`，1e-9；(b) 改用 `radius_effective_mode: 0`、`radius_effective` 代入 `intermediates.radiusEffectiveUsed` 後的 I(q) 與 S(q)，1e-9；(c) 原參數端到端 I(q)，1e-7（共用規則 6）。
   - `paramNames`：`sphere@hayter_msa` 含 `volfraction`、`radius_effective`、`structure_factor_mode`、`radius_effective_mode`；`vesicle@hardsphere` 的 `volfraction` 只出現一次且沒有 `volfraction_S`。
   - 以不能接 S(Q) 的模型（例 `lamellar`）建立 product 時丟出說明原因的 `Error`。
 - [ ] **Step 2：** 失敗 → 實作 → 通過；加 script 標籤與 `LOAD_ORDER`；全綠。
@@ -247,7 +247,7 @@ SasFitEvaluate.evaluate(modelSpec, params, q, opts, kernels) → { I: Float64Arr
 - Modify: `index.html`, `tests/load.js`
 
 - [ ] **Step 1：** 寫失敗的測試 `sasfit-evaluate.test.js`：
-  - **G1 總表**：`g1.json` 每一案都經 `SasFitEvaluate.evaluate(modelSpec, pars, q, { cutoff: 1e-5 }, kernels)` `assertClose`（kernels 用 helper 預先載入全部 13 個 wasm）。測試結尾斷言案例數等於 fixture 內案例數（不得默默略過）。
+  - **G1 總表**：`g1.json` 每一案都經 `SasFitEvaluate.evaluate(modelSpec, pars, q, { cutoff: 1e-5 }, kernels)` 比對（kernels 用 helper 預先載入全部 13 個 wasm）：`structure === null` 的案例用 `assertClose`（1e-9）；`structure !== null` 的案例（含 `sphere@hardsphere+power_law`）是端到端 P@S，用 `assertCloseRel(…, 1e-7)`——它們的元件層 1e-9 檢查在 `sasfit-product.test.js`，這裡不重複（共用規則 6）。測試結尾斷言案例數等於 fixture 內案例數（不得默默略過）。
   - 低 Q 冪律：`I_total = I_model + lowq_scale·q^(−lowq_power)`，background 只加一次（規格 §4.5）。
   - `opts.cutoff` 省略時等同 1e-5。
   - 錯誤：未知模型、`kernels` 缺該模型的 wasm、不可接 S(Q) 的模型卻給了 `structure`——各丟出訊息明確的 `Error`。
