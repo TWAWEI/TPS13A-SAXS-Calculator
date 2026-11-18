@@ -177,7 +177,7 @@ client.version                        // 取自 document.currentScript.src 的 ?
 
 **Files:** Create `tools/sasfit/smoke_browser.py`；Modify 規格書、本計畫、`tools/sasfit/README.md`。
 
-- [ ] **瀏覽器冒煙**（Playwright，`~/Projects/text-to-cad/.venv/bin/python`；`python3 -m http.server` 開在 `saxs-calculator/`，隨機埠，結束時關掉）：
+- [x] **瀏覽器冒煙**（Playwright，`~/Projects/text-to-cad/.venv/bin/python`；`python3 -m http.server` 開在 `saxs-calculator/`，隨機埠，結束時關掉）：
   1. 開首頁，收集 console 訊息與 pageerror —— 不得有 error（CLAUDE.md 的要求；M1 以來還沒做過）。
   2. `page.evaluate`：`SasFitWorkerClient.create()` → `evaluate` sphere 預設值（200 點）→ 與同頁主執行緒直接算的結果逐點相同（主執行緒自己 fetch wasm 來算）。
   3. `evaluate` `sphere@hayter_msa`（載入兩個 wasm）。
@@ -186,10 +186,10 @@ client.version                        // 取自 document.currentScript.src 的 ?
   6. 檢查網路請求：`sasfit-worker.js`、worker 內每個 `importScripts`、每個 `.wasm` 的網址都帶 `?v=` 且版本等於 footer 的版本；`.wasm` 回應的 `content-type` 記錄下來（`http.server` 給 `application/wasm`；GitHub Pages 亦然——在報告中註明這點未在線上驗證）。
   7. 量測並回報（瀏覽器內、Worker 內）：sphere 多分散 80 點、cylinder 單參數 35 點、cylinder 兩參數 35×35 的單次 evaluate 時間；案例 1 擬合的總時間。
   腳本結束碼反映成敗；用法寫進 `tools/sasfit/README.md`。
-- [ ] **科學審查**（獨立子代理，唯讀）：weighting 規則對規格 §4.8 與 SasView `residuals_help`；fitter 的 LM、Jacobian 步長、共變異、誤差定義對 bumps 原始碼；G4 案例是否真的涵蓋規格 §11、有沒有案例被弱化；誤差顯示規則；自行設計至少 10 組不在 fixture 的擬合與 bumps 比對（含一組 hayter_msa、一組起始值離真值 3 倍、一組強相關參數）。
-- [ ] **程式審查**（code-reviewer，唯讀）：`git diff bb5a2af..HEAD`；重點在 Worker 生命週期與競態、訊息驗證、錯誤路徑、記憶體（長時間擬合 wasm 記憶體不成長）、worker 入口的網址組裝。
-- [ ] 修正 CRITICAL／HIGH 後全測試綠。
-- [ ] **文件**：規格 §16 B 版候選加「多 Worker 分 q 平行（兩參數同時多分散的圓柱類）」；規格 §11 效能段落填入瀏覽器實測數字；本計畫末尾加「M2 完成紀錄」。Commit。
+- [x] **科學審查**（獨立子代理，唯讀）：weighting 規則對規格 §4.8 與 SasView `residuals_help`；fitter 的 LM、Jacobian 步長、共變異、誤差定義對 bumps 原始碼；G4 案例是否真的涵蓋規格 §11、有沒有案例被弱化；誤差顯示規則；自行設計至少 10 組不在 fixture 的擬合與 bumps 比對（含一組 hayter_msa、一組起始值離真值 3 倍、一組強相關參數）。
+- [x] **程式審查**（code-reviewer，唯讀）：`git diff bb5a2af..HEAD`；重點在 Worker 生命週期與競態、訊息驗證、錯誤路徑、記憶體（長時間擬合 wasm 記憶體不成長）、worker 入口的網址組裝。
+- [x] 修正 CRITICAL／HIGH 後全測試綠。
+- [x] **文件**：規格 §16 B 版候選加「多 Worker 分 q 平行（兩參數同時多分散的圓柱類）」；規格 §11 效能段落填入瀏覽器實測數字；本計畫末尾加「M2 完成紀錄」。Commit。
 
 ---
 
@@ -267,3 +267,18 @@ Playwright 1.61.0 與 Chromium 已在 `~/Projects/text-to-cad/.venv`。Worker �
 ### F. 已驗證、不需更動的部分
 
 Worker 內 `importScripts` 與 `fetch` 的相對網址以 Worker 腳本網址為基準（`'sasfit-meta.js?v='`、`'../wasm/…'` 正確）；現行 CSP 的 `worker-src 'self' blob:` 允許建立 Worker，從網路載入的 Worker 不繼承頁面的 meta CSP；`document.currentScript` 只在 classic script 同步執行的頂層有效，要在載入時就取值；GitHub Pages 路徑分大小寫（檔名全小寫）；九個案例的條件數與參數相關性都在合理範圍（最大相關 0.976）。
+
+## M2 完成紀錄（2026-11-18）
+
+- **測試**：`node --test saxs-calculator/tests/*.test.js` 897 項全過（M1 結束時 758；M2 實作完成、審查前 854）。G4 共 19 個案例（原 12 個＋審查後追加 7 個），門檻未變（0.01σ、2%、1e-3），經擬合器與經 Worker 訊息介面各驗一次。`tools/sasfit/smoke_browser.py`（headless Chromium）ALL PASS。
+- **實作的 commit**：`d89b177` weighting、`b3249a0` 擬合參考值、`e95d19b` 擬合器（G4 通過）、`306fd48` worker-core、`bcaea0d` Worker 入口與 client、`ce08fc3` 瀏覽器冒煙測試。
+- **審查修正的 commit**（科學審查＋程式審查）：`d201a40` 擬合器對算不出來的區域如實回報（F1、F2、L1、L2）；`6d626ff` worker-core 的結果欄位、`MAX_STEPS`、錯誤分類、`defaultMode`／`countExcluded`、`onFatal`；`f2630d4` client 的每個 Promise 都會結清、`stop()` 延後重建（H1–H3、M3、M4、L5、L6）；`9987317` 追加 7 個擬合參考案例與測試整理；以及本文件所在的 docs commit。
+- **與本計畫／規格的出入**（規格已同步）：
+  1. 新增 `js/sasfit-linalg.js`（Jacobi SVD 與共變異自 fitter 拆出，載入順序在 fitter 之前；規格 §3.2、§3.3）。
+  2. FitResult 比原訂多六欄：`names`、`covariance`、`correlation`、`blockedByNonFinite`、`jacobianNonFinite`、`nonFiniteCurvePoints`（規格 §4.9）。擬合器層另外：`jacobian()` 多回傳 `nonFiniteColumns`，`svd()`／`covariance()` 多回傳 `converged`。
+  3. G4 的比較基準是 bumps 結果精修後的真正極小值（規格 §15 決策 20）。
+  4. `client.stop()` 不再立刻重建 Worker：沒有進行中的請求時什麼都不做，否則終止並把重建延後到下一個請求（規格 §4.10）。新增錯誤代碼 `WORKER_START_FAILED`。
+  5. 「被算不出來的區域擋住」的判定比審查意見的字面多兩個條件，否則 hayter_msa 的零星 NaN 會把已完成的擬合誤判為失敗：線性模型預測相對下降 ≤ ftol 的非有限試探步不算；非有限試探步之後若有「算得出來、預測下降 > ftol、卻仍被拒絕」的較短步，該次迭代不算被擋（規格 §4.9、`sasfit-fitter.js` 檔頭）。審查者的兩個合成案例（整條 NaN 的牆、單列 NaN 的牆）修正前報 `converged`，修正後報 `failed`＋`blockedByNonFinite`。
+- **未採用**：Nielsen 式阻尼更新（接受時 λ·max(1/3, 1−(2ρ−1)³)，拒絕時 λ·ν、ν 加倍）。實測（被接受的步數，現行 → Nielsen）：19 個參考案例最多 +2（cylinder 13 → 15；8a 3 → 4；10c 10 → 11；core_shell_sphere 8 → 7；案例 12 10 → 8；其餘不變），G4 門檻全過；低 Q 冪律放開 `lowq_power` 的 12 組由平均 79 步降到 25 步（101 → 26、111 → 35 …，其中 1 組由 13 升到 25）；但 |I| 權重配髒資料（60 個種子 × 3 種雜訊底）幾乎沒變（雜訊底 8e-3：平均 12.8 → 12.6、最大 103 → 98）。採用條件要求兩類都要明顯改善，所以整個還原、沒有 commit。阻尼更新不是 |I| 權重案例慢的原因；低 Q 冪律的改善留待之後單獨評估。
+- **已知限制**（規格 §16）：hayter_msa 的「有限但錯誤」跳點沒有旗標可擋——落在 Jacobian 鄰點上會讓誤差失真，擬合也可能停在孤立跳點上；介面必須讓 χ²ᵣ 與狀態並列。規格 §5.7 列出 M3 介面必須落實的 13 項要求。
+- **未驗證**：GitHub Pages 上 `.wasm` 的 Content-Type 與快取行為；Chromium 以外的瀏覽器；規格 §4.9「強相關問題上離真正極小值約 0.03σ」是科學審查者的量測，fixture 內沒有對應案例。

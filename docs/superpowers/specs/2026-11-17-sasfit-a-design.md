@@ -1,7 +1,7 @@
 # SAS 模型擬合頁（A 版）— 設計規格
 
 - 日期：2026-11-17
-- 狀態：v3——設計已與使用者逐段確認（共 5 段）；規格審查 3 輪（第 1 輪 6 項、第 2 輪 2 項問題已修正，第 3 輪核准）；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。待實作規劃
+- 狀態：v3——設計已與使用者逐段確認（共 5 段）；規格審查 3 輪（第 1 輪 6 項、第 2 輪 2 項問題已修正，第 3 輪核准）；使用者另就 4 項科學判斷作出決定（§15 #13–#16）。M1、M2 已實作；M2 審查（2026-11-18）後修訂 §3.2、§3.3、§4.8–§4.10、§11、§12、§16 並新增 §5.7
 - 目標產品：`saxs-calculator/`（GitHub Pages 單頁站），新版本 v5.3
 - 計算核心來源：SasView **sasmodels 1.0.12**（BSD-3-Clause）；擬合器與誤差對照 **bumps 1.0.4**
 - 參考：中央大學磁性與能源材料實驗室的「SAS Studio」（Google Sites 內嵌單檔 HTML，sasmodels 手工移植成 JS）。只參考功能與版面，**不複製其程式碼**——該站「版權所有」且未附授權。
@@ -71,10 +71,11 @@
 | `js/sasfit-weighting.js` | 權重 w_i、可參與擬合遮罩、`defaultRange(dataset, weighting)`（§4.8；純函式，主執行緒與 Worker 共用） | — |
 | `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、格式錯誤回報、條件值擷取 | — |
 | `js/sasfit-sld.js` | 化學式解析、X 光 SLD、預設物質表 | — |
-| `js/sasfit-fitter.js` | LM（可抽換介面）、數值 Jacobian、上下限、誤差 | — |
+| `js/sasfit-linalg.js` | 擬合器用的稠密線性代數：one-sided Jacobi SVD 與 bumps 式共變異（M2 自 fitter 拆出；原創程式） | — |
+| `js/sasfit-fitter.js` | LM（可抽換介面）、數值 Jacobian、上下限、誤差 | linalg |
 | `js/sasfit-worker-core.js` | Worker 訊息處理的純邏輯（wasm 載入器以參數注入，Node 可測） | evaluate、fitter |
 | `js/sasfit-worker.js` | **Worker 入口**：`importScripts` 載入純模組、接上 `self.onmessage`。唯一不在 `index.html` 載入的 JS | worker-core |
-| `js/sasfit-worker-client.js` | 主執行緒端：Worker 生命週期、latest-wins、停止＝terminate 重建、版本號 | — |
+| `js/sasfit-worker-client.js` | 主執行緒端：Worker 生命週期、latest-wins、停止＝terminate（下一個請求時才重建）、版本號 | worker-core（`settingsOf`） |
 | `js/sasfit-sequence.js` | 序列擬合排程（主執行緒，逐筆送 Worker；排程邏輯為純函式） | worker-client |
 | `js/sasfit-plots.js` | 主圖、殘差、疊圖、趨勢圖（Chart.js＋`ChartTheme`） | — |
 | `js/sasfit-shape3d.js` | Canvas 2D 3D 繪製器與各模型幾何 | — |
@@ -87,11 +88,11 @@
 
 ### 3.3 載入策略、模組慣例與守門測試
 
-**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、validate、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
+**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、validate、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、linalg、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
 
-**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → validate → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
+**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → validate → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → linalg → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
 
-**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → validate → weights → kernel → product → py-models → evaluate → weighting → fitter → worker-core（與 `index.html` 相對順序一致）。validate 必須排在 weights 之前：kernel、product、py-models、evaluate 在載入時就讀 `globalThis.SasFitValidate`（weights 在呼叫時讀）。Worker 依 `fit` 訊息中的權重選項，自行用 weighting 模組算 w_i 與遮罩。
+**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → validate → weights → kernel → product → py-models → evaluate → weighting → linalg → fitter → worker-core（與 `index.html` 相對順序一致）。linalg 必須排在 fitter 之前：fitter 在載入時就讀 `globalThis.SasFitLinalg`。validate 必須排在 weights 之前：kernel、product、py-models、evaluate 在載入時就讀 `globalThis.SasFitValidate`（weights 在呼叫時讀）。Worker 依 `fit` 訊息中的權重選項，自行用 weighting 模組算 w_i 與遮罩。
 
 **版本（快取）策略**：唯一來源是 `index.html` 的 `?v=`。`sasfit-worker-client.js` 在載入時讀 `document.currentScript.src` 的 `v` 參數；建立 Worker 時用 `js/sasfit-worker.js?v=<v>`；Worker 內讀 `self.location.search` 的 `v`，附加到每個 `importScripts` 與 wasm `fetch` 網址。程式中不得寫死版本字串。
 
@@ -215,7 +216,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 | \|I\| | \|I_i\| | I_i = 0 |
 | 不加權 | 1 | — |
 
-殘差 r_i = (I_i − I_model,i) / w_i。缺 σ 的檔案預設權重改為「不加權」並提示。
+殘差 r_i = (I_i − I_model,i) / w_i。缺 σ 的檔案預設權重改為「不加權」並提示；**有 σ 欄但沒有任何一個可用值**（全部為 0、負數或非有限）的檔案同樣改為「不加權」——`SasFitWeighting.defaultMode(dataset)` 只在至少一點的 σ 為有限正數時回傳 `'sigma'`，否則回傳 `'none'`（M2 審查）。`SasFitWeighting.countExcluded(dataset, mode)` 回傳該權重下被遮罩排除的點數，供介面顯示（§5.7）。
 
 **清理（不刪原始點，只標記）**：
 - 非有限值、q ≤ 0 → 排除。
@@ -227,36 +228,73 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 **Dataset 物件**（凍結）：`{ id, fileName, kind: 'official'|'generic', header, q, I, sigma, condition }`。w_i、可參與擬合遮罩、預設範圍都由 weighting 模組依當下權重即時計算，不存在物件內。遮罩一次涵蓋全部條件：finite(q)、q > 0、finite(I)、finite(w_i)、w_i > 0。data-io 只負責解析與錯誤回報（格式錯誤的行列入該檔的錯誤訊息），Worker 端不需要 data-io。
 
-### 4.9 擬合器（`sasfit-fitter.js`）
+### 4.9 擬合器（`sasfit-fitter.js`、`sasfit-linalg.js`）
 
 - 介面：`fit(problem, options) → FitResult`，`options.method = 'lm'`（A 版唯一值；B 版新增 DE、DREAM、Nelder–Mead、BFGS 時不改呼叫端）。
-- LM：Marquardt 對角縮放；殘差同 §4.8。
-- 上下限：試探步超出時截回邊界（projected LM）；結果落在邊界者標「觸及上限／下限」。
-- 終止條件預設與 bumps 1.0.4 `lm`（MPFit）相同：steps 200、ftol 1e-10、xtol 1e-10；達步數未收斂→標「未收斂」但照樣回報。
-- 模型輸出含非有限值→該步 χ² 視為 ∞、拒絕該步、加大阻尼。
+- LM：Marquardt 對角縮放；殘差同 §4.8。阻尼因子起始 1e-3，步被拒絕時 ×10，被接受且預測良好（實際／預測下降比 ≥ 0.75）時 ÷10。
+- 上下限：試探步超出時截回邊界（projected LM），所以貼邊界的參數值**恰等於**邊界；結果落在邊界者以 `atBound` 標「觸及上限／下限」。貼在邊界上的參數仍有**有限的誤差**——把它當自由參數算（與 bumps 相同，`lsqerror.py:105`），這個數字不代表該參數的不確定度，介面必須標明（§5.7）。
+- **終止條件**比照 bumps 1.0.4 `lm`（MPFit，`mpfit.py`），每個試探步之後（不論接受與否）檢查：
+  - ftol（`mpfit.py:1317`）：實際相對下降 |actred| ≤ ftol、線性模型預測的相對下降 prered ≤ ftol、且兩者之比 ≤ 2；
+  - xtol 的對應條件：MPFit 比的是信賴半徑，本站用阻尼因子而沒有半徑，改比「阻尼後試探步的縮放長度」|D·δp| ≤ xtol·|D·p|；
+  - 阻尼上限：阻尼因子超過 1e30（已經沒有更短的步可試）；
+  - gtol（`mpfit.py:1182`）：殘差與每一個自由欄的夾角餘弦 ≤ 1e-10（bumps 沿用 MPFit 預設）；
+  - 步數（`mpfit.py:1327`）：被接受的步數達 `maxSteps`→ `'maxiter'`（標「未收斂」但照樣回報）。
+  - 預設 steps 200、ftol 1e-10、xtol 1e-10。**ftol、xtol 固定**，不經 Worker 的 `options` 開放；`maxSteps` 可由 `options.maxSteps` 指定，上限 `MAX_STEPS`＝10000（`SasFitWorkerCore.MAX_STEPS`），超過回 `BAD_OPTIONS`。
+- **Jacobian**（迭代與最後算共變異用同一個函式）：前向差分，h_j = 1e-4·|p_j|（p_j＝0 時 h_j＝1e-4）；若 p_j + h_j 超過上限則改往後差分（這一步不看下限，與 bumps `lsqerror.py:99-110` 逐位元相同）。**只有在這一欄算出非有限值時**才重試：依序試 −h、+h/2、−h/2，會跨出 [下限, 上限] 的步略過，取第一個算得出來的。不需要重試時結果與原規則逐位元相同（測試對 19 個參考案例逐位元斷言）。
+- **模型算不出來的區域**（hayter_msa 會整條曲線回傳 NaN，§16）：
+  - 試探步的模型輸出含非有限值→該步 χ² 視為 ∞、拒絕、加大阻尼；不丟例外。
+  - 迭代中某一欄 Jacobian 四種步長都算不出來→該參數在**這一次迭代**固定不動（比照貼邊界的參數），其餘參數照常走。
+  - **不得把「被算不出來的區域擋住」報成收斂。** 規則（細節寫在 `sasfit-fitter.js` 檔頭）：線性模型預測相對下降 > ftol 的非有限試探步會開啟一道「牆」；ftol／xtol／阻尼上限在這種步之後觸發（中間沒有被接受的步，且之後沒有「算得出來、預測下降 > ftol、卻仍被拒絕」的較短步），或在牆還開著時觸發而以牆前的阻尼再試一步仍是非有限，或終止時仍有算不出來的 Jacobian 欄→ `status: 'failed'`、`blockedByNonFinite: true`，參數是目前為止最好的點、χ² 照常回報、誤差在算得出來的範圍內照算。預測下降 ≤ ftol 的非有限試探步不算（緊貼真正極小值旁的零星 NaN 不會把已完成的擬合變成失敗）。
+  - `'failed'` 只在這類情況出現：起始點本身非有限（此時 χ²＝∞、誤差全為 NaN、`blockedByNonFinite` 與 `jacobianNonFinite` 皆為 true），或上一點所述。只有有限試探步時，終止狀態就是上列條件的結果，`blockedByNonFinite` 為 false。
 - **共變異與誤差（比照 bumps，以便與 SasView 顯示的誤差一致）**：bumps 的 lm 不用 MPFit 自己的共變異（`nocovar=True`），而是在最佳解處另算 `lsqerror.jacobian`＋`jacobian_cov`。本站照做：
-  - Jacobian：前向差分，h_j = 1e-4·|p_j|（p_j＝0 時 h_j＝1e-4）；若 p_j + h_j 超過上限則改往後差分。
-  - C = V·diag(1/s²)·Vᵀ（J 的 SVD），奇異值 ≤ 1e-8 者以 1e-8 代之；發生代換時標「參數相關性過高，誤差不可靠」。JS 沒有內建 SVD：fitter 內實作 one-sided Jacobi SVD（自由參數僅十幾個，足夠快且數值穩定），以 numpy `linalg.svd` 的結果為測試基準，並列入 science-reviewer 審查。
+  - C = V·diag(1/s²)·Vᵀ（J 的 SVD），奇異值 ≤ 1e-8 者以 1e-8 代之。JS 沒有內建 SVD：`sasfit-linalg.js` 實作 one-sided Jacobi SVD（自由參數僅十幾個，足夠快且數值穩定），測試基準是以 60 位十進位算出的精確奇異值與共變異（條件數 1e12 時 LAPACK 的最小奇異值誤差達 1e-5，不適合當基準），numpy 與 bumps 的 `jacobian_cov` 只做交叉檢查。
+  - `illConditioned`：**只代表「有奇異值被代換成 1e-8」**（或 Jacobi SVD 在 60 次掃描內未收斂——未曾觀察到，`svd`／`covariance` 以 `converged` 回報）→ 標「參數相關性過高，誤差不可靠」。它不代表「算不出來」。
+  - `jacobianNonFinite`：最後的 Jacobian 有某一欄四種步長都算不出來。該參數的誤差與共變異的該列該行為 NaN；其餘參數的誤差是「把那個參數固定」算出來的（因此偏小）。
   - 原始誤差 σ_j = √C_jj。
   - **顯示規則**（使用者決定）：權重＝資料 σ 時顯示原始誤差（不乘 √χ²ᵣ）；權重＝√|I|、|I|、不加權時顯示 σ_j·√χ²ᵣ，並標「已乘 √χ²ᵣ」。報告 TXT 一律兩種都列。
-- LM 迭代中的 Jacobian 也用同一個前向差分函式。
 - 自由度 = 可參與擬合的點數 − 自由參數數（含被勾選的 PD 寬度）；範圍內點數必須 > 自由參數數，否則不允許開始。
-- FitResult（凍結）：`{ params, errors, errorsScaled, displayErrorsScaled, chi2, chi2r, dof, iterations, status: 'converged'|'maxiter'|'stopped'|'failed', atBound: {name: 'lower'|'upper'}, illConditioned, curve, residuals, settings }`。
+- **與真正極小值的距離**：G4 在 19 個參考案例上驗證「對精修後的真正極小值 < 0.01σ」（§11）。這不是對所有問題的保證：迭代用的前向差分 Jacobian 有偏，參數強相關（|相關係數| ≳ 0.99）時解可離真正極小值約 0.03σ（同一問題上原始 bumps 的距離是它的 3.45 倍），多出的 χ² < 1e-3（M2 科學審查實測，不在 fixture 內）。B 版候選「擬合後以中央差分精修」（§16）。
+- FitResult（凍結；由 `SasFitWorkerCore.buildFitResult` 組成，`client.stop()` 合成的結果有相同的欄位）：
+
+  ```
+  { params,                 // 送進來的全部參數，被擬合者換成新值
+    names,                  // 被擬合的參數名稱，擬合器的順序（＝fitFlags 的鍵順序）
+    errors, errorsScaled,   // { 名稱: σ_j }、{ 名稱: σ_j·√χ²ᵣ }
+    displayErrorsScaled,    // 權重不是資料 σ 時為 true：介面顯示 errorsScaled
+    covariance, correlation,// n×n 純陣列，列與行依 names；correlation＝C_ij/√(C_ii·C_jj)，任一變異數不是正數時為 NaN
+    chi2, chi2r, dof, iterations,
+    status,                 // 'converged' | 'maxiter' | 'stopped' | 'failed'
+    atBound,                // { 名稱: 'lower' | 'upper' }
+    illConditioned, blockedByNonFinite, jacobianNonFinite,   // 一律是布林值
+    nonFiniteCurvePoints,   // 最終全範圍曲線中非有限值的個數
+    curve, residuals,       // 全部資料點上的模型值；殘差在未參與的點為 NaN
+    settings }              // { modelSpec, weighting, range, cutoff, maxSteps, method, ftol, xtol }
+  ```
 
 ### 4.10 Worker 協定
 
 | 方向 | 型別 | 內容 |
 |---|---|---|
-| → | `evaluate` | `{ reqId, modelSpec, params, q, opts }`（`opts.cutoff`）；Worker 只處理最新的 reqId（latest-wins，舊請求丟棄） |
+| → | `evaluate` | `{ reqId, modelSpec, params, q, opts }`（`opts.cutoff`）；Worker 只處理最新的 reqId（latest-wins，舊請求丟棄，連錯誤也不回） |
 | ← | `curve` | `{ reqId, I, extras }` |
-| → | `fit` | `{ jobId, modelSpec, params, fitFlags, bounds, data, range, weighting, options }` |
-| ← | `progress` | `{ jobId, iteration, chi2r }`（每步） |
+| → | `fit` | `{ jobId, modelSpec, params, fitFlags, bounds, data, range, weighting, options }`（`options`＝`{ maxSteps, cutoff }`，§4.9） |
+| ← | `progress` | `{ jobId, iteration, chi2r }`——**每個被接受的步一則**（被拒絕的試探步不回報）；最後一則的 χ²ᵣ 等於結果的 χ²ᵣ |
 | ← | `result` | `{ jobId, fitResult }` |
-| ← | `error` | `{ reqId|jobId, code, message }` |
+| ← | `error` | `{ reqId|jobId, code, message, detail }`；`message` 是給使用者的中文，`detail` 是技術細節（英文），介面寫入 `console.warn`（§12） |
 
-- wasm 在 Worker 內以 `fetch`（網址帶 `?v=`）載入並快取（每模型一次）。
-- 「停止」＝`worker.terminate()` 後重建 Worker（立即生效）；序列擬合停止亦同。
-- Worker 異常結束→提示並自動重建，可直接重試。
+- wasm 在 Worker 內以 `fetch`（網址帶 `?v=`）載入並快取（每模型一次）；載入失敗或 wasm trap 後該模型不留在快取，下一個請求重新載入。
+- **錯誤代碼**
+  - Worker 端（`SasFitWorkerCore.ERROR_CODES`）：`BAD_MESSAGE`、`UNKNOWN_TYPE`、`UNKNOWN_MODEL`、`BAD_PARAMS`、`BAD_FIT_FLAGS`、`BAD_BOUNDS`、`BAD_DATA`、`BAD_RANGE`、`BAD_WEIGHTING`、`BAD_OPTIONS`、`TOO_FEW_POINTS`、`WASM_LOAD`、`WASM_TRAP`、`INTERNAL`。`BAD_PARAMS` 依**出處**判定：本檔明寫的檢查，以及 `SasFitEvaluate.evaluate`（計算核心自己的輸入檢查）丟出的一般 `Error`；擬合器、權重模組或其他地方丟出的任何錯誤一律是 `INTERNAL`。
+  - 主執行緒端（`SasFitWorkerClient.ERROR_CODES`）：`SUPERSEDED`（被較新的 evaluate 取代，呼叫端忽略）、`BUSY`、`STOPPED`、`WORKER_CRASH`、`WORKER_START_FAILED`、`DISPOSED`、`POST_FAILED`。
+  - Worker 入口檔自己會送兩種沒有 id 也沒有 `message` 的 `error`（中文訊息由 client 補上）：`importScripts` 失敗→`WORKER_START_FAILED`；收到無法還原的訊息（`messageerror`）→`BAD_MESSAGE`。沒有 id 的 `error` 使所有進行中的請求一起 reject。
+- **一次只能有一個擬合**：已有擬合進行中時再呼叫 `client.fit` → reject，code `BUSY`。
+- **「停止」**＝`client.stop()`：
+  - 沒有進行中的請求時不做任何事（保留已載入 wasm 的 Worker）。
+  - 否則 `worker.terminate()`（Worker 內的擬合迴圈是同步的，收不到訊息，只能終止），並結清所有進行中的請求：擬合以**合成的結果** resolve——`status: 'stopped'`、`params` 為送出時的值、`names`／`covariance`／`correlation` 為空、沒有誤差、三個旗標為 false、`nonFiniteCurvePoints` 0、`chi2`／`chi2r`／`dof`／`curve`／`residuals` 為 null、`iterations` 為最後一次回報的步數；evaluate 以 `STOPPED` reject。
+  - **新的 Worker 延後到下一個請求才建立**（lazy）。序列擬合停止亦同。
+- Worker 異常結束（`error` 事件帶訊息、`messageerror`、或 `result`／`curve` 訊息的格式不對）→ 進行中的請求以 `WORKER_CRASH` reject；Worker 腳本載不到（`error` 事件沒有訊息）或無法建立→ `WORKER_START_FAILED`。兩者都在下一個請求才重建（立刻重建時，若腳本本身載不到會無限重試）。
+- `onProgress` 回呼丟出例外不影響擬合：例外被攔下、之後的進度照送、擬合照常結束，例外改由 microtask 重新丟出（成為頁面的 uncaught error，不會無聲消失）。
+- client 發出的每一個 Promise 在所有路徑上都會結清（測試逐一路徑驗證）。
 - 單次 evaluate 超過 300 ms 時，預覽改為「計算中…」狀態顯示（不阻擋操作）。
 
 ## 5. 介面規格
@@ -313,6 +351,30 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - 疊圖：沿用 8 色系列，第 9 組起重複色並改虛線；作用中資料加粗；有擬合結果者畫曲線。
 - 殘差圖：r_i（§4.8），x 軸跟隨主圖模式（log-log、Kratky 用 q；Guinier 用 q²）；只畫作用中資料。
 - 縮放沿用 chartjs-plugin-zoom；「重設縮放」。PNG 匯出一律淺色白底。
+
+### 5.7 M2 審查對介面的要求（M3 必須實作）
+
+M2 的科學審查與程式審查（2026-11-18）指出，下列情況擬合器與 Worker 都如實回報了，但只有介面能讓使用者看懂。M3 實作擬合分段與參數表時逐條落實，並各有測試。
+
+**結果的呈現**
+1. **χ²ᵣ 永遠與狀態並列顯示**。χ²ᵣ 很大（例：> 10）時加上醒目的提示：「擬合可能停在局部極小值，請調整起始值後重試」。原因：LM 只保證到達附近的極小值——起始半徑偏 20%、範圍涵蓋多個振盪條紋時，會以 `'converged'` 停在 χ²ᵣ 約 10³ 的地方（bumps 的行為相同）。「已收斂」不等於「擬合得好」。
+2. `iterations === 0` 要標出來（起始點已是極小值，或一步都走不動），不可與一般的收斂混在一起。
+3. 三種旗標各有**不同的訊息**，不可共用同一句：
+   - `status: 'failed'` 且 `blockedByNonFinite`：「在這組參數附近模型無法計算」（並提示改起始值或上下限）。
+   - `jacobianNonFinite`：誤差算不出來（指出哪些參數的誤差是空的；其餘參數的誤差是把那些參數固定後算的，偏小）。**不是**「參數相關性過高」。
+   - `illConditioned`：「參數相關性過高，誤差不可靠」。
+4. `nonFiniteCurvePoints > 0` 時顯示「模型曲線有 N 點無法計算」。
+5. 參數貼在邊界上（`atBound`）時，它的誤差欄標「貼邊界，誤差無意義」（數字仍是有限值，算法與 bumps 相同，見 §4.9）。
+6. 由 `correlation` 顯示強相關的參數對（|相關係數| > 0.98），例：「radius 與 thickness 高度相關（−0.99）」。
+7. `status: 'maxiter'` 時提供「從目前的值繼續擬合」（以結果的 `params` 為新的起始值再送一次）。
+8. 「已乘 √χ²ᵣ」的標示必須讓人看得出：此時顯示的誤差與 SasView 顯示的誤差相差 √χ²ᵣ 倍（SasView 一律顯示未乘的值）；滑鼠提示或說明文字寫出換算。
+9. 錯誤訊息的 `detail`（技術細節）寫入 `console.warn`，畫面只顯示 `message`。Worker 無法啟動（`WORKER_START_FAILED`）與異常結束（`WORKER_CRASH`）用各自的訊息（§12）。
+
+**擬合前的防呆**
+10. 選用 hayter_msa 時顯示 §16 的提示；`charge` 的預設下限要明顯大於 0（例：0.5）——charge＝0 時 `hayter_msa.c` 整條曲線回傳 NaN。
+11. 權重為 √|I| 或 |I|、而擬合範圍內有 I ≤ 0 的點時提出警告（I＝0 的點被排除；I < 0 的點以 |I| 當權重，接近 0 的負值會主導 χ²）。權重選單旁顯示每一種權重會排除幾點（`SasFitWeighting.countExcluded`）。
+12. 某個 PD 寬度被勾選擬合、而目前值為 0 時，起始值改用小的正數（0.05）：從恰好 0 出發，第一步可能直接跳到上限（bumps 的行為相同）。
+13. 缺 σ、或 σ 欄沒有任何可用值的檔案，權重預設「不加權」並提示（`SasFitWeighting.defaultMode`，§4.8）。
 
 ## 6. 3D 結構示意圖（`sasfit-shape3d.js`）
 
@@ -392,13 +454,15 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | G1 | wasm＋調度層 vs sasmodels（cutoff＝1e-5）：每模型預設值；每個可多分散參數 × {gaussian, schulz(nsigmas 3), schulz(nsigmas 8, 寬度 0.3 與 0.4)}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；vesicle@S 的 volfraction 例外；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點。**P@S 案例分兩層**：元件層——有效半徑、體積比、殼層體積，以及把參考有效半徑代入後的 I(q) 與 S(q)——用同一條 1e-9 規則；端到端 I(q) 用 1e-7（見 §15 決策 19）。**M1 審查後追加三組**（fixture 標籤前綴）：`hmsa:`——hayter_msa 的 charge、temperature、concentration_salt、dielectconst、volfraction 取非預設值（預設的鹽濃度是 0）：8 個 P@hayter_msa（sphere、core_shell_sphere、ellipsoid、cylinder × 兩種組合方式，部分帶多分散）**只在元件層把關**（有效半徑、體積比、殼層體積，與代入參考有效半徑後的 I(q)、S(q)，皆 1e-9），端到端只確認算得出來並回報差異，不設門檻（§16）；另 4 個單獨的 hayter_msa S(q)，q 網格自 2qR＝0.15 起算，嚴格 1e-9。`dist:`——lognormal、rectangle、uniform、boltzmann 經 kernel 的多分散（sphere 的 radius、cylinder 的 length，共 8 個）。`pd3:`——三個參數同時多分散、各 8 點、混用分布（core_shell_cylinder、flexible_cylinder），512 個網格點分 6 段。合計 167 個案例：159 個有端到端門檻，8 個僅元件層；測試分開計數，不得默默略過 | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\|；P@S 端到端為 1e-7·\|ref\| + 1e-12·max\|ref\| |
 | G2 | 手寫 JS（guinier_porod、power_law） | 同 G1 |
 | G3 | sasmodels 內附官方測試（清單 15 模型）：**只跑 1D、非磁性案例**；包含 `@S` 乘積測試與 Fq 多輸出測試（F、F²、R_eff、V、form:shell 比值）。轉接層用 sasmodels API 預設（`_pd_n`=0、`_pd_nsigma`=3、`_pd_type`=gaussian、cutoff＝0），與 UI 預設分開 | sasmodels 自身容許誤差 |
-| G4 | 擬合器 vs bumps lm（`Experiment(..., cutoff=1e-5)`、`FitDriver` 的 cov／stderr）：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值；含 1 組擬合 PD 寬度的案例，另加低 Q 冪律、觸及上限與下限各 1 組、三種非 σ 權重，共 12 組。**參數的比較基準是「精修後的真正極小值」**：bumps `lm` 的結果再以 `scipy.optimize.least_squares`（三點差分 Jacobian、容許值 1e-15）精修，貼在邊界上的參數固定在邊界；誤差、共變異、Jacobian、殘差都在精修後的點用 bumps 的 `lsqerror` 重算（§15 決策 20）。原始的 bumps 結果另存為 `bumpsRaw`，產生器（`tools/sasfit/gen_reference_fit.py`）斷言它與精修值相差 < 0.02σ、每案確實收斂、貼邊界者恰等於邊界，並印出每案的實際差距 | 對精修值：參數差 < 0.01σ（σ＝精修點的 bumps stderr）；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
+| G4 | 擬合器 vs bumps lm（`Experiment(..., cutoff=1e-5)`、`FitDriver` 的 cov／stderr）：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值；含 1 組擬合 PD 寬度的案例，另加低 Q 冪律、觸及上限與下限各 1 組、三種非 σ 權重，共 12 組；**M2 審查後追加 7 組**（標籤 10a–13）：含髒點的資料（150 點，其中 σ＝0 四點、σ<0 一點、I＝0 兩點、I ≤ 0 共 10 點）分別以四種權重擬合——fixture 存完整的髒資料與應參與的點數 `nUsed`（145／148／148／150），產生器先套用本站的遮罩規則再交給 bumps，JS 測試同時驗證遮罩點數與自由度；兩端都收窄的 Q 範圍 1 組；貼上限而其餘自由參數為非線性的 core_shell_sphere 1 組；sphere@hayter_msa（擬合 radius、charge、volfraction，charge 範圍 [1, 100]，R＝30 Å 的良性參數區）1 組。合計 19 組，原 12 組的位元組不變。**參數的比較基準是「精修後的真正極小值」**：bumps `lm` 的結果再以 `scipy.optimize.least_squares`（三點差分 Jacobian、容許值 1e-15）精修，貼在邊界上的參數固定在邊界；誤差、共變異、Jacobian、殘差都在精修後的點用 bumps 的 `lsqerror` 重算（§15 決策 20）。原始的 bumps 結果另存為 `bumpsRaw`，產生器（`tools/sasfit/gen_reference_fit.py`）斷言它與精修值相差 < 0.02σ、每案確實收斂、貼邊界者恰等於邊界，並印出每案的實際差距 | 對精修值：參數差 < 0.01σ（σ＝精修點的 bumps stderr）；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
 | G5 | data-io 與 weighting：合成官方格式檔與一般檔（公開 fixtures）；真實 `.dat`（`tests/fixtures-local/sasfit/`，已被 `.gitignore` 擋，缺檔即 skip）；四種權重的 w_i、可參與點判定與 `defaultRange` | 檔頭欄位、點數、清理標記、預設範圍、條件值正確 |
 | G6 | SLD：化學式解析與數值 vs periodictable 的原子量與 Z 獨立計算（例：水 1.0 g/cm³ ≈ 9.420×10⁻⁶ Å⁻²） | 相對差 ≤ 1e-6 |
 | G7 | 站內既有測試全部綠燈；`result-golden` 與 `markup-v4.15` fixture 不得重產；守門測試只依 §3.3 修改（含 markup 區段規則與 Worker 清單測試）；版本號一致 | 全過 |
 | G8 | Playwright（本機 http.server，text-to-cad venv）：無 console 錯誤；載入合成 `.dat`→預覽→擬合→序列（3 組）→送 IUCr→複製表格→各匯出→3D 渲染非空；淺／深兩主題 axe 0 違規；Worker 與 wasm 請求網址帶 `?v=` | 全過 |
 
 - 效能：Phase 0 量測最重組態（core_shell_cylinder＋兩個多分散參數、400 點）的單次評估與一次典型擬合時間，寫進報告；據此訂定預覽／擬合的效能預算，超出者以「計算中…」與進度呈現。
+  - **瀏覽器實測**（M2，`tools/sasfit/smoke_browser.py`，headless Chromium、Worker 內、每次 400 個 q 點）：sphere＋schulz 多分散 80 點 0.4 ms；cylinder 單參數多分散 35 點 24 ms；cylinder 兩參數各 35 點（35×35）755 ms；3 個參數的 sphere 擬合全程 3.6 ms。
+  - **A 版的處理方式**：只用一個 Worker，不做多 Worker 平行。球形類與單參數多分散遠低於 300 ms 的預覽門檻；只有「兩個參數同時多分散的圓柱類」超過（單次約 0.75 秒，一次擬合數十秒），以進度（每個被接受的步回報 χ²ᵣ）與「停止」處理，預覽顯示「計算中…」。多 Worker 分 q 平行列為 B 版候選（§16）。
 - 科學審查：science-reviewer 審 weights／kernel／product 移植、SLD 公式與預設物質、誤差慣例、權重與清理規則。
 - 程式審查：每任務規格＋品質雙審；收尾 code review（CRITICAL／HIGH 必修）。
 
@@ -409,9 +473,13 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 檔案無法解析 | 該檔列顯示原因與行號；其他檔照常 |
 | 可參與擬合的點 ≤ 自由參數數 | 擬合按鈕停用並說明 |
 | wasm 載入失敗（網路、MIME、`file://`） | 擬合頁顯示原因與解法；其他分頁不受影響（wasm 只在本頁載入） |
-| Worker 異常結束 | 提示、自動重建、可重試 |
+| Worker 異常結束（`WORKER_CRASH`） | 提示、下一個請求時自動重建、可重試 |
+| Worker 無法啟動（`WORKER_START_FAILED`：無法建立 Worker、Worker 腳本或某個 `importScripts` 模組載入失敗） | 擬合頁顯示「計算執行緒無法啟動」與解法（確認網路、重新整理）；`detail` 含失敗的網址；下一個請求會再試一次，不會無限重試 |
+| 擬合被算不出來的區域擋住（`status: 'failed'`、`blockedByNonFinite`） | 結果照常顯示（目前最好的參數與 χ²ᵣ），標「在這組參數附近模型無法計算」，建議改起始值或上下限（§5.7） |
+| 最後的 Jacobian 有算不出來的欄（`jacobianNonFinite`） | 該參數的誤差顯示為空並說明；其餘誤差照常顯示並註明偏小。不使用「參數相關性過高」的訊息 |
+| 模型曲線有非有限點（`nonFiniteCurvePoints > 0`） | 顯示點數；這些點不畫 |
 | 模型輸出 NaN／Inf | 擬合時拒絕該步；預覽時曲線不更新並提示參數可能不合理 |
-| 奇異值被代換（§4.9） | 誤差照常顯示並標「參數相關性過高，誤差不可靠」 |
+| 奇異值被代換（§4.9，`illConditioned`） | 誤差照常顯示並標「參數相關性過高，誤差不可靠」 |
 | 未收斂／觸及邊界 | 結果照常顯示＋狀態標記 |
 | 輸入不合法 | 欄位層級錯誤訊息；不送預覽、不允許擬合 |
 | 點數超過上限：單一參數的多分散取點 `*_pd_n` > `MAX_PD_POINTS`（1000）、多分散網格總點數（各參數取點數的乘積）> `MAX_EVAL_POINTS`（1e6）、q 點數 > `MAX_Q_POINTS`（1e6）或為 0；`*_pd`、`*_pd_n`、`*_pd_nsigma` 不是有限數 | 計算核心在配置任何緩衝區之前丟出指名該參數與上限的 Error（常數在 `SasFitValidate`）；介面轉成欄位層級錯誤訊息，不送預覽、不允許擬合。上限內 `*_pd_n` 沿用 sasmodels 語意（`int()` 截斷；不足 2 點＝只取中心值） |
@@ -472,6 +540,7 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 - 這是上游程式的行為：SasView 的表現相同；本站把 C 原始碼原樣編譯，不做修改，wasm 在相同輸入下於相同位置出現離群點（離群點上的數值不一定與原生相同，如上例）。
 - 對驗證的影響：P@hayter_msa 取非預設 S 參數時不設端到端門檻，只在元件層把關（§11 G1、§15 決策 19）。`tests/sasfit-product.test.js` 有兩個特性測試把這個限制留作證據（q＝1e-3、半徑 80–105 Å 掃 201 點：wasm 得 1 點 NaN、4 點偏離中位數超過 10%；以及上述 2qR≈70 的尖峰）——上游若修好，這兩個測試會失敗，屆時應回頭收緊門檻。
 - 對後續里程碑的要求：M2 擬合器與 M3 介面必須把 hayter_msa 回傳的 NaN 或跳點當成**預期中的輸入**，不是程式錯誤——擬合器要有非有限值防護（拒絕該步，§12），介面在選用 hayter_msa 時提示「此結構因子在低 q 可能出現不連續或無法計算的點（sasmodels／SasView 相同）」。
+- M2 的落實（§4.9）：NaN 的試探步被拒絕；Jacobian 鄰點為 NaN 時換步長重試；被算不出來的區域擋住時回報 `failed`＋`blockedByNonFinite` 而不是收斂。**擋不住的是「有限但錯誤」的跳點**：它落在 Jacobian 的鄰點上時，那一次迭代的方向與最後的誤差都會受影響而沒有任何旗標（實測：R＝90 Å、q 自 1e-3 Å⁻¹、charge 16.3、鹽 0.056 M、起始值各偏 ±20% 的 40 次擬合，修正前 38 次 `converged`、2 次 `failed`，修正後 40 次都是 `converged` 且沒有任何旗標；其中 39 次的 χ²ᵣ 在 0.78–1.37，但有 3 次的 radius 誤差比其他次小 5–30 倍（Jacobian 鄰點落在跳點上），另 1 次停在模型的一個孤立跳點上——該點的 χ² 比四周所有的點都低，擬合器無從分辨，以 `converged` 回報 χ²ᵣ＝4.2、charge＝41）。所以介面的 hayter_msa 提示要包含「誤差可能不可靠」，而且 χ²ᵣ 必須與狀態並列（§5.7 第 1 點）。
 
 **B 版候選：**
 
@@ -481,6 +550,8 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 - 異常散射 f′／f″（能量相依 SLD）；
 - 多組資料共用參數的聯合擬合、參數約束式；
 - 專案存檔／讀檔；
+- 多 Worker 分 q 平行（兩參數同時多分散的圓柱類：A 版單次計算約 0.75 秒，§11）；
+- 擬合後以中央差分精修（消除前向差分 Jacobian 在強相關問題上留下的約 0.03σ 偏差，§4.9）；
 - GitHub Actions 雲端編 wasm（換電腦免裝 emsdk）；
 - 標準化 Kratky（需 Rg、I(0)）。
 
