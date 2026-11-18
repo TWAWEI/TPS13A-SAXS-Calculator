@@ -259,6 +259,14 @@ SasFitEvaluate.evaluate(modelSpec, params, q, opts, kernels) → { I: Float64Arr
 
 ### Task 8: M1 審查
 
-- [ ] **科學審查**（science-reviewer 角色，獨立子代理，不給實作者的結論）：逐檔對照 sasmodels 原文審 `sasfit-weights.js`、`sasfit-kernel.js`、`sasfit-product.js`、`sasfit-py-models.js`；檢查 G1 案例是否真的涵蓋規格 §11 所列組合、有沒有被略過的案例、容許誤差有沒有被放寬。
-- [ ] **程式審查**（code-reviewer）：`git diff 32fe16e..HEAD -- saxs-calculator/js tools/sasfit saxs-calculator/tests`；CRITICAL／HIGH 必修。
-- [ ] 修正後全測試綠；commit。
+- [x] **科學審查**（science-reviewer 角色，獨立子代理，不給實作者的結論）：逐檔對照 sasmodels 原文審 `sasfit-weights.js`、`sasfit-kernel.js`、`sasfit-product.js`、`sasfit-py-models.js`；檢查 G1 案例是否真的涵蓋規格 §11 所列組合、有沒有被略過的案例、容許誤差有沒有被放寬。
+- [x] **程式審查**（code-reviewer）：`git diff 32fe16e..HEAD -- saxs-calculator/js tools/sasfit saxs-calculator/tests`；CRITICAL／HIGH 必修。
+- [x] 修正後全測試綠；commit。
+
+## M1 完成紀錄（2026-11-18）
+
+- 測試：`node --test saxs-calculator/tests/*.test.js` 758 項全過（審查修正前 695）。G1 共 167 案例：159 個有端到端門檻（100 個 1e-9、59 個 P@S 1e-7），8 個 P@hayter_msa 僅元件層；G2 14、G3 97。
+- 審查修正的 commit：`231a5ba` 共用輸入檢查、`2ffb51b` 點數上限與 `__proto__` 安全、`8a6411a` 工具改丟 `RuntimeError`＋meta 原子寫入、`b836ccb` G1 追加 `hmsa:`／`dist:`／`pd3:`，以及本文件所在的 docs commit。
+- 與規格檔案清單的兩處出入（規格 §3.2、§3.3 已同步）：新增 `js/sasfit-validate.js`（載入順序在 meta 之後）；`evaluate` 多第五個參數 `kernels`（wasm exports 由呼叫端注入）。
+- `tools/sasfit/gen_reference.py` 超過 800 行，依 fixture 拆成 `ref_common.py`、`gen_reference.py`、`gen_reference_g3.py`；既有 fixture 數字逐位元不變。
+- 已知限制：sasmodels 上游的 hayter_msa 數值不穩定（規格 §16），M2／M3 須把它的 NaN 與跳點當成預期輸入。未做（留待後續）：熱路徑微最佳化（kernel 物件與名稱集合的快取）、fixture 內寫入 `nCases`。

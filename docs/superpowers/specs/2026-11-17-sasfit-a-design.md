@@ -62,11 +62,12 @@
 | `wasm/manifest.json` | 各 wasm 的 SHA-256、sasmodels 版本、emscripten 版本、編譯旗標 | — |
 | `wasm/LICENSE-sasmodels.txt` | sasmodels 授權全文 | — |
 | `js/sasfit-meta.js` | 15 個模型的參數表（名稱、單位、上下限、預設、類別、可否多分散、`have_Fq`、有效半徑模式、說明）。**腳本產生，勿手改**；精簡格式（每個參數一行），受 800 行上限約束——B 版擴充時改為每模型一檔 | — |
-| `js/sasfit-weights.js` | 六種分布的取點與權重（移植 `weights.py`） | — |
-| `js/sasfit-kernel.js` | 調度層：組 details／values、分段呼叫 wasm、讀回 F1／F2 與附加量（移植 `details.py`、`kerneldll.py`、`kernel.py` 的 1D 路徑） | weights、meta |
-| `js/sasfit-product.js` | P@S 組合、β 近似、有效半徑（移植 `product.py`） | kernel |
-| `js/sasfit-py-models.js` | Python 核心模型的手寫 JS：`guinier_porod`、`power_law` | — |
-| `js/sasfit-evaluate.js` | 單一入口 `evaluate(modelSpec, params, q, opts)`：組合 P、S、低 Q 冪律；`opts.cutoff` 預設 1e-5 | kernel、product、py-models |
+| `js/sasfit-validate.js` | 計算模組共用的輸入檢查：own-property 判斷、數值／`cutoff`／`q` 檢查、未知參數回報，以及點數上限常數 `MAX_PD_POINTS`、`MAX_EVAL_POINTS`、`MAX_Q_POINTS`（§12）。原創程式，非 sasmodels 衍生（M1 審查後新增） | — |
+| `js/sasfit-weights.js` | 六種分布的取點與權重（移植 `weights.py`） | validate |
+| `js/sasfit-kernel.js` | 調度層：組 details／values、分段呼叫 wasm、讀回 F1／F2 與附加量（移植 `details.py`、`kerneldll.py`、`kernel.py` 的 1D 路徑） | validate、weights、meta |
+| `js/sasfit-product.js` | P@S 組合、β 近似、有效半徑（移植 `product.py`） | validate、kernel |
+| `js/sasfit-py-models.js` | Python 核心模型的手寫 JS：`guinier_porod`、`power_law` | validate、meta |
+| `js/sasfit-evaluate.js` | 單一入口 `evaluate(modelSpec, params, q, opts, kernels)`：組合 P、S、低 Q 冪律；`opts.cutoff` 預設 1e-5；`q` 必須是 `Float64Array`；第五個參數 `kernels`＝`{ 模型名: wasm exports }`，由呼叫端載入後注入（Node 可測） | validate、kernel、product、py-models |
 | `js/sasfit-weighting.js` | 權重 w_i、可參與擬合遮罩、`defaultRange(dataset, weighting)`（§4.8；純函式，主執行緒與 Worker 共用） | — |
 | `js/sasfit-data-io.js` | 解析 `.dat`／文字檔、檔頭欄位、格式錯誤回報、條件值擷取 | — |
 | `js/sasfit-sld.js` | 化學式解析、X 光 SLD、預設物質表 | — |
@@ -86,11 +87,11 @@
 
 ### 3.3 載入策略、模組慣例與守門測試
 
-**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
+**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、validate、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
 
-**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
+**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → validate → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
 
-**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → weights → kernel → product → py-models → evaluate → weighting → fitter → worker-core（與 `index.html` 相對順序一致）。Worker 依 `fit` 訊息中的權重選項，自行用 weighting 模組算 w_i 與遮罩。
+**Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → validate → weights → kernel → product → py-models → evaluate → weighting → fitter → worker-core（與 `index.html` 相對順序一致）。validate 必須排在 weights 之前：kernel、product、py-models、evaluate 在載入時就讀 `globalThis.SasFitValidate`（weights 在呼叫時讀）。Worker 依 `fit` 訊息中的權重選項，自行用 weighting 模組算 w_i 與遮罩。
 
 **版本（快取）策略**：唯一來源是 `index.html` 的 `?v=`。`sasfit-worker-client.js` 在載入時讀 `document.currentScript.src` 的 `v` 參數；建立 Worker 時用 `js/sasfit-worker.js?v=<v>`；Worker 內讀 `self.location.search` 的 `v`，附加到每個 `importScripts` 與 wasm `fetch` 網址。程式中不得寫死版本字串。
 
@@ -123,6 +124,7 @@
 | hayter_msa | structure-factor | C | 2 | — | —（A 版不開放 S 參數多分散） | — |
 
 - 取向參數 theta／phi 只用於二維資料，1D 介面不顯示（與 SasView 1D 相同）。
+- 產生的 `sasfit-meta.js` 完全照 sasmodels 的 `pd_1d`，因此 `hayter_msa.radius_effective` 標為可多分散（`pd: true`），計算核心也接受它的 `radius_effective_pd*`（`radius_effective_mode` 為 0 時由 S 平均，其他模式下被忽略，與 sasmodels 相同）。A 版介面不開放這個選項——上表該格寫的是介面，不是 meta。
 - 「可接 S(Q)」限 6 個同時具備 `have_Fq` 與有效半徑模式的形狀模型；其餘模型的 S(Q) 選單停用並說明原因。
 
 ### 4.2 強度定義與 kernel 介面
@@ -177,7 +179,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
   I(q) = scale / ⟨V_shell⟩ · **volfraction** · PS + background
 
   **例外**：P 自帶 `volfraction`（清單中為 vesicle）時，S 的 `volfraction` 自參數集省略，且不乘入前因子（P 已在絕對尺度）。
-- 參數集＝P 的參數＋S 的參數（S 中與 P 同名者依 `_tag_parameter` 加 `_S` 後綴；vesicle 時省略 S 的 volfraction）＋兩個模式參數。
+- 參數集＝P 的參數＋S 的參數（vesicle 時省略 S 的 volfraction）＋兩個模式參數。sasmodels 1.0.12 裡替同名參數加 `_S` 後綴的 `_tag_parameter` 是死碼（`product.py:201-205` 最後保留的是未加後綴的那一個），所以**不實作後綴**。本清單的 6×2 種組合除 volfraction 外沒有任何同名參數；JS 端遇到其他同名情形一律丟 Error，不會默默產生重複名稱。
 - 介面說明（依模型產生）：一般模型顯示「接 S(Q) 時強度同時乘上 scale 與 volfraction；volfraction 也決定 S(Q) 的形狀」；vesicle 顯示「使用模型本身的 volfraction」。
 - 其餘細節以 `product.py` 原文為準，由 G1 驗證。
 
@@ -387,7 +389,7 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 
 | 門檻 | 內容 | 通過標準 |
 |---|---|---|
-| G1 | wasm＋調度層 vs sasmodels（cutoff＝1e-5）：每模型預設值；每個可多分散參數 × {gaussian, schulz(nsigmas 3), schulz(nsigmas 8, 寬度 0.3 與 0.4)}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；vesicle@S 的 volfraction 例外；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點。**P@S 案例分兩層**：元件層——有效半徑、體積比、殼層體積，以及把參考有效半徑代入後的 I(q) 與 S(q)——用同一條 1e-9 規則；端到端 I(q) 用 1e-7（見 §15 決策 19） | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\|；P@S 端到端為 1e-7·\|ref\| + 1e-12·max\|ref\| |
+| G1 | wasm＋調度層 vs sasmodels（cutoff＝1e-5）：每模型預設值；每個可多分散參數 × {gaussian, schulz(nsigmas 3), schulz(nsigmas 8, 寬度 0.3 與 0.4)}；6 個可接 S(Q) 模型 × {hardsphere, hayter_msa} × {P*S, β}；有效半徑各模式；vesicle@S 的 volfraction 例外；低 Q 冪律和模型。q 網格：1e-3–1 Å⁻¹ 對數 200 點。**P@S 案例分兩層**：元件層——有效半徑、體積比、殼層體積，以及把參考有效半徑代入後的 I(q) 與 S(q)——用同一條 1e-9 規則；端到端 I(q) 用 1e-7（見 §15 決策 19）。**M1 審查後追加三組**（fixture 標籤前綴）：`hmsa:`——hayter_msa 的 charge、temperature、concentration_salt、dielectconst、volfraction 取非預設值（預設的鹽濃度是 0）：8 個 P@hayter_msa（sphere、core_shell_sphere、ellipsoid、cylinder × 兩種組合方式，部分帶多分散）**只在元件層把關**（有效半徑、體積比、殼層體積，與代入參考有效半徑後的 I(q)、S(q)，皆 1e-9），端到端只確認算得出來並回報差異，不設門檻（§16）；另 4 個單獨的 hayter_msa S(q)，q 網格自 2qR＝0.15 起算，嚴格 1e-9。`dist:`——lognormal、rectangle、uniform、boltzmann 經 kernel 的多分散（sphere 的 radius、cylinder 的 length，共 8 個）。`pd3:`——三個參數同時多分散、各 8 點、混用分布（core_shell_cylinder、flexible_cylinder），512 個網格點分 6 段。合計 167 個案例：159 個有端到端門檻，8 個僅元件層；測試分開計數，不得默默略過 | \|Δ\| ≤ 1e-9·\|ref\| + 1e-12·max\|ref\|；P@S 端到端為 1e-7·\|ref\| + 1e-12·max\|ref\| |
 | G2 | 手寫 JS（guinier_porod、power_law） | 同 G1 |
 | G3 | sasmodels 內附官方測試（清單 15 模型）：**只跑 1D、非磁性案例**；包含 `@S` 乘積測試與 Fq 多輸出測試（F、F²、R_eff、V、form:shell 比值）。轉接層用 sasmodels API 預設（`_pd_n`=0、`_pd_nsigma`=3、`_pd_type`=gaussian、cutoff＝0），與 UI 預設分開 | sasmodels 自身容許誤差 |
 | G4 | 擬合器 vs bumps lm（`Experiment(..., cutoff=1e-5)`、`FitDriver` 的 cov／stderr）：每類各 1 組合成資料（sasmodels 產生＋固定種子高斯雜訊），同初值；含 1 組擬合 PD 寬度的案例 | 參數差 < 0.01σ；誤差相對差 ≤ 2%；χ²ᵣ 相對差 ≤ 1e-3 |
@@ -412,6 +414,8 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 奇異值被代換（§4.9） | 誤差照常顯示並標「參數相關性過高，誤差不可靠」 |
 | 未收斂／觸及邊界 | 結果照常顯示＋狀態標記 |
 | 輸入不合法 | 欄位層級錯誤訊息；不送預覽、不允許擬合 |
+| 點數超過上限：單一參數的多分散取點 `*_pd_n` > `MAX_PD_POINTS`（1000）、多分散網格總點數（各參數取點數的乘積）> `MAX_EVAL_POINTS`（1e6）、q 點數 > `MAX_Q_POINTS`（1e6）或為 0；`*_pd`、`*_pd_n`、`*_pd_nsigma` 不是有限數 | 計算核心在配置任何緩衝區之前丟出指名該參數與上限的 Error（常數在 `SasFitValidate`）；介面轉成欄位層級錯誤訊息，不送預覽、不允許擬合。上限內 `*_pd_n` 沿用 sasmodels 語意（`int()` 截斷；不足 2 點＝只取中心值） |
+| wasm 執行期錯誤（trap、記憶體不足） | 計算核心丟出 `wasm kernel <模型> failed: …`（保留 `cause`）；該 wasm 實例視為不可再用，Worker 重新載入後才可重試 |
 
 錯誤訊息一律使用者可讀（中文），技術細節寫入 `console.warn`；不吞錯。
 
@@ -455,10 +459,20 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 15 | 多分散積分 cutoff 預設 1e-5 | 與 SasView GUI、bumps、DirectModel 預設一致，曲線可與 SasView 對照；較快 | 使用者 2026-11-17（更正先前「direct_model 預設 0」的錯誤前提） |
 | 16 | 權重非資料 σ 時，顯示誤差乘 √χ²ᵣ 並標明 | 此時 σ 未知，不乘的誤差量級無意義（bumps 文件建議） | 使用者 2026-11-17 |
 | 17 | 共變異算法照 bumps（前向差分 1e-4·\|p\|、SVD 奇異值下限 1e-8） | 讓誤差與 SasView 顯示一致 | 審查第 1 輪 |
-| 18 | 參考值以關閉 FMA 的編譯產生（嚴格 IEEE） | WebAssembly 沒有 FMA；arm64 編譯器預設合併乘加，hayter_msa 在低 q 的條件數使兩者差到 3e-9。關閉後原生與 wasm 逐位元相同（194/200 點）；門檻維持 1e-9 | 2026-11-18 M1 Task 4 實測 |
-| 19 | P@S 的 G1 分兩層：元件層 1e-9，端到端 1e-7 | sasmodels 的 hardsphere.c 在 2qR≈0.05–0.13 有相消誤差，有效半徑差 1 ulp 就使 S(q) 變動 2.3e-9（原生 sasmodels 實測）；JS 多分散權重與 numpy 差在第 14 位，無法逐位元相同。以參考有效半徑代入後組合與 S(q) 仍符合 1e-9 | 2026-11-18 M1 Task 6 實測 |
+| 18 | 參考值以關閉 FMA 的編譯產生（嚴格 IEEE） | WebAssembly 沒有 FMA；arm64 編譯器預設合併乘加，hayter_msa 在低 q 的條件數使兩者差到 3e-9。關閉後原生與 wasm 逐位元相同（194/200 點）；門檻維持 1e-9。關閉 FMA 只拿掉一個捨入來源：hayter_msa 在 2qR < 0.1 的條件數仍在 1e-9–1e-8（wasm 與原生的 libm 差 1 ulp 就會顯現——實測 R＝29.8 Å、volfraction 0.15 時，同一組輸入在 2qR＝0.09 差 1.3e-9），所以單獨的 hayter_msa 參考案例刻意避開最差區域（q 自 2qR＝0.15 起算），P@hayter_msa 的元件層案例也選在裕度足夠的參數 | 2026-11-18 M1 Task 4 實測；M1 審查補充 |
+| 19 | P@S 的 G1 分兩層：元件層 1e-9，端到端 1e-7；P@hayter_msa 取非預設 S 參數時只做元件層 | JS 多分散權重與 numpy 差在第 14 位，有效半徑無法逐位元相同，而兩個結構因子對有效半徑的敏感度不同。**hardsphere 是輕微的一邊**：hardsphere.c 在 2qR≈0.05–0.13 有相消誤差，有效半徑差 1 ulp 使 S(q) 變動約 2e-9（原生 sasmodels 實測 2.3e-9），端到端 1e-7 有充分裕度。**hayter_msa 是嚴重的一邊**：上游程式在低 q 數值不穩定（§16），1 ulp 可使 S(q) 變動到 4.5e-4、甚至出現 NaN，離開良性參數區後沒有任何端到端容許誤差站得住，所以這類案例只在元件層把關。兩者以參考有效半徑代入後，組合與 S(q) 都符合 1e-9 | 2026-11-18 M1 Task 6 實測；M1 科學審查更正 |
 
 ## 16. 已知限制與 B 版候選
+
+**已知限制：hayter_msa（sasmodels 上游）在低 q 數值不穩定。**（M1 科學審查，2026-11-18；原生 sasmodels 與本站 wasm 皆實測）
+
+- 現象：`hayter_msa.c` 在低 q 會回傳離群值甚至 NaN，而且對輸入的最後一位極度敏感。charge 16.3／鹽 0.056 M／volfraction 0.056、掃描有效半徑 80–105 Å（2001 點）時，S 在多數半徑約為 0.636，但有 82 點（4.1%）是離群值，其中 16 點為 NaN（例：R＝93 Å 得 0.301，R＝95 Å 得 NaN）。在 2qR≈0.005–0.1，有效半徑變動 1 ulp 可使 S 變動到 4.5e-4。在類蛋白質的參數區（電荷 8–20、鹽 0.02–0.15 M、volfraction 0.02–0.2），約 0.1–0.2% 的點偏差約 3e-4。
+- 不限於低 q：挑選 G1 案例時另外量到，ellipsoid 預設尺寸（有效半徑 270.7 Å）配 charge 12／鹽 0.1 M／volfraction 0.15，在 2qR≈70（q＝0.1290、0.1335 Å⁻¹）原生回傳 S＝0.856、1.818，前後相鄰點都是 1.0000；同一組輸入 wasm 在第一點得 0.816。
+- 這是上游程式的行為：SasView 的表現相同；本站把 C 原始碼原樣編譯，不做修改，wasm 在相同輸入下於相同位置出現離群點（離群點上的數值不一定與原生相同，如上例）。
+- 對驗證的影響：P@hayter_msa 取非預設 S 參數時不設端到端門檻，只在元件層把關（§11 G1、§15 決策 19）。`tests/sasfit-product.test.js` 有兩個特性測試把這個限制留作證據（q＝1e-3、半徑 80–105 Å 掃 201 點：wasm 得 1 點 NaN、4 點偏離中位數超過 10%；以及上述 2qR≈70 的尖峰）——上游若修好，這兩個測試會失敗，屆時應回頭收緊門檻。
+- 對後續里程碑的要求：M2 擬合器與 M3 介面必須把 hayter_msa 回傳的 NaN 或跳點當成**預期中的輸入**，不是程式錯誤——擬合器要有非有限值防護（拒絕該步，§12），介面在選用 hayter_msa 時提示「此結構因子在低 q 可能出現不連續或無法計算的點（sasmodels／SasView 相同）」。
+
+**B 版候選：**
 
 - 其餘 64 個 sasmodels 模型（C 核心者重編即可）；
 - 演算法：DE、DREAM（後驗分布與參數相關性）、Nelder–Mead、BFGS；
