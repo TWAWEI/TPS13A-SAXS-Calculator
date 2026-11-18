@@ -58,7 +58,7 @@
     const Y_TITLES = Object.freeze({ loglog: 'I(q)', guinier: 'ln I(q)', kratky: 'q²·I(q)' });
     const Y_TITLES_ABSOLUTE = Object.freeze({ loglog: 'I(q) (cm⁻¹)', guinier: 'ln [I(q) / cm⁻¹]', kratky: 'q²·I(q) (Å⁻²·cm⁻¹)' });
     const STAGGER_NOTE = '（各組已錯開）';
-    const RESIDUAL_TITLE = '殘差';
+    const RESIDUAL_TITLE = '(I − I模型)/w';      // the residual of design spec 4.8, w = the weight of the point
     const MODEL_LABEL = '模型';
     const CURVE_SUFFIX = '（模型）';
     const LAYOUT_PADDING = Object.freeze({ top: 6, right: 12 });      // room for a point on the edge; the same in both charts

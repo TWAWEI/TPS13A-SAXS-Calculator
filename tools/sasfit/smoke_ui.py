@@ -268,12 +268,12 @@ def check_data(ctx):
                    bad: bad ? bad.textContent.replace(/\\s+/g, ' ') : null }; }""")
         light0 = palette(page, 'light')
         ok = (info['rows'] == 5 and info['chart'] and info['n'] > 0 and info['border'] == light0
-              and '隱藏了' in info['status'] and info['bad'] is not None and '行' in info['bad'])
+              and '對數軸無法顯示' in info['status'] and info['bad'] is not None and '行' in info['bad'])
         import re
         has_line = info['bad'] is not None and re.search(r'第 \d+ 行', info['bad']) is not None
         return ok and has_line, (f"rows={info['rows']} chart={info['chart']} activePoints={info['n']} borderColor={info['border']} "
                                  f"(palette.light.series[0]={light0}) status={info['status']!r} bad-row has line number={has_line}")
-    ctx.check('2 five files load: 5 rows, chart colours from ChartTheme, 隱藏了 in status, bad file shows line numbers', run)
+    ctx.check('2 five files load: 5 rows, chart colours from ChartTheme, hidden-points reason in status, bad file shows line numbers', run)
 
 
 def check_preview(ctx):

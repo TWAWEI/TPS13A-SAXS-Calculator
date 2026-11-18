@@ -66,9 +66,9 @@
         qOrder: 'Q 下限必須小於 Q 上限',
         steps: (max) => '最大步數必須是 1 到 ' + max + ' 的整數',
         starting: '開始擬合…',
-        progress: (step, chi2r) => '第 ' + step + ' 步，χ²ᵣ＝' + chi2r,
+        progress: (step, label, value) => '第 ' + step + ' 步，' + label + '＝' + value,
         stopped: (step) => '已停止（第 ' + step + ' 步），參數未變更',
-        finished: (label, chi2r, steps) => '擬合結束：' + label + '，χ²ᵣ＝' + chi2r + '，共 ' + steps + ' 步',
+        finished: (status, label, value, steps) => '擬合結束：' + status + '，' + label + '＝' + value + '，共 ' + steps + ' 步',
         failed: '擬合沒有完成',
     });
 
@@ -271,7 +271,7 @@
         const { iteration, chi2r } = progress;
         if (!Number.isInteger(iteration) || iteration < 0) return;
         ctx.dispatch({ type: 'fitProgress', iteration, chi2r: typeof chi2r === 'number' ? chi2r : null }, { silent: true });
-        setProgress(ui, TEXT.progress(iteration, chi2rText(chi2r)), false);
+        setProgress(ui, TEXT.progress(iteration, globalThis.SasFitHints.measure(ctx.getState().weighting).label, chi2rText(chi2r)), false);
     }
 
     /** The fitted values go into the form; a result that cannot be applied is shown without changing it. */
@@ -304,7 +304,8 @@
         clearAlerts(ctx);
         settle(ui, result);
         const label = globalThis.SasFitHints.statusLabel(result).text;
-        setProgress(ui, TEXT.finished(label, chi2rText(result.chi2r), Number.isInteger(result.iterations) ? result.iterations : 0), true);
+        setProgress(ui, TEXT.finished(label, globalThis.SasFitHints.measure(result).label, chi2rText(result.chi2r),
+            Number.isInteger(result.iterations) ? result.iterations : 0), true);
         const a11y = host().A11y;
         if (ctx.getState().tab === FIT_TAB && isObject(a11y)) a11y.focusResults(RESULTS_ID);
     }

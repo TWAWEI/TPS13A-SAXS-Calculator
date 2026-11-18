@@ -148,7 +148,7 @@
         const status = globalThis.SasFitHints.plotStatus({
             computing: preview.computing === true, paused: preview.paused === true,
             previewPoints: drawsPreview && preview.previewPoints > 0 ? preview.previewPoints : 0,
-            hidden: stats.hidden, displayStride: stats.displayStride, nonFinite: stats.nonFinite,
+            hidden: stats.hidden, mode: view.mode, displayStride: stats.displayStride, nonFinite: stats.nonFinite,
             allNonFinite: preview.allNonFinite === true, error: preview.error,
         });
         ctx.el('sfPlotStatus').textContent = status.text;
@@ -186,7 +186,8 @@
         const result = has(state.fitResults, file.id) ? state.fitResults[file.id] : null;
         const label = globalThis.SasFitHints.statusLabel(result);
         if (result === null) return { text: label.text, tone: undefined };
-        return { text: 'χ²ᵣ ' + globalThis.SasFitHtml.formatNumber(result.chi2r, CHI2R_DIGITS) + '・' + label.text, tone: label.tone };
+        const measure = globalThis.SasFitHints.measure(result).label;
+        return { text: measure + ' ' + globalThis.SasFitHtml.formatNumber(result.chi2r, CHI2R_DIGITS) + '・' + label.text, tone: label.tone };
     }
 
     function rowOf(state, file, index) {

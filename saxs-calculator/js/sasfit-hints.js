@@ -27,9 +27,14 @@
  *     non-finite-curve     nonFiniteCurvePoints > 0 (item 4)
  *     scaled-errors        the errors shown are multiplied by sqrt(chi2r);
  *                          SasView shows them unmultiplied (item 8)
+ *   measure(fitResult | weighting) -> { isChi2, label, note }: the fit measure
+ *     is "chi2r" only with sigma weighting; otherwise "加權殘差均方" with a note
+ *     that it has no absolute meaning (decision H-1). local-minimum and
+ *     overestimated-errors exist only for a real chi2r.
  *   statusLabel(fitResult | null) -> { text, tone }: one text per status. A
- *     converged fit is 'ok' only while chi2r gives no reason for doubt, so the
- *     chip never says "good" by itself (item 1).
+ *     converged fit is 'ok' only while the measure is finite, a real chi2r
+ *     gives no reason for doubt and no flag (ill-conditioned, Jacobian or
+ *     curve not finite) is set, so the chip never says "good" by itself.
  *   strongCorrelations(fitResult, threshold?) -> [{ a, b, r }], each pair once
  *   errorColumn(fitResult | null) -> { label, title } of the error column
  *   preFitHints({ modelSpec, dataset, range, weighting, notes }) -> hints before
@@ -44,7 +49,7 @@
  *     suspect-nm           notes.suspectNm of the file
  *   excludedCounts(dataset) -> { sigma, sqrtI, absI, none }: points each
  *     weighting leaves out (item 11); sigma is null without an error column
- *   plotStatus({ computing, paused, previewPoints, hidden, displayStride,
+ *   plotStatus({ computing, paused, previewPoints, hidden, mode, displayStride,
  *                nonFinite, allNonFinite, error }) -> { text, live }
  *     the status line under the plot; `live` (for the aria-live region) is the
  *     same without "computing".
@@ -77,7 +82,17 @@
     const FACTOR_PLAIN_FROM = 1000;
     const AT_BOUND_ERROR_TEXT = '貼邊界，誤差無意義';                    // design spec 5.7 item 5 (the error column)
     const ERROR_LABEL = '±';
-    const ERROR_LABEL_SCALED = '±（已乘 √χ²ᵣ）';
+    const ERROR_LABEL_SCALED = '±（已乘 √均方）';
+    const MEASURE_CHI2 = Object.freeze({ isChi2: true, label: 'χ²ᵣ', note: '' });
+    const MEASURE_RELATIVE = Object.freeze({
+        isChi2: false, label: '加權殘差均方',
+        note: '權重不是資料的 σ：這個數值沒有絕對意義（不是 χ²ᵣ），只能比較同一組資料、同一種權重的不同擬合',
+    });
+    const HIDDEN_TEXT = Object.freeze({
+        loglog: (n) => n + ' 點 I ≤ 0 或無效，對數軸無法顯示（不影響擬合）',
+        guinier: (n) => n + ' 點 I ≤ 0 或無效，Guinier 座標（ln I）無法顯示（不影響擬合）',
+        kratky: (n) => n + ' 點的 q 或 I 不是有效數值，無法顯示',
+    });
     const BOUND_NAMES = Object.freeze({ lower: '下限', upper: '上限' });
     const STATUS_LABELS = Object.freeze({
         converged: Object.freeze({ text: '已收斂', tone: 'ok' }),
@@ -95,19 +110,19 @@
         failed: '擬合失敗，請調整起始值或上下限後重試',
         maxiter: '已達最大步數仍未收斂，可從目前的值繼續擬合',
         zeroSteps: '擬合沒有走任何一步：起始點已是極小值，或一步都走不動',
-        localMinimum: '擬合可能停在局部極小值，請調整起始值後重試',
-        overestimated: 'χ²ᵣ 遠小於 1：資料的誤差可能被高估',
+        localMinimum: 'χ²ᵣ 遠大於 1：模型與資料不符。可能停在局部極小值（請換起始值重試）、模型不適用，或資料誤差被低估。此時參數誤差沒有參考價值',
+        overestimated: 'χ²ᵣ 遠小於 1：資料的誤差可能被高估，或自由參數過多',
         jacobianRest: '其餘參數的誤差是把這些參數固定後算出的，數值偏小',
-        illConditioned: '參數相關性過高，誤差不可靠',
+        illConditioned: '參數無法由資料獨立決定（彼此高度相關，或某個參數對曲線幾乎沒有影響），誤差不可靠',
         hayter: '結構因子 hayter_msa 在低 q 可能出現不連續或無法計算的點（sasmodels／SasView 相同），'
-            + '擬合得到的誤差可能不可靠；請連同 χ²ᵣ 一起判斷結果',
+            + '擬合得到的誤差可能不可靠；請連同殘差圖一起判斷結果',
         noSigmaUnweighted: '此檔沒有可用的誤差欄，權重使用不加權',
         noSigmaOther: '此檔沒有可用的誤差欄，不能使用「資料 σ」權重',
         suspectNm: 'q 範圍像是 nm⁻¹（一般 SAXS 在 Å⁻¹ 下 q 約 0.003–0.5）：若單位確實是 nm⁻¹，請移除此檔，把 Q 單位改選 nm⁻¹ 後重新載入',
         computing: '計算中…',
         paused: '多分散網格過大，即時預覽已暫停，請按「更新曲線」',
         allNonFinite: '這組參數算不出模型曲線，請檢查數值',
-        scaledNoFactor: '顯示的誤差已乘 √χ²ᵣ。SasView 顯示的是未乘的值，兩者相差 √χ²ᵣ 倍',
+        scaledNoFactor: '誤差已乘 √(加權殘差均方)；SasView 在相同權重下顯示未乘的值',
         general: '發生未預期的錯誤，請重新整理頁面後再試',
         openOverHttp: '請確認此頁是以 http(s) 開啟（不是 file://），並重新整理頁面',
     });
@@ -131,14 +146,26 @@
 
     // ------------------------------------------------------------- after a fit
 
-    const chi2rHigh = (r) => Number.isFinite(r.chi2r) && r.chi2r > CHI2R_WARN;
-    const chi2rLow = (r) => Number.isFinite(r.chi2r) && r.chi2r < CHI2R_LOW && weightingOf(r) === SIGMA_MODE;
+    /**
+     * What the fit measure (FitResult.chi2r) is called: chi2r only when the weights are the data's sigma (decision
+     * H-1). Takes a FitResult or the name of a weighting; anything else is not a chi-square.
+     */
+    function measure(source) {
+        const weighting = isObject(source) ? weightingOf(source) : source;
+        return weighting === SIGMA_MODE ? MEASURE_CHI2 : MEASURE_RELATIVE;
+    }
+
+    // high / low only mean something for a real chi-square
+    const chi2rHigh = (r) => measure(r).isChi2 && Number.isFinite(r.chi2r) && r.chi2r > CHI2R_WARN;
+    const chi2rLow = (r) => measure(r).isChi2 && Number.isFinite(r.chi2r) && r.chi2r < CHI2R_LOW;
+    /** Flags that make "converged" doubtful whatever the weighting. */
+    const flagged = (r) => r.illConditioned === true || r.jacobianNonFinite === true || r.nonFiniteCurvePoints > 0;
 
     function statusLabel(fitResult) {
         if (fitResult === null || fitResult === undefined) return NOT_FITTED;
         if (!has(STATUS_LABELS, fitResult.status)) throw new Error('Unknown fit status: ' + String(fitResult.status));
         const label = STATUS_LABELS[fitResult.status];
-        const doubtful = !Number.isFinite(fitResult.chi2r) || chi2rHigh(fitResult) || chi2rLow(fitResult);
+        const doubtful = !Number.isFinite(fitResult.chi2r) || chi2rHigh(fitResult) || chi2rLow(fitResult) || flagged(fitResult);
         return label.tone === 'ok' && doubtful ? Object.freeze({ text: label.text, tone: 'warn' }) : label;
     }
 
@@ -206,7 +233,7 @@
         const factor = scaleFactor(fitResult);
         if (factor === null) return TEXT.scaledNoFactor;
         const f = factor >= FACTOR_PLAIN_FROM ? String(Math.round(factor)) : factor.toPrecision(FACTOR_DIGITS);
-        return '顯示的誤差已乘 √χ²ᵣ（= ' + f + '）。SasView 顯示的是未乘的值，兩者相差 ' + f + ' 倍：把此處的誤差除以 ' + f + ' 即為 SasView 的數值';
+        return '誤差已乘 √(加權殘差均方)＝' + f + '；SasView 在相同權重下顯示未乘的值＝此處誤差 ÷ ' + f;
     }
 
     function errorColumn(fitResult) {
@@ -319,7 +346,7 @@
             s.paused ? TEXT.paused : null,
             s.previewPoints > 0 ? '預覽以 ' + s.previewPoints + ' 點計算' : null,
             s.displayStride > 1 ? '點數較多，圖上每 ' + s.displayStride + ' 點顯示 1 點（擬合仍使用全部點）' : null,
-            s.hidden > 0 ? '隱藏了 ' + s.hidden + ' 點' : null,
+            s.hidden > 0 ? (has(HIDDEN_TEXT, s.mode) ? HIDDEN_TEXT[s.mode](s.hidden) : s.hidden + ' 點無法顯示') : null,
             s.allNonFinite ? TEXT.allNonFinite : null,
             !s.allNonFinite && s.nonFinite > 0 ? nonFiniteCurveText(s.nonFinite) : null,
             typeof s.error === 'string' && s.error !== '' ? s.error : null,
@@ -349,6 +376,6 @@
 
     globalThis.SasFitHints = Object.freeze({
         CHI2R_WARN, CHI2R_LOW, CORRELATION_WARN, AT_BOUND_ERROR_TEXT, FIT_HINT_IDS, PRE_FIT_HINT_IDS, ERROR_ROUTES,
-        fitHints, statusLabel, strongCorrelations, errorColumn, preFitHints, excludedCounts, plotStatus, errorNotice,
+        measure, fitHints, statusLabel, strongCorrelations, errorColumn, preFitHints, excludedCounts, plotStatus, errorNotice,
     });
 })();

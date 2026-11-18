@@ -341,7 +341,11 @@ test('[sasfit-fit-ui] 權重不是資料 σ 時 ± 欄表頭註明已乘 √χ²
     select.fire('change');
     const { result } = await fitOnce(page, { values: { radius: 50.2 } });
     assert.equal(result.displayErrorsScaled, true);
-    assert.match(page.$('sfParamHead').innerHTML, /已乘 √χ²ᵣ/);
+    assert.match(page.$('sfParamHead').innerHTML, /已乘 √均方/);
+    assert.doesNotMatch(page.$('sfParamHead').innerHTML, /χ/);
+    assert.match(page.$('sfFitResults').innerHTML, /<div class="tile-label">加權殘差均方<\/div>/);
+    assert.match(page.$('sfFitLive').textContent, /^擬合結束：已收斂，加權殘差均方＝/);
+    assert.match(page.$('sfDataBody').innerHTML, /加權殘差均方 [\d.]+・已收斂/);
     assert.equal(page.$('sfPm_radius').textContent, '± 1.0');
     assert.equal(page.$('sfFitHints').querySelectorAll('[data-hint="scaled-errors"]').length, 1);
 });

@@ -166,7 +166,7 @@ test('paramTableHeadHtml: seven column headers with scope; the error column says
     const scaled = fitResult({ displayErrorsScaled: true, chi2r: 4 });
     const html = H.paramTableHeadHtml({ fitResult: scaled, matches: true });
     const column = Hints.errorColumn(scaled);
-    assert.equal(column.label, '±（已乘 √χ²ᵣ）');
+    assert.equal(column.label, '±（已乘 √均方）');
     assert.ok(html.includes('>' + column.label + '</th>'));
     const th = openTags(html, 'th')[3];
     assert.equal(th.attrs.title, column.title);

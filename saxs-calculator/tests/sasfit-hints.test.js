@@ -88,9 +88,9 @@ test('5.7-1: chi2r above CHI2R_WARN on a converged fit -> local-minimum', () => 
     assert.equal(ids(H.fitHints(result({ chi2r: 1.1 }))).includes('local-minimum'), false);
     assert.equal(ids(H.fitHints(result({ chi2r: 10 }))).includes('local-minimum'), false, 'exactly 10 does not count');
     const hint = byId(H.fitHints(result({ chi2r: 10.01 })), 'local-minimum');
-    assert.equal(hint.text, '擬合可能停在局部極小值，請調整起始值後重試');
+    assert.equal(hint.text, 'χ²ᵣ 遠大於 1：模型與資料不符。可能停在局部極小值（請換起始值重試）、模型不適用，或資料誤差被低估。此時參數誤差沒有參考價值');
     assert.equal(hint.tone, 'warn');
-    assert.ok(byId(H.fitHints(weighted('none', { chi2r: 1234 })), 'local-minimum'), 'whatever the weighting');
+    assert.equal(byId(H.fitHints(weighted('none', { chi2r: 1234 })), 'local-minimum'), undefined, 'only a real chi2r can be too large (decision H-1)');
     assert.equal(ids(H.fitHints(result({ chi2r: Infinity, status: 'failed', blockedByNonFinite: true }))).includes('local-minimum'), false);
     assert.equal(ids(H.fitHints(result({ chi2r: 500, status: 'maxiter' }))).includes('local-minimum'), false,
         'not converged: the offer to continue is the message');
@@ -98,7 +98,7 @@ test('5.7-1: chi2r above CHI2R_WARN on a converged fit -> local-minimum', () => 
 
 test('5.7-1: chi2r below CHI2R_LOW -> overestimated-errors, ONLY with sigma weighting', () => {
     const hint = byId(H.fitHints(result({ chi2r: 0.09 })), 'overestimated-errors');
-    assert.equal(hint.text, 'χ²ᵣ 遠小於 1：資料的誤差可能被高估');
+    assert.equal(hint.text, 'χ²ᵣ 遠小於 1：資料的誤差可能被高估，或自由參數過多');
     assert.equal(hint.tone, 'warn');
     assert.equal(ids(H.fitHints(result({ chi2r: 0.1 }))).includes('overestimated-errors'), false, 'exactly 0.1 does not count');
     ['sqrtI', 'absI', 'none'].forEach((weighting) => {
@@ -145,7 +145,7 @@ test('5.7-3: blocked, jacobian-nan and ill-conditioned are three different messa
     assert.equal(jacNone.text, '部分參數的誤差無法計算；其餘參數的誤差是把這些參數固定後算出的，數值偏小');
 
     const ill = byId(H.fitHints(result({ illConditioned: true })), 'ill-conditioned');
-    assert.equal(ill.text, '參數相關性過高，誤差不可靠');
+    assert.equal(ill.text, '參數無法由資料獨立決定（彼此高度相關，或某個參數對曲線幾乎沒有影響），誤差不可靠');
 
     const all = H.fitHints(result({
         status: 'failed', blockedByNonFinite: true, jacobianNonFinite: true, illConditioned: true,
@@ -204,19 +204,19 @@ test('5.7-7: maxiter offers to continue from the current values; no other status
 
 test('5.7-8: scaled errors say how they differ from SasView, with the factor', () => {
     const hint = byId(H.fitHints(weighted('none', { chi2r: 2.25 })), 'scaled-errors');
-    assert.equal(hint.text, '顯示的誤差已乘 √χ²ᵣ（= 1.50）。SasView 顯示的是未乘的值，兩者相差 1.50 倍：把此處的誤差除以 1.50 即為 SasView 的數值');
+    assert.equal(hint.text, '誤差已乘 √(加權殘差均方)＝1.50；SasView 在相同權重下顯示未乘的值＝此處誤差 ÷ 1.50');
     assert.equal(hint.factor, 1.5);
     assert.equal(hint.tone, 'ok');
     assert.equal(ids(H.fitHints(result({ chi2r: 2.25 }))).includes('scaled-errors'), false, 'sigma weighting shows raw errors');
     assert.deepEqual({ ...H.errorColumn(weighted('none', { chi2r: 2.25 })) }, {
-        label: '±（已乘 √χ²ᵣ）',
-        title: '顯示的誤差已乘 √χ²ᵣ（= 1.50）。SasView 顯示的是未乘的值，兩者相差 1.50 倍：把此處的誤差除以 1.50 即為 SasView 的數值',
+        label: '±（已乘 √均方）',
+        title: '誤差已乘 √(加權殘差均方)＝1.50；SasView 在相同權重下顯示未乘的值＝此處誤差 ÷ 1.50',
     });
     assert.deepEqual({ ...H.errorColumn(result()) }, { label: '±', title: '' });
     assert.deepEqual({ ...H.errorColumn(null) }, { label: '±', title: '' });
     const noFactor = H.errorColumn(weighted('none', { chi2r: Infinity }));
-    assert.equal(noFactor.title, '顯示的誤差已乘 √χ²ᵣ。SasView 顯示的是未乘的值，兩者相差 √χ²ᵣ 倍');
-    assert.equal(byId(H.fitHints(weighted('none', { chi2r: 1e-6 })), 'scaled-errors').text.includes('（= 0.00100）'), true);
+    assert.equal(noFactor.title, '誤差已乘 √(加權殘差均方)；SasView 在相同權重下顯示未乘的值');
+    assert.equal(byId(H.fitHints(weighted('none', { chi2r: 1e-6 })), 'scaled-errors').text.includes('＝0.00100；'), true);
 });
 
 test('a stopped result gives only the stopped line and never throws', () => {
@@ -286,7 +286,7 @@ test('5.7-10: hayter_msa notice (spec 16), with or without data', () => {
     const spec = { model: 'sphere', structure: 'hayter_msa', lowQPowerLaw: false };
     const hint = byId(pre({ modelSpec: spec }), 'hayter');
     assert.equal(hint.text, '結構因子 hayter_msa 在低 q 可能出現不連續或無法計算的點（sasmodels／SasView 相同），'
-        + '擬合得到的誤差可能不可靠；請連同 χ²ᵣ 一起判斷結果');
+        + '擬合得到的誤差可能不可靠；請連同殘差圖一起判斷結果');
     assert.equal(hint.tone, 'warn');
     ['低 q 可能出現不連續或無法計算的點', 'sasmodels／SasView 相同', '誤差可能不可靠'].forEach((part) => assert.ok(hint.text.includes(part)));
     assert.deepEqual(ids(H.preFitHints({ modelSpec: spec, dataset: null, range: null, weighting: 'sigma', notes: null })), ['hayter']);
@@ -366,7 +366,7 @@ test('plotStatus: each part alone', () => {
         text: '多分散網格過大，即時預覽已暫停，請按「更新曲線」', live: '多分散網格過大，即時預覽已暫停，請按「更新曲線」',
     });
     assert.equal(one({ previewPoints: 122 }).text, '預覽以 122 點計算');
-    assert.equal(one({ hidden: 5 }).text, '隱藏了 5 點');
+    assert.equal(one({ hidden: 5 }).text, '5 點無法顯示');
     assert.equal(one({ hidden: 0 }).text, '');
     assert.equal(one({ displayStride: 3 }).text, '點數較多，圖上每 3 點顯示 1 點（擬合仍使用全部點）');
     assert.equal(one({ displayStride: 1 }).text, '');
@@ -382,7 +382,7 @@ test('plotStatus: combined in a fixed order with full-width semicolons; live lea
         computing: true, paused: true, previewPoints: 50, hidden: 2, displayStride: 4, nonFinite: 3, allNonFinite: false, error: '錯誤',
     });
     const rest = '多分散網格過大，即時預覽已暫停，請按「更新曲線」；預覽以 50 點計算；點數較多，圖上每 4 點顯示 1 點（擬合仍使用全部點）；'
-        + '隱藏了 2 點；模型曲線有 3 點無法計算；錯誤';
+        + '2 點無法顯示；模型曲線有 3 點無法計算；錯誤';
     assert.equal(s.text, '計算中…；' + rest);
     assert.equal(s.live, rest);
     assert.ok(Object.isFrozen(s));

@@ -323,8 +323,8 @@ test('[sasfit-data-ui] 狀態列來自 SasFitHints.plotStatus：log-log 顯示�
     const view = lastView(page);
     const { hidden } = globalThis.SasFitPlotData.viewStats(view);
     assert.ok(hidden > 0, '合成官方檔的 beamstop 列 I < 0');
-    assert.equal(page.$('sfPlotStatus').textContent, globalThis.SasFitHints.plotStatus({ hidden, displayStride: 1 }).text);
-    assert.match(page.$('sfPlotStatus').textContent, new RegExp(`隱藏了 ${hidden} 點`));
+    assert.equal(page.$('sfPlotStatus').textContent, globalThis.SasFitHints.plotStatus({ hidden, mode: 'loglog', displayStride: 1 }).text);
+    assert.match(page.$('sfPlotStatus').textContent, new RegExp(`^${hidden} 點 I ≤ 0 或無效，對數軸無法顯示`));
     assert.equal(page.$('sfPlotLive').textContent, page.$('sfPlotStatus').textContent);
 });
 

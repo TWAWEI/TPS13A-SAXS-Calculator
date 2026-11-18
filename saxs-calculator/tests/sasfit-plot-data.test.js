@@ -376,7 +376,7 @@ test('residualConfig: the residuals of the active file against q or q^2, NaN ski
     assert.equal(log.data.datasets[0].showLine, false);
     assert.deepEqual(log.data.datasets[0].data, [{ x: 0.02, y: 1.5 }, { x: 0.03, y: -0.5 }]);
     assert.deepEqual([log.options.scales.x.type, log.options.scales.y.type], ['logarithmic', 'linear']);
-    assert.deepEqual([log.options.scales.x.title.text, log.options.scales.y.title.text], ['q (Å⁻¹)', '殘差']);
+    assert.deepEqual([log.options.scales.x.title.text, log.options.scales.y.title.text], ['q (Å⁻¹)', '(I − I模型)/w']);
     const zero = log.options.plugins.annotation.annotations.sfZero;
     assert.deepEqual([zero.type, zero.tpsRole, zero.yMin, zero.yMax], ['line', 'reference', 0, 0]);
     assert.equal(log.options.parsing, false);

@@ -476,9 +476,10 @@
         assertTone(label.tone);
         const whole = (n) => (Number.isInteger(n) ? String(n) : MISSING);
         const points = Number.isInteger(fitResult.dof) ? fitResult.dof + list(fitResult.names).length : NaN;
-        return host().ResultTiles.tile({ label: 'χ²ᵣ', value: formatNumber(fitResult.chi2r, CHI2R_DIGITS), hero: true,
-            chip: { tone: label.tone, text: esc(label.text) },
-            sub: '自由度 ' + whole(fitResult.dof) + '・' + whole(points) + ' 點・' + whole(fitResult.iterations) + ' 次迭代' });
+        const measure = globalThis.SasFitHints.measure(fitResult);
+        const counts = '自由度 ' + whole(fitResult.dof) + '・' + whole(points) + ' 點・' + whole(fitResult.iterations) + ' 次迭代';
+        return host().ResultTiles.tile({ label: esc(measure.label), value: formatNumber(fitResult.chi2r, CHI2R_DIGITS), hero: true,
+            chip: { tone: label.tone, text: esc(label.text) }, sub: [counts, esc(measure.note)] });
     }
 
     function resultsHtml(fitResult, ctx) {
