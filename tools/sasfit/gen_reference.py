@@ -11,6 +11,11 @@ writes (byte-stable, no timestamps)
     saxs-calculator/tests/fixtures/sasfit/g1.json        gate G1 (DirectModel, cutoff 1e-5)
     saxs-calculator/tests/fixtures/sasfit/g2.json        gate G2 (python-kernel models)
     saxs-calculator/tests/fixtures/sasfit/g3.json        gate G3 (sasmodels' own model_info.tests)
+    saxs-calculator/tests/fixtures/sasfit/kernel-args.json   details/values buffers (make_kernel_args)
+
+The reference DLLs are built with -ffp-contract=off into a dedicated cache
+(tools/sasfit/build/dll-nofma): WebAssembly has no FMA, so an FMA-built native
+reference is not reproducible in the browser.  See tools/sasfit/sas_env.py.
 
 Every model case also records `sasmodels: {model, pars}`: the exact model string
 passed to `load_model` and the exact keyword arguments passed to sasmodels
@@ -27,7 +32,11 @@ import os
 import re
 import sys
 
-os.environ["SAS_OPENCL"] = "none"  # must precede the sasmodels import
+sys.dont_write_bytecode = True  # keep tools/sasfit free of __pycache__
+
+import sas_env  # noqa: E402  (same directory)
+
+sas_env.configure()  # strict-IEEE DLL build; must precede the sasmodels import
 
 import numpy as np  # noqa: E402
 import sasmodels  # noqa: E402
@@ -35,7 +44,8 @@ from scipy.special import gammaln  # noqa: E402
 from sasmodels import weights  # noqa: E402
 from sasmodels.core import load_model  # noqa: E402
 from sasmodels.data import empty_data1D  # noqa: E402
-from sasmodels.direct_model import DirectModel, call_Fq, call_kernel  # noqa: E402
+from sasmodels.details import make_kernel_args  # noqa: E402
+from sasmodels.direct_model import DirectModel, call_Fq, call_kernel, get_mesh  # noqa: E402
 from sasmodels.model_test import is_near  # noqa: E402
 from sasmodels.modelinfo import expand_pars  # noqa: E402
 
@@ -562,16 +572,85 @@ def finish_g3(entries, table):
     return {t[0]: sum(1 for e in entries if e["model"] == t[0]) for t in table}, len(entries)
 
 
+# --------------------------------------------------------- kernel-args.json
+
+def _pd_n(name, n, width):
+    return pd_block(name, "gaussian", n, 3, width)
+
+
+def _kernel_args_inputs():
+    """(label, model, pars): the ordering cases of np.argsort(length)[::-1] (details.py:207)."""
+    return [
+        ("sphere default", "sphere", {}),
+        ("cylinder default", "cylinder", {}),
+        ("cylinder scale and background", "cylinder", {"scale": 2.5, "background": 0.125}),
+        ("cylinder radius n35 length n35 (tie)", "cylinder",
+         dict(_pd_n("radius", 35, 0.15), **_pd_n("length", 35, 0.2))),
+        ("cylinder radius n35 length n15", "cylinder",
+         dict(_pd_n("radius", 35, 0.15), **_pd_n("length", 15, 0.2))),
+        ("cylinder radius n15 length n35", "cylinder",
+         dict(_pd_n("radius", 15, 0.15), **_pd_n("length", 35, 0.2))),
+        ("core_shell_cylinder radius n20 thickness n35 length n20", "core_shell_cylinder",
+         dict(_pd_n("radius", 20, 0.15), **_pd_n("thickness", 35, 0.1),
+              **_pd_n("length", 20, 0.2))),
+        ("hayter_msa default", "hayter_msa", {}),
+        ("guinier default", "guinier", {}),
+    ]
+
+
+def kernel_args_case(label, name, pars):
+    """call_kernel's path (direct_model.py:53-56): get_mesh, then make_kernel_args."""
+    kernel = get_model(name).make_kernel([Q_FQ])
+    mesh = get_mesh(kernel.info, dict(pars), dim=kernel.dim)
+    details, values, is_magnetic = make_kernel_args(kernel, mesh)
+    assert not is_magnetic, label
+    assert values.dtype == np.float64 and details.buffer.dtype == np.int32, label
+    return {"label": label, "model": name, "pars": dict(pars),
+            "details": [int(v) for v in details.buffer],
+            "values": [float(v) for v in values],
+            "numEval": int(details.num_eval), "numWeights": int(details.num_weights),
+            "sasmodels": {"model": name, "pars": dict(pars),
+                          "call": "details.make_kernel_args(kernel, direct_model.get_mesh(...))"}}
+
+
+def gen_kernel_args():
+    cases = [kernel_args_case(*c) for c in _kernel_args_inputs()]
+    write_fixture("kernel-args", {"sasmodelsVersion": sasmodels.__version__, "cases": cases})
+    return len(cases)
+
+
 # --------------------------------------------------------------------- main
+
+def _dll_paths(model):
+    """DLL paths behind a loaded model (product: P and S; mixture: parts)."""
+    if hasattr(model, "dllpath"):
+        return [model.dllpath]
+    parts = getattr(model, "parts", None) or [getattr(model, k) for k in ("P", "S")
+                                              if hasattr(model, k)]
+    return [path for part in parts for path in _dll_paths(part)]
+
+
+def verify_build():
+    """The references came from no-FMA DLLs in the dedicated cache (sas_env)."""
+    paths = sorted({p for m in _MODEL_CACHE.values() for p in _dll_paths(m)})
+    assert len(paths) == len(MODEL_ORDER) - 2, paths   # 13 C models; 2 are python kernels
+    return sas_env.verify_cache(paths)
+
 
 def main():
     assert sasmodels.__version__ == EXPECTED_VERSION, sasmodels.__version__
+    command = sas_env.verify()
+    print("compile command: %s" % " ".join(command))
     n_w = gen_weights()
     n_fq = gen_fq()
     g1_groups, n_g1 = gen_g1()
     n_g2 = gen_g2()
     per_model, n_g3 = gen_g3()
-    print("cases: weights=%d fq=%d g1=%d %s g2=%d g3=%d" % (n_w, n_fq, n_g1, g1_groups, n_g2, n_g3))
+    n_ka = gen_kernel_args()
+    n_dll = verify_build()
+    print("cases: weights=%d fq=%d g1=%d %s g2=%d g3=%d kernel-args=%d"
+          % (n_w, n_fq, n_g1, g1_groups, n_g2, n_g3, n_ka))
+    print("no-FMA DLLs in %s: %d" % (os.path.relpath(sas_env.DLL_DIR, REPO), n_dll))
 
 
 if __name__ == "__main__":

@@ -48,4 +48,12 @@ node tools/sasfit/phase0/bench.mjs tools/sasfit/build/phase0-ref.json           
 SAS_OPENCL=none tools/sasfit/.venv/bin/python tools/sasfit/phase0/bench_native.py  # 原生 sasmodels 效能
 ```
 
+## 5. 數值參考值（`gen_reference.py`）：關閉 FMA 的編譯
+
+```bash
+tools/sasfit/.venv/bin/python tools/sasfit/gen_reference.py   # 產生 saxs-calculator/tests/fixtures/sasfit/*.json
+```
+
+參考值所用的 sasmodels 原生 DLL 一律以 `-ffp-contract=off`（嚴格 IEEE、不合併乘加）編譯。原因：WebAssembly 沒有 FMA 指令，而 arm64 的 clang 預設會把 `a*b + c` 合併成一次 FMA（只捨入一次）；多數模型兩者只差 1e-14 左右，但 hayter_msa 在低 q 的條件數使差異達 3e-9，超過 1e-9 的門檻，瀏覽器端無論如何重現不了。關閉後，同一份 C 原始碼的原生結果與 wasm 逐位元相同（hayter_msa 預設曲線 194/200 點），參考值也不再隨產生機器的 CPU 而變。設定集中在 `tools/sasfit/sas_env.py`：在 import sasmodels **之前**設好 `CFLAGS` 與 `SAS_DLL_PATH`（sasmodels 在 import `kerneldll` 時讀取，`kerneldll.py:108-142`），DLL 放在專用快取 `tools/sasfit/build/dll-nofma/`（已被 `.gitignore` 排除）——既不會誤用 `~/.sasmodels/compiled_models` 內以 FMA 編好的舊 DLL（快取鍵只看 C 原始碼雜湊，不含編譯旗標），也不污染使用者自己的快取。腳本會斷言編譯指令含該旗標、且載入的 13 個 DLL 都來自專用快取。之後新增的參考值產生器（例如 bumps 擬合參考）請同樣先 `import sas_env; sas_env.configure()`。
+
 授權：sasmodels 授權全文見 `saxs-calculator/wasm/LICENSE-sasmodels.txt`。
