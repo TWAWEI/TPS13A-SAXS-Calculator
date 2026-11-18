@@ -50,8 +50,7 @@
     const LOWQ_DEFAULTS = Object.freeze({ [LOWQ_SCALE_ID]: 0, [LOWQ_POWER_ID]: 4 });   // design spec 4.5
     const NO_EXTRAS = Object.freeze({});
 
-    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-    const isObject = (v) => v !== null && typeof v === 'object';
+    const { has, isObject, assertObject, readNumber, readCutoff } = globalThis.SasFitValidate;
 
     function metaOf(name) {
         const models = globalThis.SasFitMeta.models;
@@ -61,7 +60,7 @@
 
     /** Normalised copy of modelSpec: { model, structure, lowQPowerLaw }. */
     function readSpec(modelSpec) {
-        if (!isObject(modelSpec)) throw new Error('modelSpec must be an object');
+        assertObject(modelSpec, 'modelSpec');
         const { model, structure = null, lowQPowerLaw = false } = modelSpec;
         if (typeof model !== 'string') throw new Error('modelSpec.model must be a model name');
         if (structure !== null && typeof structure !== 'string') {
@@ -71,20 +70,7 @@
         return { model, structure, lowQPowerLaw };
     }
 
-    function readCutoff(opts) {
-        const cutoff = isObject(opts) && opts.cutoff !== undefined ? opts.cutoff : DEFAULT_CUTOFF;
-        if (typeof cutoff !== 'number' || !(cutoff >= 0) || !Number.isFinite(cutoff)) {
-            throw new Error('cutoff must be a finite number >= 0, got ' + cutoff);
-        }
-        return cutoff;
-    }
-
-    function readLowQ(params, name) {
-        if (!has(params, name)) return LOWQ_DEFAULTS[name];
-        const v = params[name];
-        if (typeof v !== 'number') throw new Error('Parameter ' + name + ' must be a number, got ' + typeof v);
-        return v;
-    }
+    const readLowQ = (params, name) => readNumber(params, name, LOWQ_DEFAULTS[name]);
 
     /**
      * Split the flat parameters: the low-Q term (null without lowQPowerLaw) and
@@ -92,7 +78,7 @@
      * lowQPowerLaw the lowq_* names stay in the rest and are rejected there.
      */
     function splitParams(params, lowQPowerLaw) {
-        if (!isObject(params)) throw new Error('params must be an object');
+        assertObject(params, 'params');
         if (!lowQPowerLaw) return { modelPars: params, lowQ: null };
         const modelPars = {};
         Object.keys(params).forEach((key) => {
@@ -146,7 +132,7 @@
         const spec = readSpec(modelSpec);
         const meta = metaOf(spec.model);
         const sMeta = spec.structure === null ? null : metaOf(spec.structure);
-        const cutoff = readCutoff(opts);
+        const cutoff = readCutoff(opts, DEFAULT_CUTOFF);
         const { modelPars, lowQ } = splitParams(params, spec.lowQPowerLaw);
         const base = sMeta === null
             ? evaluatePlain(meta, modelPars, q, cutoff, kernels)

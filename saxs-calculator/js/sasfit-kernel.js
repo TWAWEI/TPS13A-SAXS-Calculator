@@ -50,36 +50,10 @@
     const BYTES_F64 = Float64Array.BYTES_PER_ELEMENT;
     // direct_model.py:139-142
     const PD_DEFAULTS = Object.freeze({ n: 0, width: 0, nsigma: 3, type: 'gaussian' });
-    const PD_SUFFIXES = Object.freeze(['_pd', '_pd_n', '_pd_nsigma', '_pd_type']);
 
-    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-
-    /** parameter.polydisperse (modelinfo.py:167); `pd` in the meta is membership of pd_1d. */
-    function isPolydisperse(param) {
-        return param.type === 'volume' || param.type === 'orientation';
-    }
-
-    function readNumber(pars, name, fallback) {
-        if (!has(pars, name)) return fallback;
-        const v = pars[name];
-        if (typeof v !== 'number') {
-            throw new Error('Parameter ' + name + ' must be a number, got ' + typeof v);
-        }
-        return v;
-    }
-
-    /** get_mesh raises on leftovers (direct_model.py:121-122). */
-    function assertNoUnusedPars(meta, pars) {
-        const known = new Set(['scale', 'background']);
-        meta.params.forEach((p) => {
-            known.add(p.name);
-            if (isPolydisperse(p)) PD_SUFFIXES.forEach((s) => known.add(p.name + s));
-        });
-        const unused = Object.keys(pars).filter((k) => !known.has(k));
-        if (unused.length > 0) {
-            throw new Error('Unused parameters in call to ' + meta.name + ': ' + unused.join(', '));
-        }
-    }
+    const {
+        has, assertObject, readNumber, checkQ, readCutoff, isPolydisperse, knownNames, assertNoUnusedPars,
+    } = globalThis.SasFitValidate;
 
     /** _pop_par_weights (direct_model.py:127-152): { value, x, w } for one kernel parameter. */
     function parWeights(param, pars) {
@@ -149,9 +123,9 @@
      * one weight vector per kernel parameter, zero padding to a multiple of 32.
      */
     function makeKernelArgs(meta, pars) {
-        if (pars === null || typeof pars !== 'object') throw new Error('pars must be an object');
+        assertObject(pars, 'pars');
         assertLayout(meta);
-        assertNoUnusedPars(meta, pars);
+        assertNoUnusedPars(meta.name, pars, knownNames(meta));
         const mesh = meta.params.map((p) => parWeights(p, pars));
         const lengths = mesh.map((m) => m.w.length);
         const offsets = [];
@@ -226,21 +200,6 @@
             if (F1) F1[i] = result[i * nout + 1] / totalWeight;
         }
         return { F1, F2, radiusEffective, shellVolume, volumeRatio: formVolume / shellVolume };
-    }
-
-    function checkQ(q) {
-        const ok = Array.isArray(q) || q instanceof Float64Array;
-        if (!ok || !Array.prototype.every.call(q, (v) => typeof v === 'number')) {
-            throw new Error('q must be a Float64Array or an array of numbers');
-        }
-    }
-
-    function readCutoff(opts) {
-        const cutoff = opts ? opts.cutoff : undefined;
-        if (typeof cutoff !== 'number' || !(cutoff >= 0) || !Number.isFinite(cutoff)) {
-            throw new Error('cutoff is required and must be a finite number >= 0, got ' + cutoff);
-        }
-        return cutoff;
     }
 
     function readMode(meta, opts) {

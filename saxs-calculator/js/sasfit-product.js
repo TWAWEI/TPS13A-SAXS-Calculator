@@ -50,7 +50,6 @@
     const DEFAULTS = Object.freeze({
         scale: 1, background: 0.001, [STRUCTURE_MODE_ID]: 0, [RADIUS_MODE_ID]: 1,
     });
-    const PD_SUFFIXES = Object.freeze(['_pd', '_pd_n', '_pd_nsigma', '_pd_type']);
     // Where a product parameter goes: the P kernel, the S kernel, S.radius_effective
     // (replaced by P's value when the mode is > 0), or read by the product itself.
     const TO_P = 'p';
@@ -58,23 +57,8 @@
     const TO_RADIUS = 'radius';
     const TO_PRODUCT = 'product';
 
-    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    const { assertObject, readNumber, pdNames, assertNoUnusedPars } = globalThis.SasFitValidate;
     const hasParam = (meta, name) => meta.params.some((p) => p.name === name);
-
-    /** parameter.polydisperse (modelinfo.py:167): these accept the *_pd names. */
-    function pdNames(param) {
-        const polydisperse = param.type === 'volume' || param.type === 'orientation';
-        return polydisperse ? PD_SUFFIXES.map((s) => param.name + s) : [];
-    }
-
-    function readNumber(pars, name, fallback) {
-        if (!has(pars, name)) return fallback;
-        const v = pars[name];
-        if (typeof v !== 'number') {
-            throw new Error('Parameter ' + name + ' must be a number, got ' + typeof v);
-        }
-        return v;
-    }
 
     /** The spec's "can take S(Q)" rule: P needs F(q) and effective radius modes. */
     function assertCanTakeStructure(pMeta) {
@@ -143,16 +127,12 @@
      * names raise as in get_mesh (direct_model.py:121-122).
      */
     function splitPars(routes, name, pars) {
+        assertNoUnusedPars(name, pars, routes);
         const out = { [TO_P]: { scale: 1, background: 0 }, [TO_S]: { scale: 1, background: 0 }, [TO_RADIUS]: {} };
-        const unused = [];
         Object.keys(pars).forEach((key) => {
             const to = routes.get(key);
-            if (to === undefined) unused.push(key);
-            else if (to !== TO_PRODUCT) out[to][key] = pars[key];
+            if (to !== TO_PRODUCT) out[to][key] = pars[key];
         });
-        if (unused.length > 0) {
-            throw new Error('Unused parameters in call to ' + name + ': ' + unused.join(', '));
-        }
         return out;
     }
 
@@ -183,7 +163,7 @@
 
         /** ProductKernel.Iq (product.py:430-549). cutoff is validated by the kernels. */
         function parts(q, pars, opts) {
-            if (pars === null || typeof pars !== 'object') throw new Error('pars must be an object');
+            assertObject(pars, 'pars');
             const cutoff = opts ? opts.cutoff : undefined;
             const split = splitPars(routes, name, pars);
             const scale = readNumber(pars, 'scale', DEFAULTS.scale);

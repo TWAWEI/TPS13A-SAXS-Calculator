@@ -28,32 +28,7 @@
 (function () {
     'use strict';
 
-    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
-
-    function checkQ(q) {
-        const ok = Array.isArray(q) || q instanceof Float64Array;
-        if (!ok || !Array.prototype.every.call(q, (v) => typeof v === 'number')) {
-            throw new Error('q must be a Float64Array or an array of numbers');
-        }
-    }
-
-    function readNumber(pars, name, fallback) {
-        if (!has(pars, name)) return fallback;
-        const v = pars[name];
-        if (typeof v !== 'number') {
-            throw new Error('Parameter ' + name + ' must be a number, got ' + typeof v);
-        }
-        return v;
-    }
-
-    /** get_mesh raises on leftovers (direct_model.py:121-122). */
-    function assertNoUnusedPars(meta, pars) {
-        const known = new Set(['scale', 'background'].concat(meta.params.map((p) => p.name)));
-        const unused = Object.keys(pars).filter((k) => !known.has(k));
-        if (unused.length > 0) {
-            throw new Error('Unused parameters in call to ' + meta.name + ': ' + unused.join(', '));
-        }
-    }
+    const { assertObject, readNumber, checkQ, knownNames, assertNoUnusedPars } = globalThis.SasFitValidate;
 
     /**
      * guinier_porod.Iq (guinier_porod.py:101-120). Returns zeros when rg <= 0
@@ -102,9 +77,10 @@
         const form = FORMS[name];
         function Iq(q, pars) {
             checkQ(q);
-            if (pars === null || typeof pars !== 'object') throw new Error('pars must be an object');
+            assertObject(pars, 'pars');
             const meta = modelMeta(name);
-            assertNoUnusedPars(meta, pars);
+            // neither model has a polydisperse parameter, so no *_pd name is known
+            assertNoUnusedPars(meta.name, pars, knownNames(meta));
             const scale = readNumber(pars, 'scale', meta.common.scale.def);
             const background = readNumber(pars, 'background', meta.common.background.def);
             const args = meta.params.map((p) => readNumber(pars, p.name, p.def));
