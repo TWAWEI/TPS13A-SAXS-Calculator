@@ -22,6 +22,15 @@ passed to `load_model` and the exact keyword arguments passed to sasmodels
 (sum-model `A_`/`B_` names for the low-Q power-law cases), so the provenance is
 auditable.  The `pars` of a case use the flat names of the JS `evaluate` API.
 
+Every g1 case with a structure factor also records `intermediates`, read from
+sasmodels' own product kernel (`kernel.results()`, product.py:288-311):
+`radiusEffectiveP` (what P returned: 0 in radius_effective_mode 0),
+`radiusEffectiveUsed` (the value S was evaluated with: P's when the mode is
+> 0, the radius_effective parameter otherwise), `volumeRatio`, `shellVolume`
+and `S`.  They let the JS tests gate P@S at component level: hardsphere.c
+cancels catastrophically for 2qR ~ 0.05-0.13, where a 1-ulp change of R_eff
+moves S(q) by 2.3e-9, so the end-to-end I(q) cannot be held to 1e-9.
+
 sasmodels 1.0.12 is the source of truth.  Spec: docs/superpowers/specs/
 2026-11-17-sasfit-a-design.md section 4 and 11; plan: docs/superpowers/plans/
 2026-11-18-sasfit-m1-compute-core.md Task 2.
@@ -181,17 +190,51 @@ def model_case(label, model, structure, flat, q, low_q=False):
     """Run one DirectModel case and wrap it as a fixture entry."""
     base = model + ("@" + structure if structure else "")
     spec, kwargs = sasmodels_call(base, flat, low_q)
-    Iq = np.asarray(direct(spec, q)(**dict(kwargs)), dtype=float)
+    calc = direct(spec, q)
+    Iq = np.asarray(calc(**dict(kwargs)), dtype=float)
     assert_finite(Iq, label)
     if low_q:
         check_mixture_identity(label, base, flat, q, Iq)
-    return {
+    entry = {
         "label": label,
         "modelSpec": {"model": model, "structure": structure, "lowQPowerLaw": low_q},
         "pars": dict(flat),
         "Iq": Iq,
         "sasmodels": {"model": spec, "pars": kwargs},
     }
+    if structure:
+        entry["intermediates"] = product_intermediates(label, calc.results(), structure, flat)
+    return entry
+
+
+def _product_parts(results):
+    """The _Intermediates dict of the P@S kernel; nested one level in a sum model."""
+    if "S(Q)" in results:
+        return results
+    nested = [v for v in results.values() if isinstance(v, dict) and "S(Q)" in v]
+    assert len(nested) == 1, list(results)
+    return nested[0]
+
+
+def product_intermediates(label, results, structure, flat):
+    """P@S intermediates as sasmodels exposes them (product.py:288-311)."""
+    parts = _product_parts(results)
+    mode = int(flat.get("radius_effective_mode", 1))        # product.py:165, 437
+    reff_p = float(parts["radius_effective"])
+    s_info = get_model(structure).info
+    user = float(flat.get("radius_effective", s_info.parameters.defaults["radius_effective"]))
+    assert (reff_p == 0.0) == (mode == 0), (label, mode, reff_p)
+    out = {
+        "radiusEffectiveP": reff_p,
+        # product.py:488, 506-508: S keeps the parameter value unless the mode is > 0
+        "radiusEffectiveUsed": reff_p if mode > 0 else user,
+        "volumeRatio": float(parts["volume_ratio"]),
+        "shellVolume": float(parts["volume"]),
+        "S": np.asarray(parts["S(Q)"][1], dtype=float),
+    }
+    for key, value in out.items():
+        assert_finite(value, "g1 %s intermediates %s" % (label, key))
+    return out
 
 
 def check_mixture_identity(label, base, flat, q, Iq_mix):
@@ -381,6 +424,28 @@ def _g1_low_q(q):
     return out
 
 
+def _g1_s_polydisperse(q):
+    """S.radius_effective polydisperse (hayter_msa only): averaged in mode 0, ignored otherwise."""
+    name = "sphere@hayter_msa"
+    spd = pd_block("radius_effective", "gaussian", 35, 3, 0.1)
+    out = [
+        model_case("spd: %s mode 0 radius_effective gaussian0.1" % name, "sphere", "hayter_msa",
+                   dict(spd, radius_effective_mode=0), q),
+        model_case("spd: %s mode 0 radius_effective gaussian0.1 beta schulz0.2" % name,
+                   "sphere", "hayter_msa",
+                   dict(spd, radius_effective_mode=0, structure_factor_mode=1,
+                        **_schulz_first("sphere")), q),
+        model_case("spd: %s mode 1 radius_effective gaussian0.1 (ignored)" % name,
+                   "sphere", "hayter_msa", dict(spd, radius_effective_mode=1), q),
+    ]
+    mono0 = np.asarray(direct(name, q)(radius_effective_mode=0), dtype=float)
+    mono1 = np.asarray(direct(name, q)(radius_effective_mode=1), dtype=float)
+    assert not np.allclose(out[0]["Iq"], mono0, rtol=1e-6, atol=0.0), "S pd had no effect in mode 0"
+    # product.py:480-483, 506-509: with R_eff from P the S distribution is forced to length 1
+    assert np.array_equal(out[2]["Iq"], mono1), "S pd changed the mode-1 result"
+    return out
+
+
 def _g1_two_pd(q):
     pars = dict(pd_block("radius", "gaussian", 15, 3, 0.15),
                 **pd_block("length", "gaussian", 15, 3, 0.2))
@@ -390,7 +455,8 @@ def _g1_two_pd(q):
 def gen_g1():
     q = Q_GRID
     groups = [_g1_defaults(q), _g1_single_pd(q), _g1_structure_modes(q),
-              _g1_reff_modes(q), _g1_vesicle(q), _g1_low_q(q), _g1_two_pd(q)]
+              _g1_reff_modes(q), _g1_vesicle(q), _g1_low_q(q), _g1_two_pd(q),
+              _g1_s_polydisperse(q)]
     cases = [c for g in groups for c in g]
     write_fixture("g1", {"sasmodelsVersion": sasmodels.__version__, "cutoff": CUTOFF,
                          "q": q, "cases": cases})
