@@ -378,7 +378,7 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 - emscripten：官方 **emsdk** 安裝於 repo 外（`~/emsdk`），版本於 Phase 0 選定後鎖定並寫入 README 與 `manifest.json`。不用 Homebrew（會自動升級、會拉入 openjdk）。
 - `gen_meta.py` → `js/sasfit-meta.js`（檔頭：自動產生、勿手改、產生器與 sasmodels 版本）。
 - `build_wasm.py`：**重現 `kerneldll.make_dll` 的前處理**——`source = generate.convert_type(generate.make_source(info)['dll'], F64)`（前置 `#define FLOAT_SIZE 8`、修正 tgmath 整數參數）；腳本斷言前處理後原始碼以 `#define FLOAT_SIZE 8` 開頭。編譯旗標比照 `kerneldll` 的 unix 預設 `-std=c99 -O2`；**不用 OpenMP、不用 `-ffast-math`** 等改變 IEEE 語意的選項；standalone、無 JS glue、匯出 `<model>_Iq` 與記憶體配置函式。產出 `saxs-calculator/wasm/sas-<model>.wasm`＋`manifest.json`。
-- `gen_reference.py` → `saxs-calculator/tests/fixtures/sasfit/*.json`：sasmodels 強制 DLL 雙精度、不走 OpenCL（`SAS_OPENCL=none`）；**每個呼叫都明確傳 cutoff**（G1、G4 用 1e-5；G3 用 sasmodels `model_test` 的 0）——不得依賴 `DirectModel`／`Experiment` 的建構子預設。
+- `gen_reference.py` → `saxs-calculator/tests/fixtures/sasfit/*.json`：sasmodels 強制 DLL 雙精度、不走 OpenCL（`SAS_OPENCL=none`）；**每個呼叫都明確傳 cutoff**（G1、G4 用 1e-5；G3 用 sasmodels `model_test` 的 0）——不得依賴 `DirectModel`／`Experiment` 的建構子預設。參考值所用的原生 DLL 以 `-ffp-contract=off`（嚴格 IEEE、不合併乘加）編譯，放在專用快取 `tools/sasfit/build/dll-nofma/`，設定集中於 `tools/sasfit/sas_env.py`（見 §15 決策 18）。
 - 只有新增模型或升級 sasmodels 才需要重跑 `build_wasm.py`；改 JS 不需要 emsdk。產物（meta、wasm、fixtures）皆提交進 repo。
 
 ## 11. 測試與驗證
@@ -455,6 +455,7 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 15 | 多分散積分 cutoff 預設 1e-5 | 與 SasView GUI、bumps、DirectModel 預設一致，曲線可與 SasView 對照；較快 | 使用者 2026-11-17（更正先前「direct_model 預設 0」的錯誤前提） |
 | 16 | 權重非資料 σ 時，顯示誤差乘 √χ²ᵣ 並標明 | 此時 σ 未知，不乘的誤差量級無意義（bumps 文件建議） | 使用者 2026-11-17 |
 | 17 | 共變異算法照 bumps（前向差分 1e-4·\|p\|、SVD 奇異值下限 1e-8） | 讓誤差與 SasView 顯示一致 | 審查第 1 輪 |
+| 18 | 參考值以關閉 FMA 的編譯產生（嚴格 IEEE） | WebAssembly 沒有 FMA；arm64 編譯器預設合併乘加，hayter_msa 在低 q 的條件數使兩者差到 3e-9。關閉後原生與 wasm 逐位元相同（194/200 點）；門檻維持 1e-9 | 2026-11-18 M1 Task 4 實測 |
 
 ## 16. 已知限制與 B 版候選
 

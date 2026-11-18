@@ -84,6 +84,7 @@
 
 - 實例化需提供 `{ env: { emscripten_notify_memory_growth() {} } }`，且實例化後必須呼叫一次 `_initialize()`。
 - background 不在 kernel 內：sasmodels 的 `values` buffer 中 background 為 0，I = scale/⟨V_shell⟩·⟨F²⟩ + background 的 background 於 kernel 外相加。
+  - 更正（2026-11-18，M1 Task 4）：`values` 中 background 為 0 只發生在經由 `DirectModel` 呼叫時（`direct_model.py:330-336` 先歸零、`:351` 再加回）；`call_kernel`／`Kernel.Iq` 送出的是實際的 background（`kernel.py:82-98`），C kernel 本身不讀這一格。
 - 記憶體透過匯出的 `malloc`/`free` 管理；`malloc` 後必須重新讀取 `memory.buffer`（記憶體可能成長，舊的 ArrayBuffer 會失效）。
 - kernel 以每批最多 100 個 eval 的區間呼叫（`start`、`stop`）；結果 buffer 長度為 nq·(have_Fq ? 2 : 1) + 4。
 - 2 參數多分散的實測成本：core_shell_cylinder 35×35（1225 evals）、400 q 點需約 1.28 s（wasm）；100 q 點約 0.32 s；15×15 約 0.25 s；單參數 n=35 約 40 ms。
