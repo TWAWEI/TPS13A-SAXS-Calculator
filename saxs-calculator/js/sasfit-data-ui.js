@@ -42,6 +42,7 @@
 
     const LOG = '[sasfit]';
     const BYTES_PER_MB = 1024 * 1024;
+    const MAX_TOTAL_POINTS = 2000000;        // all loaded files together (three Float64Array columns: about 50 MB)
     const CHI2R_DIGITS = 3;
     const DRAG_CLASS = 'is-dragover';
     const ACTIVE_CLASS = 'active';
@@ -57,11 +58,11 @@
         empty: '尚未載入資料。',
         tooLarge: (mb, maxMb) => '檔案 ' + mb + ' MB 超過上限 ' + maxMb + ' MB，未讀取',
         unreadable: (reason) => '無法讀取：' + reason,
-        skipped: (max, count) => '清單最多 ' + max + ' 個檔，已略過 ' + count + ' 個檔（未讀取）。',
         reading: (done, total) => '讀取中…（' + done + '／' + total + '）',
         lockedDrop: '擬合進行中，無法加入檔案；請在擬合結束後再載入。',
         sorted: 'q 未依大小排列，已自動排序',
-        suspectNm: '最大 q 超過 5，Q 單位可能是 nm⁻¹',
+        suspectNm: 'q 範圍像是 nm⁻¹（一般 SAXS 在 Å⁻¹ 下 q 約 0.003–0.5），請確認 Q 單位',
+        overBudget: (max) => '已載入的資料點總數將超過上限 ' + max + ' 點，此檔未加入',
         noChart: '尚未載入資料',
         noResidual: '尚無擬合結果',
         chart: (count, mode, active) => count + ' 組資料，模式 ' + mode + '，作用中：' + active,
@@ -194,7 +195,7 @@
             id: file.id, index, fileName: file.fileName, hasData: file.dataset !== null,
             shown: state.shown[file.id] === true, active: file.id === state.activeId, condition: file.condition,
             statusText: status.text, statusTone: status.tone,
-            issues: file.issues.concat(noteIssues(file.dataset === null ? null : file.notes)), issueOverflow: 0,
+            issues: file.issues.concat(noteIssues(file.dataset === null ? null : file.notes)), issueOverflow: file.issueOverflow,
             locked: isRunning(state),
         };
     }
@@ -267,8 +268,13 @@
         fileName, dataset: null, issues: Object.freeze([Object.freeze({ line: null, message })]), notes: Object.freeze({}),
     });
 
-    /** One file -> the entry of the addFiles action; never rejects. */
-    async function readEntry(ui, file, qUnit) {
+    const pointsOf = (dataset) => (dataset === null ? 0 : dataset.q.length);
+
+    /**
+     * One file -> the entry of the addFiles action; never rejects. `used` is the number of points loaded so far
+     * (list + this selection): a file that would pass MAX_TOTAL_POINTS is not added.
+     */
+    async function readEntry(ui, file, qUnit, used) {
         const io = globalThis.SasFitDataIo;
         const fileName = typeof file.name === 'string' ? file.name : '';
         if (file.size > io.LIMITS.MAX_BYTES) {
@@ -277,9 +283,12 @@
         try {
             const text = await ui.ctx.deps.readFile(file);
             const parsed = io.parse(text, { fileName, qUnit });
-            return Object.freeze({ fileName, dataset: parsed.dataset, issues: parsed.issues, notes: parsed.notes });
+            if (used + pointsOf(parsed.dataset) > MAX_TOTAL_POINTS) return failedEntry(fileName, TEXT.overBudget(MAX_TOTAL_POINTS));
+            return Object.freeze({
+                fileName, dataset: parsed.dataset, issues: parsed.issues, issueOverflow: parsed.issueOverflow, notes: parsed.notes,
+            });
         } catch (err) {
-            console.warn(LOG + ' 讀檔失敗：' + fileName, err);
+            console.warn(LOG + ' 讀檔失敗', err);                 // no file name in the console (it may identify a sample)
             return failedEntry(fileName, TEXT.unreadable(messageOf(err)));
         }
     }
@@ -289,7 +298,21 @@
         ui.ctx.el('sfDataAlert').textContent = ui.store.get().notice;
     }
 
-    /** Read the files one after the other, then add them to the list in one action. */
+    /** The files of a selection that fit into the list, read one after the other (the list keeps their order). */
+    async function readEntries(ui, taken) {
+        const qUnit = ui.ctx.el('sfQUnit').value === 'nm' ? 'nm' : 'A';
+        const entries = [];
+        let used = ui.ctx.getState().files.reduce((sum, f) => sum + pointsOf(f.dataset), 0);
+        for (const file of taken) {
+            progress(ui, entries.length, taken.length);
+            const entry = await readEntry(ui, file, qUnit, used);
+            used += pointsOf(entry.dataset);
+            entries.push(entry);
+        }
+        return entries;
+    }
+
+    /** Read the files, then add them to the list in one action (its notice says how many did not fit). */
     async function loadFiles(ui, fileList) {
         const { ctx } = ui;
         const files = Array.from(fileList || []);
@@ -300,22 +323,13 @@
             return;
         }
         const taken = files.slice(0, globalThis.SasFitState.capacity(ctx.getState()));
-        const qUnit = ctx.el('sfQUnit').value === 'nm' ? 'nm' : 'A';
         ui.store.set({ loading: true });
         ctx.refresh();
-        const entries = [];
-        for (const file of taken) {                               // in order: the list keeps the order of the selection
-            progress(ui, entries.length, taken.length);
-            entries.push(await readEntry(ui, file, qUnit));
-        }
-        const skipped = files.length - taken.length;
+        const entries = await readEntries(ui, taken);
         const locked = isRunning(ctx.getState());                 // a fit may have started while the files were read
-        ui.store.set({
-            loading: false,
-            notice: locked ? TEXT.lockedDrop : skipped > 0 ? TEXT.skipped(globalThis.SasFitState.MAX_FILES, skipped) : '',
-        });
-        if (locked || entries.length === 0) ctx.refresh();
-        else ctx.dispatch({ type: 'addFiles', files: entries });
+        ui.store.set({ loading: false, notice: locked ? TEXT.lockedDrop : '' });
+        if (locked) ctx.refresh();
+        else ctx.dispatch({ type: 'addFiles', files: entries, skipped: files.length - taken.length });
     }
 
     function startLoading(ui, fileList) {
@@ -387,6 +401,7 @@
         body.addEventListener('click', (event) => {
             const target = targetOf(event);
             if (target === null || target.dataset.action !== 'remove' || isRunning(ctx.getState())) return;
+            ui.store.set({ notice: '' });                          // a message about an earlier load no longer applies
             ctx.dispatch({ type: 'removeFile', id: target.dataset.id });
             ctx.el('sfDataWrapper').focus();                       // the button is gone: keep the focus near the list
         });
@@ -428,5 +443,5 @@
         return Object.freeze({ render: () => render(ui) });
     }
 
-    globalThis.SasFitDataUi = Object.freeze({ create });
+    globalThis.SasFitDataUi = Object.freeze({ MAX_TOTAL_POINTS, create });
 })();

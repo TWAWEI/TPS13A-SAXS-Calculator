@@ -13,7 +13,9 @@ const near = (a, b) => assert.ok(Math.abs(a - b) <= 1e-12 * Math.max(1, Math.abs
 
 test('module is frozen and exports the interface', () => {
     assert.ok(Object.isFrozen(D));
-    assert.deepEqual({ ...D.LIMITS }, { MAX_BYTES: 5 * 1024 * 1024, MAX_POINTS: 100000, MAX_ISSUES_LISTED: 5 });
+    assert.deepEqual({ ...D.LIMITS }, {
+        MAX_BYTES: 5 * 1024 * 1024, MAX_POINTS: 100000, MAX_ISSUES_LISTED: 5, MAX_ISSUES: 50, MAX_TOKEN_CHARS: 64, MAX_NAME_TAIL: 64,
+    });
     assert.ok(Object.isFrozen(D.LIMITS));
     assert.equal(typeof D.parse, 'function');
     assert.equal(typeof D.conditionFromName, 'function');

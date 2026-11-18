@@ -324,7 +324,7 @@ test('5.7-13: no-sigma comes from the data itself (SasFitWeighting.defaultMode),
 
 test('suspect-nm from the load notes', () => {
     const hint = byId(pre({ notes: { ...NOTES, suspectNm: true } }), 'suspect-nm');
-    assert.equal(hint.text, '最大 q 超過 5，Q 單位可能是 nm⁻¹：請移除此檔，把 Q 單位改選 nm⁻¹ 後重新載入');
+    assert.equal(hint.text, 'q 範圍像是 nm⁻¹（一般 SAXS 在 Å⁻¹ 下 q 約 0.003–0.5）：若單位確實是 nm⁻¹，請移除此檔，把 Q 單位改選 nm⁻¹ 後重新載入');
     assert.equal(hint.tone, 'warn');
 });
 

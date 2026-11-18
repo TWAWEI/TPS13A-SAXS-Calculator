@@ -140,7 +140,58 @@ test('[sasfit-data-ui] 一次選的檔超過清單容量：只讀放得下的，
     await load(page, many);
     assert.equal(page.reads.length, State.MAX_FILES, '多出的檔沒有被讀');
     assert.equal(page.Section.getState().files.length, State.MAX_FILES);
-    assert.equal(page.$('sfDataAlert').textContent, `清單最多 ${State.MAX_FILES} 個檔，已略過 3 個檔（未讀取）。`);
+    assert.equal(page.$('sfDataAlert').textContent, `清單最多 ${State.MAX_FILES} 個檔，已略過 3 個檔。`);
+    assert.equal(page.Section.getState().notice, `清單最多 ${State.MAX_FILES} 個檔，已略過 3 個檔。`, '訊息只有一個來源：狀態');
+});
+
+test('[sasfit-data-ui] 訊息在下一次成功載入與移除檔案後清掉', async () => {
+    const readFile = (file) => (file.name === 'slow.dat' ? Promise.reject(new Error('x')) : Promise.resolve(file.text));
+    const page = boot({ readFile });
+    await load(page, [ui.fixtureFile(OFFICIAL)]);
+    page.ctx.dispatch({ type: 'fitStarted' });
+    await load(page, [ui.fixtureFile('generic-3col.csv')]);
+    assert.match(page.$('sfDataAlert').textContent, /擬合進行中，無法加入檔案/);
+    page.ctx.dispatch({ type: 'fitSettled', result: null });
+    await load(page, [ui.fixtureFile('generic-3col.csv')]);
+    assert.equal(page.$('sfDataAlert').textContent, '', '成功載入後清掉');
+    page.ctx.dispatch({ type: 'fitStarted' });
+    await load(page, [ui.fixtureFile('generic-3col.csv')]);
+    page.ctx.dispatch({ type: 'fitSettled', result: null });
+    assert.match(page.$('sfDataAlert').textContent, /擬合進行中/);
+    page.$(Html.fileControlId(page.Section.getState().files[1].id, 'remove')).fire('click');
+    assert.equal(page.$('sfDataAlert').textContent, '', '移除檔案後清掉');
+});
+
+test('[sasfit-data-ui] 解析問題超過上限：列出前幾項與「另有 N 行」（含未收集的部分）', async () => {
+    const page = boot();
+    const bad = Array.from({ length: 130 }, (_, i) => '0.0' + (i + 1) + ' x 1').join('\n');
+    await load(page, [ui.fileOf('many.txt', '0.001 1 0.1\n' + bad + '\n0.9 2 0.1\n')]);
+    assert.equal(page.Section.getState().files[0].issueOverflow, 80);
+    assert.match(page.$('sfDataBody').innerHTML, /另有 125 行/, '50 項中列 5 項，其餘 45 項加上未收集的 80 項');
+});
+
+test('[sasfit-data-ui] 資料點總數的預算：超過的檔不加入，該列說明原因；console 不記檔名', async () => {
+    const page = boot();
+    const big = genericText(100000);
+    const files = Array.from({ length: 21 }, (_, i) => ui.fileOf('secret-name-' + i + '.txt', big));
+    const logs = await ui.captureConsole('warn', async () => {
+        await load(page, files);
+        for (let i = 0; i < 30; i++) await ui.flush();
+    });
+    const state = page.Section.getState();
+    assert.equal(state.files.filter((f) => f.dataset !== null).length, 20);
+    assert.equal(state.files[20].dataset, null);
+    assert.equal(state.files[20].issues[0].message, '已載入的資料點總數將超過上限 2000000 點，此檔未加入');
+    assert.equal(logs.length, 0);
+    await load(page, [ui.fileOf('small.txt', genericText(10))]);
+    assert.equal(page.Section.getState().files[21].dataset, null, '已載入的點也算在預算內');
+});
+
+test('[sasfit-data-ui] 讀檔失敗寫進 console 的訊息不含檔名', async () => {
+    const page = boot({ readFile: () => Promise.reject(new Error('boom')) });
+    const warnings = await ui.captureConsole('warn', () => load(page, [ui.fileOf('patient-A-secret.dat', '')]));
+    assert.equal(warnings.length, 1);
+    assert.doesNotMatch(warnings.join(' '), /patient-A-secret/);
 });
 
 test('[sasfit-data-ui] 檔名含 HTML：innerHTML 沒有未跳脫的標記；canvas 的 aria-label 說明組數、模式與作用中', async () => {

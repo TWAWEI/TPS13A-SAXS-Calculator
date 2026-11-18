@@ -118,6 +118,21 @@ test('addFiles: MAX_FILES is enforced; the rest is skipped with a notice; clearN
     assert.equal(none.notice, '清單最多 500 個檔，已略過 1 個檔。');
 });
 
+test('addFiles: `skipped` (files the loader did not read) is added to the notice; issueOverflow is kept', () => {
+    const s = S.reduce(S.initial(), { type: 'addFiles', files: [{ ...good('a.dat'), issueOverflow: 7 }, good('b.dat')], skipped: 3 });
+    assert.equal(s.notice, '清單最多 500 個檔，已略過 3 個檔。');
+    assert.deepEqual(s.files.map((f) => f.issueOverflow), [7, 0]);
+    assert.throws(() => S.reduce(S.initial(), { type: 'addFiles', files: [], skipped: -1 }), /skipped/);
+    assert.throws(() => S.reduce(S.initial(), { type: 'addFiles', files: [{ ...good('a.dat'), issueOverflow: 1.5 }] }), /issueOverflow/);
+});
+
+test('notice: cleared by the next load without skipped files and by a removal', () => {
+    const noticed = S.reduce(S.initial(), { type: 'addFiles', files: [good('a.dat'), good('b.dat')], skipped: 2 });
+    assert.notEqual(noticed.notice, null);
+    assert.equal(S.reduce(noticed, add(good('c.dat'))).notice, null);
+    assert.equal(S.reduce(noticed, { type: 'removeFile', id: 'd1' }).notice, null);
+});
+
 test('addFiles: malformed input is an Error naming the problem', () => {
     const s = S.initial();
     assert.throws(() => S.reduce(s, { type: 'addFiles' }), /files/);

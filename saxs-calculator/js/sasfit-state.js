@@ -187,17 +187,25 @@
         if (!ok) throw new Error(what + '.dataset must be null or a Dataset with q and I as Float64Array');
         if (!Array.isArray(file.issues)) throw new Error(what + '.issues must be an array');
         if (!isObject(file.notes)) throw new Error(what + '.notes must be an object');
+        if (file.issueOverflow !== undefined && !isCount(file.issueOverflow)) {
+            throw new Error(what + '.issueOverflow must be an integer >= 0');
+        }
     }
 
     const conditionOf = (dataset) => (dataset !== null && isFiniteNumber(dataset.condition) ? dataset.condition : null);
 
-    function addFiles(state, { files }) {
+    const isCount = (v) => Number.isInteger(v) && v >= 0;
+
+    /** `skipped`: files the loader left unread because the list was full (they join the notice). */
+    function addFiles(state, { files, skipped: unread }) {
         if (!Array.isArray(files)) throw new Error('addFiles needs files: an array');
+        if (unread !== undefined && !isCount(unread)) throw new Error('addFiles: skipped must be an integer >= 0');
         files.forEach(assertFileInput);
         const taken = files.slice(0, capacity(state));
         const entries = taken.map((file, i) => Object.freeze({
             id: ID_PREFIX + (state.nextId + i), fileName: file.fileName, dataset: file.dataset,
-            issues: file.issues, notes: file.notes, condition: conditionOf(file.dataset),
+            issues: file.issues, issueOverflow: file.issueOverflow === undefined ? 0 : file.issueOverflow,
+            notes: file.notes, condition: conditionOf(file.dataset),
         }));
         const shown = { ...state.shown };
         let withData = state.files.filter((f) => f.dataset !== null).length;
@@ -205,10 +213,10 @@
             shown[entry.id] = withData < DEFAULT_SHOWN;
             withData += 1;
         });
-        const skipped = files.length - taken.length;
+        const skipped = files.length - taken.length + (unread === undefined ? 0 : unread);
         const next = withFields(state, {
             files: Object.freeze(state.files.concat(entries)), shown: Object.freeze(shown),
-            nextId: state.nextId + taken.length, notice: skipped > 0 ? skippedNotice(skipped) : state.notice,
+            nextId: state.nextId + taken.length, notice: skipped > 0 ? skippedNotice(skipped) : null,
         });
         const first = entries.find((entry) => entry.dataset !== null);
         return next.activeId === null && first !== undefined ? activate(next, first.id) : next;
@@ -229,7 +237,7 @@
         const at = state.files.indexOf(fileOf(state, id));
         const next = withFields(state, {
             files: Object.freeze(state.files.filter((f) => f.id !== id)),
-            shown: without(state.shown, id), fitResults: without(state.fitResults, id),
+            shown: without(state.shown, id), fitResults: without(state.fitResults, id), notice: null,
         });
         if (state.activeId !== id) return next;
         const successor = successorOf(state.files, at);

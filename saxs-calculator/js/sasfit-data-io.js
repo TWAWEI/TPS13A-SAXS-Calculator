@@ -11,19 +11,41 @@
  * weighting module masks them). Only the "000 000 000" placeholder rows of an
  * official file and lines that cannot be read are left out.
  *
- * parse(text, { fileName, qUnit }) never throws for bad file content; it
- * returns { dataset: null, issues } instead. Messages are Traditional Chinese
+ * Bounds (untrusted input): a token longer than MAX_TOKEN_CHARS is refused
+ * before any regular expression sees it, and the number pattern has one way
+ * to match a digit run, so no input makes parsing super-linear. At most
+ * MAX_ISSUES issues are kept per file (issueOverflow counts the rest) and
+ * reading stops one row past MAX_POINTS. conditionFromName looks only at the
+ * last MAX_NAME_TAIL characters of a name.
+ *
+ * Generic files: the column count and the separator are those of the first
+ * candidate line whose tokens are ALL numbers; candidate lines before it (a
+ * header that starts with a digit, such as a date) are skipped. Without any
+ * such line the first candidate decides, so that its errors are reported.
+ *
+ * suspectNm (generic file read as 1/Angstrom): max q > NM_SUSPECT_Q, or max
+ * q > NM_SUSPECT_QMAX with the smallest positive q > NM_SUSPECT_QMIN (the
+ * usual BioSAXS range in 1/nm is about 0.05-5).
+ *
+ * parse(text, { fileName, qUnit }) -> { dataset, issues, issueOverflow, notes }
+ * never throws for bad file content; it returns { dataset: null, issues }
+ * instead. Messages are Traditional Chinese
  * and may quote file content (cut to 40 characters): escape before innerHTML.
  */
 
 (function () {
     'use strict';
 
-    const LIMITS = Object.freeze({ MAX_BYTES: 5 * 1024 * 1024, MAX_POINTS: 100000, MAX_ISSUES_LISTED: 5 });
+    const LIMITS = Object.freeze({
+        MAX_BYTES: 5 * 1024 * 1024, MAX_POINTS: 100000, MAX_ISSUES_LISTED: 5, MAX_ISSUES: 50, MAX_TOKEN_CHARS: 64,
+        MAX_NAME_TAIL: 64,
+    });
     const NM_SUSPECT_Q = 5;
+    const NM_SUSPECT_QMAX = 1;
+    const NM_SUSPECT_QMIN = 0.02;
     const QUOTE_MAX = 40;
     const OFFICIAL_SCAN_LINES = 60;
-    const NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][+-]?\d+)?$/;
+    const NUMBER_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eEdD][+-]?\d+)?$/;       // one way to match a digit run
     const NON_FINITE_RE = /^([+-]?)(nan|inf|infinity)$/i;
     const DATA_START_RE = /^\s*[0-9+\-.]/;
     const NON_FINITE_START_RE = /^\s*[+-]?(?:nan|inf|infinity)(?=[\s,;]|$)/i;
@@ -48,6 +70,7 @@
 
     /** A finite number, +-Infinity or NaN for the accepted spellings; undefined when the token is not a number. */
     function parseToken(token) {
+        if (token.length > LIMITS.MAX_TOKEN_CHARS) return undefined;
         if (NUMBER_RE.test(token)) return Number(token.replace(/[dD]/, 'e'));
         const m = NON_FINITE_RE.exec(token);
         if (!m) return undefined;
@@ -58,7 +81,7 @@
     /** Number found at the end of a name; a '-' in front is a minus sign unless it follows a letter or digit. */
     function conditionFromName(fileName) {
         if (typeof fileName !== 'string') return null;
-        const base = fileName.replace(/\.[A-Za-z][A-Za-z0-9]*$/, '');
+        const base = fileName.slice(-LIMITS.MAX_NAME_TAIL).replace(/\.[A-Za-z][A-Za-z0-9]*$/, '');
         const m = /(\d+(?:\.\d+)?)$/.exec(base);
         if (!m) return null;
         const before = base.charAt(m.index - 1);
@@ -91,8 +114,8 @@
             if (idx < 0) continue;
             const raw = lines[i].slice(0, idx).trim();
             if (kind === 'string') return raw === '' ? null : raw;
-            const v = NUMBER_RE.test(raw) ? parseToken(raw) : undefined;
-            return v === undefined ? null : v;
+            const v = parseToken(raw);
+            return v === undefined || !Number.isFinite(v) ? null : v;
         }
         return null;
     }
@@ -101,8 +124,8 @@
         const header = {};
         for (const [key, label, kind] of HEADER_LABELS) header[key] = headerValue(lines, frameLine, label, kind);
         const m = FRAME_TIME_RE.exec(lines[frameLine]);
-        const t = m && NUMBER_RE.test(m[1]) ? parseToken(m[1]) : undefined;
-        header.frameTimeS = t === undefined ? null : t;
+        const t = m ? parseToken(m[1]) : undefined;
+        header.frameTimeS = t === undefined || !Number.isFinite(t) ? null : t;
         return Object.freeze(header);
     }
 
@@ -115,6 +138,7 @@
         for (const t of tokens) {
             const v = parseToken(t);
             if (v === undefined) {
+                if (t.length > LIMITS.MAX_TOKEN_CHARS) return { error: '數字過長（超過 ' + LIMITS.MAX_TOKEN_CHARS + ' 個字元）：' + quote(t) };
                 const decimalComma = /^[+-]?\d*,\d+$/.test(t);
                 return { error: decimalComma ? '不支援小數逗號，請改用小數點：' + quote(t) : '無法讀成數字：' + quote(t) };
             }
@@ -123,21 +147,33 @@
         return { values };
     }
 
+    /** Collects at most MAX_ISSUES issues; `overflow` counts the ones left out. */
+    function issueLog() {
+        const list = [];
+        const log = { list, overflow: 0 };
+        log.add = (line, message) => {
+            if (list.length < LIMITS.MAX_ISSUES) list.push(issue(line, message)); else log.overflow += 1;
+        };
+        return log;
+    }
+
+    const rowsFull = (rows) => rows.length > LIMITS.MAX_POINTS;      // one row past the limit is enough to refuse the file
+
     function parseOfficialRows(lines, start) {
         const rows = [];
-        const issues = [];
+        const log = issueLog();
         let placeholders = 0;
-        for (let i = start; i < lines.length; i++) {
+        for (let i = start; i < lines.length && !rowsFull(rows); i++) {
             const tokens = lines[i].trim().split(/\s+/);
             if (tokens.length === 1 && tokens[0] === '') continue;
             if (tokens.length === 3 && tokens.every((t) => t === '000')) { placeholders++; continue; }
-            if (tokens.length < 3) { issues.push(issue(i + 1, '欄數為 ' + tokens.length + '，應至少 3 欄：' + quote(lines[i].trim()))); continue; }
+            if (tokens.length < 3) { log.add(i + 1, '欄數為 ' + tokens.length + '，應至少 3 欄：' + quote(lines[i].trim())); continue; }
             const r = readRow(tokens.slice(0, 3), null);
-            if (r.error) { issues.push(issue(i + 1, r.error)); continue; }
+            if (r.error) { log.add(i + 1, r.error); continue; }
             const dq = tokens.length > 3 ? parseToken(tokens[3]) : undefined;
             rows.push(dq === undefined ? r.values : r.values.concat([dq]));
         }
-        return { rows, issues, placeholders, skipped: 0 };
+        return { rows, issues: log.list, issueOverflow: log.overflow, placeholders, skipped: 0 };
     }
 
     function isCandidate(line) {
@@ -153,28 +189,44 @@
         return sep === null ? line.trim().split(/\s+/) : line.split(sep).map((t) => t.trim());
     }
 
+    const allNumeric = (tokens) => tokens.every((t) => parseToken(t) !== undefined);
+
+    /**
+     * Where the table of a generic file starts: { at, sep, cols } of the first candidate line whose tokens are all
+     * numbers, else of the first candidate line (its errors are then reported); null without a candidate.
+     */
+    function findTable(lines) {
+        let first = null;
+        for (let i = 0; i < lines.length; i++) {
+            if (!isCandidate(lines[i])) continue;
+            const sep = pickSeparator(lines[i]);
+            const tokens = splitRow(lines[i], sep);
+            const found = { at: i, sep, cols: tokens.length };
+            if (allNumeric(tokens)) return found;
+            if (first === null) first = found;
+        }
+        return first;
+    }
+
     function parseGenericRows(lines) {
         const rows = [];
-        const issues = [];
-        let skipped = 0;
-        let sep;
-        let cols = null;
-        for (let i = 0; i < lines.length; i++) {
-            if (!isCandidate(lines[i])) { skipped++; continue; }
-            if (cols === null) {
-                sep = pickSeparator(lines[i]);
-                cols = splitRow(lines[i], sep).length;
-                if (cols < 2 || cols > 4) {
-                    issues.push(issue(i + 1, '資料列欄數為 ' + cols + '，需為 2 至 4 欄：' + quote(lines[i].trim())));
-                    return { rows, issues, placeholders: 0, skipped };
-                }
-            }
-            const tokens = splitRow(lines[i], sep);
-            const empty = tokens.indexOf('');
-            const r = empty >= 0 ? { error: '第 ' + (empty + 1) + ' 欄是空的' } : readRow(tokens, cols);
-            if (r.error) issues.push(issue(i + 1, r.error)); else rows.push(r.values);
+        const log = issueLog();
+        const table = findTable(lines);
+        const done = (skipped) => ({ rows, issues: log.list, issueOverflow: log.overflow, placeholders: 0, skipped });
+        if (table === null) return done(lines.length);
+        if (table.cols < 2 || table.cols > 4) {
+            log.add(table.at + 1, '資料列欄數為 ' + table.cols + '，需為 2 至 4 欄：' + quote(lines[table.at].trim()));
+            return done(table.at);
         }
-        return { rows, issues, placeholders: 0, skipped };
+        let skipped = table.at;
+        for (let i = table.at; i < lines.length && !rowsFull(rows); i++) {
+            if (!isCandidate(lines[i])) { skipped++; continue; }
+            const tokens = splitRow(lines[i], table.sep);
+            const empty = tokens.indexOf('');
+            const r = empty >= 0 ? { error: '第 ' + (empty + 1) + ' 欄是空的' } : readRow(tokens, table.cols);
+            if (r.error) log.add(i + 1, r.error); else rows.push(r.values);
+        }
+        return done(skipped);
     }
 
     /** Total order for q: finite ascending, non-finite last (never a - b). */
@@ -213,11 +265,18 @@
 
     function suspectNm(q, qUnit, official) {
         if (official || qUnit !== 'A') return false;
-        return q.some((v) => Number.isFinite(v) && v > NM_SUSPECT_Q);
+        let max = -Infinity;
+        let min = Infinity;
+        for (let i = 0; i < q.length; i++) {
+            if (!Number.isFinite(q[i]) || !(q[i] > 0)) continue;
+            if (q[i] > max) max = q[i];
+            if (q[i] < min) min = q[i];
+        }
+        return max > NM_SUSPECT_Q || (max > NM_SUSPECT_QMAX && min > NM_SUSPECT_QMIN);
     }
 
-    function failure(issues, notes) {
-        return Object.freeze({ dataset: null, issues: Object.freeze(issues), notes: Object.freeze(notes) });
+    function failure(issues, notes, issueOverflow) {
+        return Object.freeze({ dataset: null, issues: Object.freeze(issues), issueOverflow, notes: Object.freeze(notes) });
     }
 
     function assembleDataset(parsed, ctx) {
@@ -242,7 +301,7 @@
         if (qUnit !== 'A' && qUnit !== 'nm') throw new Error("qUnit must be 'A' or 'nm', got " + String(qUnit));
         const fileName = typeof opts.fileName === 'string' ? opts.fileName : '';
         const emptyNotes = { skipped: 0, placeholders: 0, sorted: false, suspectNm: false };
-        if (typeof text !== 'string') return failure([issue(null, '輸入不是文字內容')], emptyNotes);
+        if (typeof text !== 'string') return failure([issue(null, '輸入不是文字內容')], emptyNotes, 0);
         const lines = splitLines(text);
         const found = detectOfficial(lines);
         const parsed = found ? parseOfficialRows(lines, found.tableStart) : parseGenericRows(lines);
@@ -250,12 +309,14 @@
         const notes = { ...emptyNotes, skipped: parsed.skipped, placeholders: parsed.placeholders };
         if (parsed.rows.length === 0) issues.push(issue(null, '檔案沒有可用的資料列'));
         if (parsed.rows.length > LIMITS.MAX_POINTS) {
-            issues.push(issue(null, '資料點數 ' + parsed.rows.length + ' 超過上限 ' + LIMITS.MAX_POINTS));
+            issues.push(issue(null, '資料點數超過上限 ' + LIMITS.MAX_POINTS + ' 點，未讀完'));
         }
-        if (parsed.rows.length === 0 || parsed.rows.length > LIMITS.MAX_POINTS) return failure(issues, notes);
+        if (parsed.rows.length === 0 || parsed.rows.length > LIMITS.MAX_POINTS) return failure(issues, notes, parsed.issueOverflow);
         const header = found ? readHeader(lines, found.frameLine) : null;
         const built = assembleDataset(parsed, { official: Boolean(found), header, fileName, qUnit });
-        return Object.freeze({ dataset: built.dataset, issues: Object.freeze(issues), notes: built.notes });
+        return Object.freeze({
+            dataset: built.dataset, issues: Object.freeze(issues), issueOverflow: parsed.issueOverflow, notes: built.notes,
+        });
     }
 
     globalThis.SasFitDataIo = Object.freeze({ LIMITS, parse, conditionFromName });
