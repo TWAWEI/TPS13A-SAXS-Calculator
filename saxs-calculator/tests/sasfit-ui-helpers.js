@@ -239,9 +239,10 @@ function restoreGlobals() {
 
 /**
  * 一份啟動好的頁面。modules：要載入的分段模組全域名稱；其餘不存在（由骨架代管空狀態）。
- * 回傳 { Section, $, document, client, timers, plots, reads, ctx }；ctx 由一個探針分段取得。
+ * 回傳 { Section, $, document, client, timers, plots, reads, created, ctx }；ctx 由一個探針分段取得；
+ * created.count 是 createClient 被呼叫的次數；sectionActive 為 false 時頁面分頁不是顯示中的那一個。
  */
-function boot({ modules = Object.keys(MODULE_FILES), readFile, extraIds = [] } = {}) {
+function boot({ modules = Object.keys(MODULE_FILES), readFile, extraIds = [], sectionActive = true } = {}) {
     Object.keys(MODULE_FILES).forEach((name) => { delete globalThis[name]; });
     modules.forEach((name) => loadModule(MODULE_FILES[name]));
     const probe = { ctx: null };
@@ -249,12 +250,14 @@ function boot({ modules = Object.keys(MODULE_FILES), readFile, extraIds = [] } =
     const Section = globalThis.SasFitSection;
     const dom = makeDom(Section.ELEMENT_IDS.concat(['section-sasfit'], extraIds));
     global.document = dom.document;
+    if (sectionActive) dom.$('section-sasfit').classList.add('active');
     const client = fakeClient();
     const timers = fakeTimers();
     const plots = fakePlots();
     const reads = [];
+    const created = { count: 0 };
     const deps = {
-        createClient: () => client, timers, plots,
+        createClient: () => { created.count += 1; return client; }, timers, plots,
         readFile: readFile || ((file) => { reads.push(file.name); return Promise.resolve(file.text); }),
     };
     // 探針：借第一個存在的分段模組的 create 取得 ctx
@@ -264,7 +267,7 @@ function boot({ modules = Object.keys(MODULE_FILES), readFile, extraIds = [] } =
         globalThis[first] = Object.freeze({ create(ctx) { probe.ctx = ctx; return original.create(ctx); } });
     }
     assert.equal(Section.init(deps), true, 'SasFitSection.init 失敗');
-    return { Section, $: dom.$, document: dom.document, client, timers, plots, reads, ctx: probe.ctx };
+    return { Section, $: dom.$, document: dom.document, client, timers, plots, reads, created, ctx: probe.ctx };
 }
 
 module.exports = {

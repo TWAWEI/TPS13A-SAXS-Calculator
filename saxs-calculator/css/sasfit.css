@@ -484,6 +484,12 @@
     margin: 0;
 }
 
+/* 「更新曲線」不被旁邊的狀態文字擠成兩行 */
+.sf-plot-status .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
 .sf-chart--main {
     height: 360px;
 }

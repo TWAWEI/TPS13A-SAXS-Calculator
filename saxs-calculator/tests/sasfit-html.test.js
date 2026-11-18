@@ -23,11 +23,11 @@ const count = (text, needle) => text.split(needle).length - 1;
 const ID_RE = /^sf[A-Z]\w*$/;
 const TAG_RE = /<\/?([a-z][a-z0-9]*)((?:\s+[a-z][a-z-]*(?:="[^"<>]*")?)*)\s*>/g;
 const ATTR_RE = /\s+([a-z][a-z-]*)(?:="([^"<>]*)")?/g;
-const ALLOWED_TAGS = Object.freeze(['a', 'button', 'div', 'input', 'label', 'li', 'option', 'p', 'select', 'span',
+const ALLOWED_TAGS = Object.freeze(['a', 'button', 'div', 'input', 'label', 'li', 'optgroup', 'option', 'p', 'select', 'span',
     'strong', 'td', 'th', 'tr', 'ul']);
 const ALLOWED_ATTRS = Object.freeze(['aria-controls', 'aria-describedby', 'aria-expanded', 'aria-hidden', 'aria-invalid',
     'aria-label', 'aria-labelledby', 'aria-live', 'autocomplete', 'checked', 'class', 'colspan', 'data-action',
-    'data-field', 'data-group', 'data-hint', 'data-id', 'data-param', 'data-series', 'data-target', 'disabled', 'for',
+    'data-field', 'data-group', 'data-hint', 'data-id', 'data-param', 'data-series', 'data-target', 'disabled', 'for', 'label',
     'hidden', 'href', 'id', 'inputmode', 'maxlength', 'name', 'placeholder', 'rel', 'role', 'scope', 'selected',
     'spellcheck', 'step', 'target', 'title', 'type', 'value']);
 
@@ -875,4 +875,69 @@ test('builders do not modify what they are given', () => {
     H.hintsHtml(hints);
     H.fileRowsHtml(Object.freeze([fileRow({ issues: Object.freeze([Object.freeze({ line: 1, message: 'x' })]) })]));
     assert.equal(JSON.stringify([rows, r, Sld.PRESETS]), before);
+});
+
+// ------------------------------------------------------------------ additions for the model segment (plan M3 Task 12)
+
+test('modelOptionsHtml: one optgroup per group, the 13 models, exactly the selected one marked', () => {
+    const html = H.modelOptionsHtml(F.models(''), 'cylinder');
+    const tags = checkMarkup(html, 'modelOptionsHtml');
+    const groups = tags.filter((t) => t.name === 'optgroup' && !t.closing);
+    assert.deepEqual(groups.map((t) => t.attrs.label), ['形狀', '與形狀無關']);
+    const options = tags.filter((t) => t.name === 'option' && !t.closing);
+    assert.equal(options.length, 13);
+    assert.deepEqual(options.filter((t) => t.attrs.selected === true).map((t) => t.attrs.value), ['cylinder']);
+    assert.equal(H.modelOptionsHtml([], 'sphere'), '');
+    assert.equal(H.modelOptionsHtml(undefined, 'sphere'), '');
+});
+
+test('modelOptionsHtml and optionsHtml escape labels and values', () => {
+    const evil = '"><img src=x onerror=alert(1)>';
+    const groups = [{ group: evil, items: [{ name: evil, title: evil }] }];
+    for (const html of [H.modelOptionsHtml(groups, evil), H.optionsHtml([{ value: evil, label: evil }], evil)]) {
+        checkMarkup(html, 'options');
+        assert.equal(html.includes('<img'), false);
+        assert.ok(html.includes(esc(evil)));
+    }
+});
+
+test('optionsHtml: values are compared as text, so a numeric mode selects its option', () => {
+    const html = H.optionsHtml([{ value: 0, label: 'unconstrained' }, { value: 1, label: 'radius' }], 1);
+    const options = checkMarkup(html, 'optionsHtml').filter((t) => t.name === 'option' && !t.closing);
+    assert.deepEqual(options.map((t) => [t.attrs.value, t.attrs.selected === true]), [['0', false], ['1', true]]);
+    assert.equal(H.optionsHtml(null, 0), '');
+});
+
+test('paramErrorCells: the same ids and texts as the error cells of paramTableHtml', () => {
+    let form = F.create('core_shell_sphere');
+    form = F.reduce(form, { type: 'togglePd', name: 'radius' });
+    const rows = F.rows(form);
+    const result = fitResult({ atBound: { scale: 'lower' } });
+    for (const ctx of [{ fitResult: result, matches: true }, { fitResult: result, matches: false }, { fitResult: null, matches: false }]) {
+        const cells = H.paramErrorCells(rows, ctx);
+        const html = H.paramTableHtml(rows, ctx);
+        assert.equal(cells.length, rows.length + 1, 'one per row and one for the open dispersity');
+        for (const cell of cells) {
+            const m = new RegExp('id="' + cell.id + '">([^<]*)<').exec(html);
+            assert.ok(m, cell.id + ' is in the table');
+            assert.equal(m[1], esc(cell.text), cell.id);
+        }
+    }
+    const shown = Object.fromEntries(H.paramErrorCells(rows, { fitResult: result, matches: true }).map((c) => [c.id, c.text]));
+    assert.equal(shown.sfPm_radius, '± 0.50');
+    assert.equal(shown.sfPm_radius_pd, '± 0.010');
+    assert.equal(shown.sfPm_scale, Hints.AT_BOUND_ERROR_TEXT);
+    assert.equal(shown.sfPm_thickness, '', 'not fitted: empty');
+    assert.ok(H.paramErrorCells(rows, { fitResult: result, matches: false }).every((c) => c.text === ''));
+    assert.ok(Object.isFrozen(H.paramErrorCells(rows, null)));
+});
+
+test('sldOutputHtml: a result without an SLD (formula typed, no density yet) shows only the composition', () => {
+    const partial = { atoms: Sld.parseFormula('H2O').atoms, sld: NaN, electronDensity: NaN };
+    const html = H.sldOutputHtml({ target: 'sld', formula: 'H2O', density: '', presetId: '', result: partial, error: null });
+    checkMarkup(html, 'sldOutputHtml partial');
+    assert.ok(textOf(html).includes('元素組成 H 2、O 1'));
+    assert.equal(textOf(html).includes('SLD'), false);
+    assert.equal(textOf(html).includes('電子密度'), false);
+    assert.equal(html.includes(H.MISSING), false, 'no dash with a unit behind it');
 });

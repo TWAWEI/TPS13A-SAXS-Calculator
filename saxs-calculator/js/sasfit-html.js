@@ -20,6 +20,9 @@
  *                                 parameter is followed by its PD row (empty and hidden while closed)
  *       resultCtx = { fitResult | null, matches, locked? }: errors are shown only for a result that matches the
  *       form (SasFitJobs.resultMatchesForm); locked disables every control (a fit is running)
+ *   paramErrorCells(rows, resultCtx)  [{ id, text }] of the error column, to update the cells without a rebuild
+ *   optionsHtml(options, selected)    <option>s from [{ value, label }]
+ *   modelOptionsHtml(groups, selected)   <optgroup>s of the model select from SasFitForm.models
  *   sldPanelHtml(view)            the formula panel of #sfSldPanel; view = { target, formula, density, presetId,
  *                                 result | null (SasFitSld.compute), error | null (an Error or a string) }
  *   sldOutputHtml(view)           only the content of #sfSldOutput (error, composition, SLD, preset source), so
@@ -371,6 +374,27 @@
         return list(rows).map((row) => paramRowHtml(row, fitResult, locked)).join('');
     }
 
+    /** [{ id, text }]: the text of every cell of the error column that paramTableHtml(rows, resultCtx) builds. */
+    function paramErrorCells(rows, resultCtx) {
+        const fitResult = shownResult(resultCtx);
+        const cell = (name) => Object.freeze({ id: 'sfPm_' + idToken(name), text: errorCellText(fitResult, name) });
+        return Object.freeze(list(rows).flatMap((row) => (
+            isObject(row.pd) && row.pd.open === true ? [cell(row.name), cell(row.name + PD_SUFFIX)] : [cell(row.name)])));
+    }
+
+    // ------------------------------------------------------------- selects of the model segment (design spec 5.3)
+
+    /** <option>s from [{ value, label }]; `selected` is compared as text. */
+    function optionsHtml(options, selected) {
+        return list(options).map((o) => optionHtml(String(o.value), text(o.label), String(o.value) === String(selected))).join('');
+    }
+
+    /** <optgroup>s of the model select from SasFitForm.models(query, keep). */
+    function modelOptionsHtml(groups, selected) {
+        return list(groups).map((g) => '<optgroup' + attrs({ label: text(g.group) }) + '>'
+            + list(g.items).map((item) => optionHtml(item.name, item.name, item.name === selected)).join('') + '</optgroup>').join('');
+    }
+
     // ------------------------------------------------------------- SLD panel (design spec 4.7)
 
     const presetOf = (id) => globalThis.SasFitSld.PRESETS.find((p) => p.id === id) || null;
@@ -384,8 +408,10 @@
     function sldRows(result) {
         if (!isObject(result)) return [];
         const atoms = Object.fromEntries(Object.entries(isObject(result.atoms) ? result.atoms : {}).filter(([, n]) => isNumber(n)));
+        const composition = { label: '元素組成', value: esc(globalThis.SasFitSld.compositionText(atoms)) };
+        if (!isNumber(result.sld)) return [composition];          // the formula parses but there is no density yet
         return [
-            { label: '元素組成', value: esc(globalThis.SasFitSld.compositionText(atoms)) },
+            composition,
             { label: 'SLD', value: formatNumber(result.sld, SLD_DIGITS), unit: esc(unitText(SLD_UNIT)) },
             { label: '電子密度', value: formatNumber(result.electronDensity, DENSITY_DIGITS), unit: 'e/Å³' },
         ];
@@ -511,7 +537,7 @@
 
     globalThis.SasFitHtml = Object.freeze({
         MISSING,
-        fileRowsHtml, paramTableHeadHtml, paramTableHtml, sldPanelHtml, sldOutputHtml, weightingOptionsHtml, resultsHtml,
+        fileRowsHtml, paramTableHeadHtml, paramTableHtml, paramErrorCells, optionsHtml, modelOptionsHtml, sldPanelHtml, sldOutputHtml, weightingOptionsHtml, resultsHtml,
         hintsHtml, statusChipHtml, modelInfoHtml, formatValueError, formatNumber, unitText,
         paramFieldId, paramErrorId, fileControlId,
     });
