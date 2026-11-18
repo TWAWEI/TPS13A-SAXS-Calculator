@@ -30,10 +30,11 @@
  * init calls create(ctx) of each one that exists, in that order, exactly once.
  * create binds the module's own event listeners and returns
  *     { render() }                                   every segment
- *     { render(), schedulePreview(), cancelPreview(), lastPreview() }   the model segment
+ *     { render(), schedulePreview(), cancelPreview(), lastPreview(), previewStatus() }   the model segment
  * render() draws the segment from ctx.getState() / ctx.getForm(); it must not
- * dispatch. A module that is not there yet is skipped, and this file then keeps
- * that segment's empty state (see PLACEHOLDERS).
+ * dispatch, and it must leave alone what did not change: refresh() runs while
+ * the user is typing (see setHtml). A module that is not there yet is skipped,
+ * and this file then keeps that segment's empty state (see PLACEHOLDERS).
  *
  *   ctx (frozen, the same object for every module)
  *     el(id)                 document.getElementById(id), looked up on every call (dynamic ids included)
@@ -49,13 +50,22 @@
  *     setForm(form) -> form  replaces the form and does NOT re-render (typing must not rebuild
  *                            the parameter table); call refresh() when the table has to follow
  *     refresh()              the segment control, the placeholders, then render() of every segment
+ *     setHtml(element, html) -> boolean
+ *                            element.innerHTML = html, unless html is what setHtml last wrote
+ *                            there (then nothing is touched and false is returned). When the
+ *                            focused element is inside, focus and caret go to the new element
+ *                            with the same id. html must come from the SasFitHtml builders,
+ *                            which escape (design spec 13).
  *     client                 the SasFitWorkerClient, created by deps.createClient() the first
  *                            time it is read (so a visitor who never fits never starts one);
  *                            a getter -- read it when it is needed, do not copy it in create()
  *     deps                   the resolved deps (frozen)
- *     preview                { schedule(), cancel(), last() } -> the model segment's
- *                            schedulePreview / cancelPreview / lastPreview; no-ops (last() null)
- *                            while there is no model segment
+ *     preview                { schedule(), cancel(), last(), status() } -> the model segment's
+ *                            schedulePreview / cancelPreview / lastPreview / previewStatus;
+ *                            no-ops (last() null, status() an empty frozen object) while there
+ *                            is no model segment. last() is the latest preview curve { q, I };
+ *                            status() is what SasFitHints.plotStatus needs to know about the
+ *                            preview: { computing, paused, previewPoints, allNonFinite, error }
  *
  * The state and the form are never modified: every change replaces the frozen
  * object. Non-SasFit globals are read through host() at call time; nothing
@@ -200,17 +210,64 @@
         return form;
     }
 
+    // ------------------------------------------------------------- html
+
+    const written = new WeakMap();          // element -> the html setHtml last wrote there
+
+    /** The focused element when it is inside `element` and has an id, else null. */
+    function focusedInside(element) {
+        const focused = typeof document.activeElement === 'object' ? document.activeElement : null;
+        if (!focused || !focused.id || typeof element.contains !== 'function' || !element.contains(focused)) return null;
+        return focused;
+    }
+
+    function caretOf(input) {
+        try {
+            return typeof input.selectionStart === 'number' ? [input.selectionStart, input.selectionEnd] : null;
+        } catch (err) {
+            return null;                      // inputs without a text selection (number, checkbox) throw in some browsers
+        }
+    }
+
+    function restoreFocus(id, caret) {
+        const next = el(id);
+        if (!next || typeof next.focus !== 'function') return;
+        next.focus({ preventScroll: true });
+        if (caret === null || typeof next.setSelectionRange !== 'function') return;
+        try {
+            next.setSelectionRange(caret[0], caret[1]);
+        } catch (err) {
+            // the new element has no text selection: the focus alone is what can be kept
+        }
+    }
+
+    function setHtml(element, html) {
+        if (!isObject(element)) throw new Error('setHtml needs an element');
+        if (typeof html !== 'string') throw new Error('setHtml needs html as a string');
+        if (written.get(element) === html) return false;
+        const focused = focusedInside(element);
+        const caret = focused === null ? null : caretOf(focused);
+        element.innerHTML = html;
+        written.set(element, html);
+        if (focused !== null) restoreFocus(focused.id, caret);
+        return true;
+    }
+
     // ------------------------------------------------------------- segments
+
+    const NO_PREVIEW_STATUS = Object.freeze({});
 
     function buildContext() {
         const model = () => page.segments.model;
+        const call = (method, fallback) => () => (model() !== undefined && typeof model()[method] === 'function' ? model()[method]() : fallback);
         const ctx = {
-            el, getState, dispatch, getForm, setForm, refresh,
+            el, getState, dispatch, getForm, setForm, refresh, setHtml,
             deps: page.deps,
             preview: Object.freeze({
-                schedule: () => { if (model() !== undefined) model().schedulePreview(); },
-                cancel: () => { if (model() !== undefined) model().cancelPreview(); },
-                last: () => (model() !== undefined ? model().lastPreview() : null),
+                schedule: call('schedulePreview', undefined),
+                cancel: call('cancelPreview', undefined),
+                last: call('lastPreview', null),
+                status: call('previewStatus', NO_PREVIEW_STATUS),
             }),
         };
         Object.defineProperty(ctx, 'client', { get: getClient, enumerable: true });

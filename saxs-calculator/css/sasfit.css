@@ -242,6 +242,11 @@
     color: var(--color-text-muted);
 }
 
+/* 窄欄裡的短訊息（行號＋原因）：左右對齊會把字距拉開 */
+.sf-file-issues li {
+    text-align: left;
+}
+
 .sf-file-row--failed .sf-file-issues {
     color: var(--color-danger-text);
 }

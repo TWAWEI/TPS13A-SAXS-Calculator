@@ -352,7 +352,55 @@ test('[sasfit-section] deps：注入的值原樣交給分段模組，沒給的�
     const plain = boot({ segments: {} }).record.ctx.SasFitDataUi.deps;
     assert.equal(typeof plain.timers.setTimeout, 'function');
     assert.equal(typeof plain.timers.clearTimeout, 'function');
-    assert.equal(plain.plots, null, 'sasfit-plots.js 還沒有時 plots 是 null');
+    assert.equal(plain.plots, globalThis.SasFitPlots, '沒給時用 SasFitPlots（tests/load.js 已載入 sasfit-plots.js）');
+    assert.equal(typeof plain.plots.render, 'function');
+});
+
+test('[sasfit-section] ctx.setHtml：寫入 innerHTML；與上次寫入的相同就不碰；參數不對丟 Error', () => {
+    const { record, $ } = boot({ segments: {} });
+    const { setHtml } = record.ctx.SasFitDataUi;
+    const target = $('sfFitResults');
+    let sets = 0;
+    let html = '';
+    Object.defineProperty(target, 'innerHTML', { get: () => html, set(value) { html = value; sets += 1; } });
+    assert.equal(setHtml(target, '<p>a</p>'), true);
+    assert.equal(target.innerHTML, '<p>a</p>');
+    assert.equal(setHtml(target, '<p>a</p>'), false);
+    assert.equal(sets, 1, '相同的 HTML 不重設（焦點與捲動位置不受影響）');
+    assert.equal(setHtml(target, ''), true);
+    assert.equal(sets, 2);
+    assert.throws(() => setHtml(null, ''), /element/);
+    assert.throws(() => setHtml(target, 42), /string/);
+});
+
+test('[sasfit-section] ctx.setHtml：焦點在被重建的容器內時，移到同 id 的新元素並還原游標；在容器外則不動', () => {
+    const { record, $ } = boot({ segments: {} });
+    const { setHtml } = record.ctx.SasFitDataUi;
+    const container = $('sfParamBody');
+    const old = { id: 'sfValue_radius', selectionStart: 2, selectionEnd: 3 };
+    const fresh = makeElement('sfValue_radius');
+    const selections = [];
+    fresh.setSelectionRange = (a, b) => { selections.push([a, b]); };
+    container.contains = node => node === old;
+    const byId = document.getElementById;
+    document.getElementById = id => (id === 'sfValue_radius' ? fresh : byId(id));
+    document.activeElement = old;
+    assert.equal(setHtml(container, '<tr></tr>'), true);
+    assert.equal(fresh.focusCount, 1);
+    assert.deepEqual(selections, [[2, 3]]);
+
+    document.activeElement = { id: 'somewhereElse' };
+    assert.equal(setHtml(container, '<tr><td></td></tr>'), true);
+    assert.equal(fresh.focusCount, 1, '焦點不在容器內：不搬動');
+
+    // 沒有文字游標的輸入（number、checkbox）：讀 selectionStart 會丟例外，只還原焦點
+    const numberInput = { id: 'sfValue_radius' };
+    Object.defineProperty(numberInput, 'selectionStart', { get() { throw new Error('InvalidStateError'); } });
+    container.contains = node => node === numberInput;
+    document.activeElement = numberInput;
+    assert.equal(setHtml(container, '<tr><td>x</td></tr>'), true);
+    assert.equal(fresh.focusCount, 2);
+    assert.equal(selections.length, 1);
 });
 
 test('[sasfit-section] ctx.preview 轉給模型分段；沒有模型分段時是空動作', () => {
@@ -366,6 +414,14 @@ test('[sasfit-section] ctx.preview 轉給模型分段；沒有模型分段時是
     preview.cancel();
     assert.deepEqual(calls, ['schedule', 'cancel']);
     assert.equal(preview.last(), curve);
+    assert.deepEqual(preview.status(), {}, '模型分段沒有 previewStatus 時是空物件');
+    assert.ok(Object.isFrozen(preview.status()));
+
+    const status = Object.freeze({ computing: true, paused: false, previewPoints: 120, allNonFinite: false, error: '' });
+    const withStatus = boot({ segments: { SasFitParamsUi: {
+        schedulePreview() {}, cancelPreview() {}, lastPreview: () => null, previewStatus: () => status,
+    } } });
+    assert.equal(withStatus.record.ctx.SasFitDataUi.preview.status(), status);
 
     clearSegments();
     const data = { ctx: null };
@@ -375,6 +431,7 @@ test('[sasfit-section] ctx.preview 轉給模型分段；沒有模型分段時是
     assert.equal(Section.init({ createClient: () => ({}) }), true);
     assert.doesNotThrow(() => { data.ctx.preview.schedule(); data.ctx.preview.cancel(); });
     assert.equal(data.ctx.preview.last(), null);
+    assert.deepEqual(data.ctx.preview.status(), {});
 });
 
 test('[sasfit-section] 分段模組的 create 沒有回傳帶 render 的物件：init 回報錯誤並返回，不丟例外', () => {

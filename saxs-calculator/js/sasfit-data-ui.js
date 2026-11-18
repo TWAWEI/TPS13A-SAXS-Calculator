@@ -1,0 +1,432 @@
+/**
+ * sasfit-data-ui.js -- the data segment of the SAS fitting page and the plot
+ * area that every segment shares (design spec 5.2, 5.6; plan M3 Task 11).
+ * Original code. DOM module: loaded before section-sasfit.js, which calls
+ * SasFitDataUi.create(ctx) once (see its header for ctx).
+ *
+ *   SasFitDataUi.create(ctx) -> { render() }
+ *
+ * What it owns:
+ *   files     the file input and the drop zone (#sfDrop). Files are cut to
+ *             the capacity of the list and checked against the size limit
+ *             BEFORE anything is read, then read one after the other through
+ *             ctx.deps.readFile and parsed by SasFitDataIo with the q unit
+ *             chosen at that moment. A file that cannot be read or parsed
+ *             becomes a row with its reasons; the others are not affected.
+ *   list      #sfDataBody = SasFitHtml.fileRowsHtml; show / active / condition
+ *             / remove by event delegation (data-action, data-id).
+ *   display   condition name, staggering, the three plot mode buttons, reset zoom.
+ *   plots     the view of SasFitPlotData from the state, the form and the
+ *             latest preview (ctx.preview), drawn by ctx.deps.plots; the status
+ *             line under the title (SasFitHints.plotStatus) and the canvas labels.
+ *
+ * The view (plan M3, assumption a11): every shown file draws its points; a
+ * file that is not the active one draws the curve of its own FitResult. The
+ * active file draws the full-resolution curve and the residuals of its
+ * FitResult as long as that result matches the form
+ * (SasFitJobs.resultMatchesForm); otherwise it draws the preview of the form
+ * and no residuals (they would belong to another curve).
+ *
+ * render() does not dispatch and leaves alone what did not change: the list
+ * is rebuilt only when a row changes (a condition being typed is not such a
+ * change), so the focus survives a refresh.
+ *
+ * SECURITY: file names, header fields and error texts reach the page only
+ * through the SasFitHtml builders (which escape) or textContent. While a fit
+ * runs, what the state's fit lock forbids is disabled: file input, drop zone,
+ * q unit, "active" and "remove".
+ */
+
+(function () {
+    'use strict';
+
+    const LOG = '[sasfit]';
+    const BYTES_PER_MB = 1024 * 1024;
+    const CHI2R_DIGITS = 3;
+    const DRAG_CLASS = 'is-dragover';
+    const ACTIVE_CLASS = 'active';
+    const CHIP_SELECTOR = '.sf-series-chip';
+    const CHIP_COLOR = '--chip-color';
+    const THEME_EVENT = 'tps:themechange';
+    const MAIN_CANVAS = 'sfMainChart';
+    const RESIDUAL_CANVAS = 'sfResidualChart';
+    const MODE_BUTTONS = Object.freeze({ loglog: 'sfModeLogLog', guinier: 'sfModeGuinier', kratky: 'sfModeKratky' });
+    const MODE_NAMES = Object.freeze({ loglog: 'log-log', guinier: 'Guinier', kratky: 'Kratky' });
+    const FAILED_STATUS = Object.freeze({ text: '無法載入', tone: 'error' });
+    const TEXT = Object.freeze({
+        empty: '尚未載入資料。',
+        tooLarge: (mb, maxMb) => '檔案 ' + mb + ' MB 超過上限 ' + maxMb + ' MB，未讀取',
+        unreadable: (reason) => '無法讀取：' + reason,
+        skipped: (max, count) => '清單最多 ' + max + ' 個檔，已略過 ' + count + ' 個檔（未讀取）。',
+        reading: (done, total) => '讀取中…（' + done + '／' + total + '）',
+        lockedDrop: '擬合進行中，無法加入檔案；請在擬合結束後再載入。',
+        sorted: 'q 未依大小排列，已自動排序',
+        suspectNm: '最大 q 超過 5，Q 單位可能是 nm⁻¹',
+        noChart: '尚未載入資料',
+        noResidual: '尚無擬合結果',
+        chart: (count, mode, active) => count + ' 組資料，模式 ' + mode + '，作用中：' + active,
+        modelOnly: (mode) => '模型曲線預覽，模式 ' + mode + '（尚未載入資料）',
+        residual: (name, count) => name + ' 的殘差，' + count + ' 點',
+    });
+
+    const host = () => (typeof window !== 'undefined' ? window : globalThis);
+    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+    const isObject = (v) => v !== null && typeof v === 'object';
+    const isRunning = (state) => state.fit.phase === 'running';
+    const messageOf = (err) => (err instanceof Error ? err.message : String(err));
+
+    /** A value that is replaced as a whole (frozen) on every change. */
+    function makeStore(initial) {
+        let value = Object.freeze({ ...initial });
+        return Object.freeze({
+            get: () => value,
+            set(changes) { value = Object.freeze({ ...value, ...changes }); return value; },
+        });
+    }
+
+    // ------------------------------------------------------------- view of the plots
+
+    /** The FitResult of a file when it has a curve to draw, else null. */
+    function resultOf(state, id) {
+        const result = has(state.fitResults, id) ? state.fitResults[id] : null;
+        return isObject(result) && isObject(result.curve) ? result : null;
+    }
+
+    /** The active file's FitResult while it still describes the form, else null. */
+    function matchingResult(state, form) {
+        if (state.activeId === null) return null;
+        const result = resultOf(state, state.activeId);
+        return result !== null && globalThis.SasFitJobs.resultMatchesForm(form, result) ? result : null;
+    }
+
+    function buildView(state, form, preview) {
+        const matched = matchingResult(state, form);
+        const series = globalThis.SasFitState.shownFiles(state).map((file) => {
+            const active = file.id === state.activeId;
+            const result = active ? matched : resultOf(state, file.id);
+            return Object.freeze({
+                id: file.id, index: file.index, label: file.fileName, active, data: file.dataset,
+                fitCurve: result === null ? null : Object.freeze({ q: file.dataset.q, I: result.curve }),
+            });
+        });
+        const activeFile = globalThis.SasFitState.active(state);
+        const residuals = matched !== null && isObject(matched.residuals)
+            ? Object.freeze({ q: activeFile.dataset.q, r: matched.residuals }) : null;
+        return Object.freeze({
+            mode: state.plotMode, series: Object.freeze(series), preview: matched === null ? preview : null,
+            range: state.range === null ? null : Object.freeze({ qMin: state.range.qMin, qMax: state.range.qMax }),
+            stagger: state.stagger, residuals,
+        });
+    }
+
+    function countFinite(values) {
+        let count = 0;
+        for (let i = 0; i < values.length; i++) if (Number.isFinite(values[i])) count += 1;
+        return count;
+    }
+
+    /** aria-label of the two canvases: Chart.js draws pixels only. */
+    function describeCharts(view) {
+        const a11y = host().A11y;
+        if (!isObject(a11y)) return;
+        const mode = MODE_NAMES[view.mode];
+        const active = view.series.find((s) => s.active);
+        const main = view.series.length > 0 ? TEXT.chart(view.series.length, mode, active === undefined ? '—' : active.label)
+            : view.preview !== null ? TEXT.modelOnly(mode) : TEXT.noChart;
+        a11y.describeChart(MAIN_CANVAS, main);
+        a11y.describeChart(RESIDUAL_CANVAS, view.residuals === null || active === undefined
+            ? TEXT.noResidual : TEXT.residual(active.label, countFinite(view.residuals.r)));
+    }
+
+    /** The status line: what the view hides or thins, and what the preview reports. */
+    function renderStatus(ui, view) {
+        const { ctx } = ui;
+        const stats = globalThis.SasFitPlotData.viewStats(view);
+        const preview = ctx.preview.status();
+        const drawsPreview = view.preview !== null;
+        const status = globalThis.SasFitHints.plotStatus({
+            computing: preview.computing === true, paused: preview.paused === true,
+            previewPoints: drawsPreview && preview.previewPoints > 0 ? preview.previewPoints : 0,
+            hidden: stats.hidden, displayStride: stats.displayStride, nonFinite: stats.nonFinite,
+            allNonFinite: preview.allNonFinite === true, error: preview.error,
+        });
+        ctx.el('sfPlotStatus').textContent = status.text;
+        if (ui.store.get().live === status.live) return;
+        ui.store.set({ live: status.live });
+        ctx.el('sfPlotLive').textContent = status.live;       // announced only when it changes, never "computing"
+    }
+
+    function renderPlots(ui, state) {
+        const { ctx } = ui;
+        const view = buildView(state, ctx.getForm(), ctx.preview.last());
+        if (isObject(ctx.deps.plots)) ctx.deps.plots.render(view);
+        describeCharts(view);
+        renderStatus(ui, view);
+        Object.keys(MODE_BUTTONS).forEach((mode) => {
+            const button = ctx.el(MODE_BUTTONS[mode]);
+            button.setAttribute('aria-pressed', String(mode === state.plotMode));
+            button.classList.toggle(ACTIVE_CLASS, mode === state.plotMode);
+        });
+    }
+
+    // ------------------------------------------------------------- file list
+
+    /** What the reader noted about a loaded file, as lines of its row (empty bins of an official file are routine: not listed). */
+    function noteIssues(notes) {
+        if (!isObject(notes)) return [];
+        return [
+            notes.sorted === true ? TEXT.sorted : null,
+            notes.suspectNm === true ? TEXT.suspectNm : null,
+        ].filter((message) => message !== null).map((message) => Object.freeze({ line: null, message }));
+    }
+
+    function statusOf(state, file) {
+        if (file.dataset === null) return FAILED_STATUS;
+        const result = has(state.fitResults, file.id) ? state.fitResults[file.id] : null;
+        const label = globalThis.SasFitHints.statusLabel(result);
+        if (result === null) return { text: label.text, tone: undefined };
+        return { text: 'χ²ᵣ ' + globalThis.SasFitHtml.formatNumber(result.chi2r, CHI2R_DIGITS) + '・' + label.text, tone: label.tone };
+    }
+
+    function rowOf(state, file, index) {
+        const status = statusOf(state, file);
+        return {
+            id: file.id, index, fileName: file.fileName, hasData: file.dataset !== null,
+            shown: state.shown[file.id] === true, active: file.id === state.activeId, condition: file.condition,
+            statusText: status.text, statusTone: status.tone,
+            issues: file.issues.concat(noteIssues(file.dataset === null ? null : file.notes)), issueOverflow: 0,
+            locked: isRunning(state),
+        };
+    }
+
+    const rowsOf = (state) => state.files.map((file, index) => rowOf(state, file, index));
+
+    function paintChips(ui, themeName) {
+        const theme = host().ChartTheme;
+        const palette = theme.palette(themeName);
+        ui.ctx.el('sfDataBody').querySelectorAll(CHIP_SELECTOR).forEach((chip) => {
+            chip.style.setProperty(CHIP_COLOR, theme.seriesColor(palette, Number(chip.dataset.series)));
+        });
+    }
+
+    /** The condition inputs follow the state without a rebuild (unless the user is typing there). */
+    function syncConditions(ui, state) {
+        state.files.filter((file) => file.dataset !== null).forEach((file) => {
+            const input = ui.ctx.el(globalThis.SasFitHtml.fileControlId(file.id, 'condition'));
+            if (!input || input.getAttribute('aria-invalid') === 'true') return;
+            const text = file.condition === null ? '' : String(file.condition);
+            if (input.value.trim() === '' ? text !== '' : Number(input.value) !== file.condition) input.value = text;
+        });
+    }
+
+    function renderList(ui, state) {
+        const { ctx } = ui;
+        const rows = rowsOf(state);
+        // the key leaves the condition out: typing one must not rebuild the list under the caret
+        const key = globalThis.SasFitHtml.fileRowsHtml(rows.map((row) => ({ ...row, condition: null })));
+        if (key !== ui.store.get().listKey) {
+            ctx.setHtml(ctx.el('sfDataBody'), globalThis.SasFitHtml.fileRowsHtml(rows));
+            ui.store.set({ listKey: key });
+            paintChips(ui);
+        } else {
+            syncConditions(ui, state);
+        }
+        const empty = state.files.length === 0;
+        ctx.el('sfDataEmpty').textContent = TEXT.empty;
+        ctx.el('sfDataEmpty').hidden = !empty;
+        ctx.el('sfDataWrapper').hidden = empty;
+    }
+
+    function renderControls(ui, state) {
+        const { ctx } = ui;
+        const locked = isRunning(state);
+        const { notice, loading } = ui.store.get();
+        ctx.el('sfFileInput').disabled = locked || loading;
+        ctx.el('sfQUnit').disabled = locked || loading;
+        ctx.el('sfDrop').setAttribute('aria-disabled', String(locked || loading));
+        ctx.el('sfDrop').setAttribute('aria-busy', String(loading));
+        ctx.el('sfDataAlert').textContent = notice !== '' ? notice : (state.notice === null ? '' : state.notice);
+        const stagger = ctx.el('sfStagger');
+        if (stagger.checked !== state.stagger.on) stagger.checked = state.stagger.on;
+        const decades = ctx.el('sfStaggerDecades');
+        if (decades.getAttribute('aria-invalid') !== 'true' && Number(decades.value) !== state.stagger.decades) {
+            decades.value = String(state.stagger.decades);
+        }
+    }
+
+    function render(ui) {
+        const state = ui.ctx.getState();
+        renderList(ui, state);
+        renderControls(ui, state);
+        renderPlots(ui, state);
+    }
+
+    // ------------------------------------------------------------- loading files
+
+    const failedEntry = (fileName, message) => Object.freeze({
+        fileName, dataset: null, issues: Object.freeze([Object.freeze({ line: null, message })]), notes: Object.freeze({}),
+    });
+
+    /** One file -> the entry of the addFiles action; never rejects. */
+    async function readEntry(ui, file, qUnit) {
+        const io = globalThis.SasFitDataIo;
+        const fileName = typeof file.name === 'string' ? file.name : '';
+        if (file.size > io.LIMITS.MAX_BYTES) {
+            return failedEntry(fileName, TEXT.tooLarge((file.size / BYTES_PER_MB).toFixed(1), (io.LIMITS.MAX_BYTES / BYTES_PER_MB).toFixed(0)));
+        }
+        try {
+            const text = await ui.ctx.deps.readFile(file);
+            const parsed = io.parse(text, { fileName, qUnit });
+            return Object.freeze({ fileName, dataset: parsed.dataset, issues: parsed.issues, notes: parsed.notes });
+        } catch (err) {
+            console.warn(LOG + ' 讀檔失敗：' + fileName, err);
+            return failedEntry(fileName, TEXT.unreadable(messageOf(err)));
+        }
+    }
+
+    function progress(ui, done, total) {
+        ui.store.set({ notice: TEXT.reading(done, total) });
+        ui.ctx.el('sfDataAlert').textContent = ui.store.get().notice;
+    }
+
+    /** Read the files one after the other, then add them to the list in one action. */
+    async function loadFiles(ui, fileList) {
+        const { ctx } = ui;
+        const files = Array.from(fileList || []);
+        if (files.length === 0 || ui.store.get().loading) return;
+        if (isRunning(ctx.getState())) {
+            ui.store.set({ notice: TEXT.lockedDrop });
+            ctx.refresh();
+            return;
+        }
+        const taken = files.slice(0, globalThis.SasFitState.capacity(ctx.getState()));
+        const qUnit = ctx.el('sfQUnit').value === 'nm' ? 'nm' : 'A';
+        ui.store.set({ loading: true });
+        ctx.refresh();
+        const entries = [];
+        for (const file of taken) {                               // in order: the list keeps the order of the selection
+            progress(ui, entries.length, taken.length);
+            entries.push(await readEntry(ui, file, qUnit));
+        }
+        const skipped = files.length - taken.length;
+        const locked = isRunning(ctx.getState());                 // a fit may have started while the files were read
+        ui.store.set({
+            loading: false,
+            notice: locked ? TEXT.lockedDrop : skipped > 0 ? TEXT.skipped(globalThis.SasFitState.MAX_FILES, skipped) : '',
+        });
+        if (locked || entries.length === 0) ctx.refresh();
+        else ctx.dispatch({ type: 'addFiles', files: entries });
+    }
+
+    function startLoading(ui, fileList) {
+        loadFiles(ui, fileList).catch((err) => {
+            console.error(LOG + ' 載入檔案時發生未預期的錯誤', err);
+            ui.store.set({ loading: false, notice: TEXT.unreadable(messageOf(err)) });
+            ui.ctx.refresh();
+        });
+    }
+
+    // ------------------------------------------------------------- events
+
+    function bindFiles(ui) {
+        const { ctx } = ui;
+        const input = ctx.el('sfFileInput');
+        input.addEventListener('change', () => {
+            const files = Array.from(input.files || []);
+            input.value = '';                                      // so that the same file can be chosen again
+            startLoading(ui, files);
+        });
+        const drop = ctx.el('sfDrop');
+        drop.addEventListener('dragover', (event) => {
+            event.preventDefault();                                // without it the browser opens the file instead
+            drop.classList.add(DRAG_CLASS);
+        });
+        drop.addEventListener('dragleave', () => drop.classList.remove(DRAG_CLASS));
+        drop.addEventListener('drop', (event) => {
+            event.preventDefault();
+            drop.classList.remove(DRAG_CLASS);
+            startLoading(ui, isObject(event.dataTransfer) ? event.dataTransfer.files : []);
+        });
+    }
+
+    /** The number typed into a number input: { ok, value } with null for an empty field. */
+    function numberOf(input) {
+        const bad = isObject(input.validity) && input.validity.badInput === true;
+        const text = String(input.value).trim();
+        if (text === '' && !bad) return { ok: true, value: null };
+        const value = Number(text);
+        return bad || !Number.isFinite(value) ? { ok: false, value: null } : { ok: true, value };
+    }
+
+    function markInvalid(input, invalid) {
+        if (invalid) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+    }
+
+    function onCondition(ui, target) {
+        const parsed = numberOf(target);
+        markInvalid(target, !parsed.ok);
+        if (parsed.ok) ui.ctx.dispatch({ type: 'setCondition', id: target.dataset.id, value: parsed.value }, { silent: true });
+    }
+
+    const targetOf = (event) => (typeof event.target.closest === 'function' ? event.target.closest('[data-action]') : null);
+
+    function bindList(ui) {
+        const { ctx } = ui;
+        const body = ctx.el('sfDataBody');
+        body.addEventListener('change', (event) => {
+            const target = targetOf(event);
+            if (target === null) return;
+            const { action, id } = target.dataset;
+            if (action === 'show') ctx.dispatch({ type: 'setShown', id, shown: target.checked === true });
+            else if (action === 'active' && !isRunning(ctx.getState())) ctx.dispatch({ type: 'setActive', id });
+        });
+        body.addEventListener('input', (event) => {
+            const target = targetOf(event);
+            if (target !== null && target.dataset.action === 'condition') onCondition(ui, target);
+        });
+        body.addEventListener('click', (event) => {
+            const target = targetOf(event);
+            if (target === null || target.dataset.action !== 'remove' || isRunning(ctx.getState())) return;
+            ctx.dispatch({ type: 'removeFile', id: target.dataset.id });
+            ctx.el('sfDataWrapper').focus();                       // the button is gone: keep the focus near the list
+        });
+    }
+
+    function onStagger(ui) {
+        const { ctx } = ui;
+        const decades = ctx.el('sfStaggerDecades');
+        const parsed = numberOf(decades);
+        const valid = parsed.ok && parsed.value !== null && parsed.value >= 0;
+        markInvalid(decades, !valid);
+        ctx.dispatch({ type: 'setStagger', on: ctx.el('sfStagger').checked === true, decades: valid ? parsed.value : ctx.getState().stagger.decades });
+    }
+
+    function bindDisplay(ui) {
+        const { ctx } = ui;
+        ctx.el('sfConditionName').addEventListener('input', (event) => {
+            ctx.dispatch({ type: 'setConditionName', name: String(event.target.value) }, { silent: true });
+        });
+        ctx.el('sfStagger').addEventListener('change', () => onStagger(ui));
+        ctx.el('sfStaggerDecades').addEventListener('input', () => onStagger(ui));
+        Object.keys(MODE_BUTTONS).forEach((mode) => {
+            ctx.el(MODE_BUTTONS[mode]).addEventListener('click', () => ctx.dispatch({ type: 'setPlotMode', mode }));
+        });
+        ctx.el('sfResetZoom').addEventListener('click', () => {
+            if (isObject(ctx.deps.plots)) ctx.deps.plots.resetZoom();
+        });
+        if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+            // the charts recolour themselves (ChartTheme.init); the colour samples of the list are ours
+            document.addEventListener(THEME_EVENT, (event) => paintChips(ui, isObject(event.detail) ? event.detail.theme : undefined));
+        }
+    }
+
+    function create(ctx) {
+        const ui = Object.freeze({ ctx, store: makeStore({ listKey: null, notice: '', loading: false, live: '' }) });
+        bindFiles(ui);
+        bindList(ui);
+        bindDisplay(ui);
+        return Object.freeze({ render: () => render(ui) });
+    }
+
+    globalThis.SasFitDataUi = Object.freeze({ create });
+})();
