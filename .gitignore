@@ -31,3 +31,7 @@ data/
 
 # Local-only test fixtures exported from private workbooks
 saxs-calculator/tests/fixtures-local/
+
+# sasfit build tooling (local only)
+tools/sasfit/.venv/
+tools/sasfit/build/

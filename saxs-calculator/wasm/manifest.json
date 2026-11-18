@@ -1,0 +1,95 @@
+{
+  "generator": "tools/sasfit/build_wasm.py",
+  "sasmodels": "1.0.12",
+  "emscripten": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.13 (e13ee988ce3d87a738dd8f3661d02223308c412a)",
+  "cflags": [
+    "-std=c99",
+    "-O2"
+  ],
+  "linkFlags": [
+    "--no-entry",
+    "-sSTANDALONE_WASM=1",
+    "-sALLOW_MEMORY_GROWTH=1"
+  ],
+  "precision": "double",
+  "models": {
+    "core_shell_cylinder": {
+      "file": "sas-core_shell_cylinder.wasm",
+      "bytes": 17612,
+      "sha256": "7dc4ebe3386c8a4d6b686e7536c8d3d8f9034184dcf2b59e8107800cdc2718da",
+      "entry": "core_shell_cylinder_Iq"
+    },
+    "core_shell_sphere": {
+      "file": "sas-core_shell_sphere.wasm",
+      "bytes": 14707,
+      "sha256": "c54f56107bb7c2629fa14e105965affef2e47f359aa8ea8b57b870dc292d6a29",
+      "entry": "core_shell_sphere_Iq"
+    },
+    "cylinder": {
+      "file": "sas-cylinder.wasm",
+      "bytes": 17314,
+      "sha256": "17031cd83dd56c1987bf65adc4eb8e9daab22bba96488827f6ffd15165dfdac4",
+      "entry": "cylinder_Iq"
+    },
+    "ellipsoid": {
+      "file": "sas-ellipsoid.wasm",
+      "bytes": 22109,
+      "sha256": "52e358f3912b7a5825c4c8e50e819cef5efc09c0f14e603ac31976eeddceb512",
+      "entry": "ellipsoid_Iq"
+    },
+    "flexible_cylinder": {
+      "file": "sas-flexible_cylinder.wasm",
+      "bytes": 27064,
+      "sha256": "5e0ffcd192ed721fe51475114779fb53dadc269e38884f33ad825ea7aa6eadd5",
+      "entry": "flexible_cylinder_Iq"
+    },
+    "gaussian_peak": {
+      "file": "sas-gaussian_peak.wasm",
+      "bytes": 10124,
+      "sha256": "c5c42d7133e033e373ec7c5e7e61c73ae2189dc250507a6881ac0203cad7fe07",
+      "entry": "gaussian_peak_Iq"
+    },
+    "guinier": {
+      "file": "sas-guinier.wasm",
+      "bytes": 10268,
+      "sha256": "6aa5af11f2e873481d3a42670fa83a6e2be0695b11e65e9faae8774b05d8d751",
+      "entry": "guinier_Iq"
+    },
+    "hardsphere": {
+      "file": "sas-hardsphere.wasm",
+      "bytes": 14527,
+      "sha256": "45f3a1c61d4c9cfbcc8e4aa70196b94c5bd072aea1a5efe99614d4f2f2dd8956",
+      "entry": "hardsphere_Iq"
+    },
+    "hayter_msa": {
+      "file": "sas-hayter_msa.wasm",
+      "bytes": 27304,
+      "sha256": "cc164fc2d4b369bc15e8c26e7c1b8fba98d865e8ab79a7d1e100558d4e69770a",
+      "entry": "hayter_msa_Iq"
+    },
+    "lamellar": {
+      "file": "sas-lamellar.wasm",
+      "bytes": 14008,
+      "sha256": "e25e87f31240e4af5a9dd7fb27b5bbd6fcf4c17a6aa8ea2e34ed2f225d91c694",
+      "entry": "lamellar_Iq"
+    },
+    "mono_gauss_coil": {
+      "file": "sas-mono_gauss_coil.wasm",
+      "bytes": 8477,
+      "sha256": "e90099a55d9d13618947a13182d2594d29596b16f2a3edc1cb65e07b19a02675",
+      "entry": "mono_gauss_coil_Iq"
+    },
+    "sphere": {
+      "file": "sas-sphere.wasm",
+      "bytes": 14336,
+      "sha256": "474868863ea57110182a09e6cd45a6486725e58b846adf8747d8454eab935c7e",
+      "entry": "sphere_Iq"
+    },
+    "vesicle": {
+      "file": "sas-vesicle.wasm",
+      "bytes": 14722,
+      "sha256": "e7a8a6519b31630b49e8598ac639794c7d8a70347faf2a847eda403200c44455",
+      "entry": "vesicle_Iq"
+    }
+  }
+}
