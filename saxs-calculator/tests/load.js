@@ -50,6 +50,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-evaluate.js',         // IIFE，只掛 globalThis.SasFitEvaluate；呼叫時才讀其他 SasFit 模組
     'sasfit-weighting.js',        // IIFE，只掛 globalThis.SasFitWeighting；純函式，只讀 SasFitValidate
     'sasfit-data-io.js',          // IIFE，只掛 globalThis.SasFitDataIo；純文字解析，無相依
+    'sasfit-sld.js',              // IIFE，只掛 globalThis.SasFitSld；化學式解析與 X 光 SLD，無相依
     'sasfit-linalg.js',           // IIFE，只掛 globalThis.SasFitLinalg；Jacobi SVD 與共變異，無相依
     'sasfit-fitter.js',           // IIFE，只掛 globalThis.SasFitFitter；載入時讀 SasFitLinalg，與模型無關
     'sasfit-worker-core.js',      // IIFE，只掛 globalThis.SasFitWorkerCore；wasm 載入、post、yieldTask 皆由呼叫端注入
@@ -90,6 +91,7 @@ module.exports = {
     SasFitEvaluate: globalThis.SasFitEvaluate,
     SasFitWeighting: globalThis.SasFitWeighting,
     SasFitDataIo: globalThis.SasFitDataIo,
+    SasFitSld: globalThis.SasFitSld,
     SasFitLinalg: globalThis.SasFitLinalg,
     SasFitFitter: globalThis.SasFitFitter,
     SasFitWorkerCore: globalThis.SasFitWorkerCore,
