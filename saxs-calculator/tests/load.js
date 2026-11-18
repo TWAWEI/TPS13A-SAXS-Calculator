@@ -58,6 +58,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-form.js',             // IIFE，只掛 globalThis.SasFitForm；模型表單與驗證，呼叫時才讀 SasFitMeta／SasFitValidate
     'sasfit-state.js',            // IIFE，只掛 globalThis.SasFitState；頁面狀態 reducer，呼叫時才讀 SasFitWeighting／SasFitFitter／SasFitWorkerCore
     'sasfit-jobs.js',             // IIFE，只掛 globalThis.SasFitJobs；Worker 請求的組裝，呼叫時才讀 SasFitForm／SasFitState／SasFitWeighting
+    'sasfit-hints.js',            // IIFE，只掛 globalThis.SasFitHints；提示與錯誤訊息的選擇，呼叫時才讀 SasFitWeighting
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -102,4 +103,5 @@ module.exports = {
     SasFitForm: globalThis.SasFitForm,
     SasFitState: globalThis.SasFitState,
     SasFitJobs: globalThis.SasFitJobs,
+    SasFitHints: globalThis.SasFitHints,
 };
