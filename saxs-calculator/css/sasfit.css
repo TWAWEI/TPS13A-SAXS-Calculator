@@ -1,0 +1,502 @@
+/* =============================================
+   TPS13A SAXS Calculator — SAS 模型擬合分頁（#section-sasfit）
+   兩欄工作區、拖放區、檔案清單、參數表與 PD 列、SLD 面板、欄位錯誤、圖高。
+   只用 css/tokens.css 的 token（不寫色碼）；結果磚、提示框、按鈕、分段控制沿用既有元件。
+   標記來源：index.html 的 sasfit 區段（靜態）與 js/sasfit-html.js（動態產生的列、面板與結果）。
+   排在 sections.css 之後載入；本檔的選擇器都以 .sf- 開頭或限定在 .sf- 容器內，不影響其他分頁。
+   ============================================= */
+
+/* ===== 工作區：左欄操作、右欄圖（寬螢幕時圖區捲動固定） ===== */
+.sf-workspace {
+    display: grid;
+    grid-template-columns: minmax(32rem, 5fr) minmax(0, 6fr);
+    gap: var(--spacing-lg);
+    align-items: start;
+}
+
+/* 1fr／minmax 欄的最小值是內容寬度：歸零後寬表格才會在自己的 .table-wrapper 裡橫捲（同 .grid > *） */
+.sf-controls,
+.sf-plots {
+    min-width: 0;
+}
+
+.sf-plots {
+    position: sticky;
+    top: var(--spacing-lg);
+    max-height: calc(100vh - 2 * var(--spacing-lg));
+    overflow-y: auto;
+}
+
+/* 站內斷點（css/layout.css 的 1200px）：改單欄，圖區排在操作區之下、不再固定 */
+@media (max-width: 1200px) {
+    .sf-workspace {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sf-plots {
+        position: static;
+        max-height: none;
+        overflow-y: visible;
+    }
+}
+
+/* ===== 表單列表裡的下拉、核取方塊與較寬的文字欄（站上其他分頁的列表只有數字欄） ===== */
+.sf-controls .form-list .form-select {
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 8.5rem;
+    max-width: 100%;
+    margin-left: auto;
+    padding: 0.4375rem 0.625rem;
+}
+
+.sf-controls .form-list input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-left: auto;
+}
+
+.sf-controls .form-list .sf-input--wide {
+    width: 12rem;
+    text-align: left;
+}
+
+/* 列表列內的欄位錯誤自成一行、靠右對齊輸入框（[hidden] 時瀏覽器預設不顯示；這裡不設 display） */
+.sf-controls .form-list .sf-field-error {
+    flex: 1 0 100%;
+    margin: 0;
+    text-align: right;
+}
+
+/* ===== 拖放區 =====
+   虛線用 --color-text-muted：對卡片 6.0:1（淺色）／6.4:1（深色），UI 元件需要 ≥ 3:1；
+   --color-border 在卡片上只有 1.5:1／1.5:1，遠端桌面下看不見。 */
+.sf-drop {
+    padding: var(--spacing-md);
+    border: 1px dashed var(--color-text-muted);
+    border-radius: var(--radius-lg);
+    transition: background var(--transition-fast);
+}
+
+.sf-drop.is-dragover {
+    background: var(--color-bg-tertiary);
+}
+
+.sf-drop-label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    text-align: center;
+}
+
+/* 外框已由拖放區畫出：裡面的檔案欄位不再重複虛線框 */
+.sf-drop .form-input[type="file"] {
+    border: 0;
+    background: var(--color-bg-tertiary);
+}
+
+.sf-drop + .stat-sub {
+    margin-top: var(--spacing-sm);
+}
+
+.sf-empty {
+    padding: var(--spacing-md) 0;
+    text-align: center;
+}
+
+/* ===== 清單與參數表共用：列內有輸入框（底色 tertiary），不套用表格的 hover 底色 ===== */
+.sf-file-table tbody tr:hover,
+.sf-param-table tbody tr:hover {
+    background: transparent;
+}
+
+.sf-file-table th,
+.sf-file-table td,
+.sf-param-table th,
+.sf-param-table td {
+    padding: 0.5rem 0.25rem;
+    vertical-align: top;
+}
+
+/* 列標題是 th：既有的「最後一列不畫底線」只管 td */
+.sf-file-table tbody tr:last-child th,
+.sf-param-table tbody tr:last-child th,
+.sf-param-table .sf-param-row:has(+ .sf-pd-row[hidden]:last-child) > th,
+.sf-param-table .sf-param-row:has(+ .sf-pd-row[hidden]:last-child) > td {
+    border-bottom: none;
+}
+
+.sf-file-table th:first-child,
+.sf-file-table td:first-child,
+.sf-param-table th:first-child,
+.sf-param-table td:first-child {
+    padding-left: 0.5rem;
+}
+
+.sf-file-table th:last-child,
+.sf-file-table td:last-child,
+.sf-param-table th:last-child,
+.sf-param-table td:last-child {
+    padding-right: 0.5rem;
+}
+
+.sf-file-table thead th,
+.sf-param-table thead th {
+    vertical-align: bottom;
+}
+
+/* 表頭不折行；只有參數表第 4 欄的「±（已乘 √χ²ᵣ）」可以折成兩行 */
+.sf-file-table thead th,
+.sf-param-table thead th {
+    white-space: nowrap;
+}
+
+.sf-param-table thead th:nth-child(4) {
+    white-space: normal;
+}
+
+.sf-file-table input[type="checkbox"],
+.sf-file-table input[type="radio"],
+.sf-param-table input[type="checkbox"] {
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.4375rem;          /* 與同列輸入框的文字基線對齊 */
+}
+
+/* 窄的數字欄（清單的條件值、參數表的數值與上下限、PD 欄位）。
+   4.125rem：七欄的參數表要放進左欄最窄的 32rem（卡片內約 491px）而不必橫向捲動；約可顯示 7 位數字。 */
+.sf-num {
+    width: 4.125rem;
+    padding: 0.375rem;
+    font-size: 0.8125rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.sf-field-error {
+    margin-top: 0.125rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-danger-text);
+}
+
+.sf-param-table .sf-field-error {
+    width: 4.125rem;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+.sf-file-table .btn-sm,
+.sf-param-table .btn-sm {
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
+}
+
+/* ===== 資料清單 ===== */
+.sf-file-row.is-active,
+.sf-file-table tbody tr.sf-file-row.is-active:hover {
+    background: var(--color-accent-tint);
+}
+
+.sf-file-table .sf-file-name {
+    min-width: 7.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--color-text-primary);
+    padding-top: 0.875rem;
+}
+
+.sf-file-row.is-active .sf-file-name {
+    font-weight: 600;
+}
+
+/* break-all：長檔名接在系列色樣本之後就地折行（overflow-wrap 會先把整個檔名推到下一行） */
+.sf-file-text {
+    word-break: break-all;
+}
+
+/* 系列色樣本：重用 .channel-chip 的 ::before 色線（--chip-color 由 JS 設定），去掉按鈕外觀 */
+.sf-series-chip {
+    padding: 0;
+    border: 0;
+    margin-right: 0.375rem;
+    vertical-align: middle;
+    cursor: default;
+}
+
+.sf-series-chip::before {
+    width: 18px;
+    border-top-width: 3px;
+}
+
+.sf-file-issues {
+    margin-top: var(--spacing-xs);
+    padding-left: 1.125rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+}
+
+.sf-file-row--failed .sf-file-issues {
+    color: var(--color-danger-text);
+}
+
+/* 文字色用 muted：作用中列的底是 accent-tint，muted 在它上面的對比已由 tests/contrast.test.js 檢查 */
+.sf-file-table td.sf-file-status {
+    padding-top: 0.875rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+}
+
+.sf-file-status .tile-chip {
+    margin-top: 0;
+}
+
+/* ===== 模型分段 ===== */
+.sf-model-pick {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-md);
+}
+
+.sf-model-pick .form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.sf-model-info {
+    margin-bottom: var(--spacing-md);
+}
+
+.sf-model-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+/* ===== 參數表（7 欄；左欄放不下時在 .table-wrapper 內橫向捲動） ===== */
+.sf-param-table th[scope="row"] {
+    min-width: 4.75rem;
+    padding-top: 0.75rem;
+    letter-spacing: 0;
+}
+
+.sf-param-name,
+.sf-param-unit,
+.sf-param-note {
+    display: block;
+}
+
+/* 0.75rem：background、sld_solvent 這類名稱要放進 4.75rem 的欄而不折行 */
+.sf-param-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;
+}
+
+.sf-param-unit,
+.sf-param-note {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+}
+
+/* ± 欄（表格儲存格）與 PD 列裡寬度的 ±（span） */
+.sf-param-pm {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+}
+
+.sf-param-table td.sf-param-pm {
+    min-width: 4rem;
+    padding-top: 0.8125rem;
+}
+
+/* 數值欄旁的「化學式」按鈕排在輸入框下方，省下一欄的寬度 */
+.sf-param-table td > .btn-sm {
+    margin-top: var(--spacing-xs);
+}
+
+.sf-param-table td > .sf-num + .sf-field-error + .btn-sm {
+    display: flex;
+}
+
+/* PD 列：接在它的參數列之下，不畫兩列之間的分隔線（tr 的 display 不動，[hidden] 才有效） */
+.sf-param-table .sf-param-row:has(+ .sf-pd-row:not([hidden])) > th,
+.sf-param-table .sf-param-row:has(+ .sf-pd-row:not([hidden])) > td {
+    border-bottom-color: transparent;
+}
+
+.sf-pd-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--spacing-sm) 0.75rem;
+    padding: 0 0 var(--spacing-xs) 1.5rem;
+}
+
+.sf-pd-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.sf-pd-field > label,
+.sf-pd-field--check > span {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.sf-pd-field .form-select {
+    width: auto;
+    padding: 0.375rem 0.5rem;
+}
+
+.sf-pd-field--check {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.375rem;
+    padding-top: 1.125rem;         /* 與旁邊「標籤在上、輸入框在下」的欄位對齊 */
+    cursor: pointer;
+}
+
+.sf-pd-field--check input[type="checkbox"] {
+    margin-top: 0;
+}
+
+.sf-pd-fields > .sf-param-pm {
+    padding-top: 1.5rem;
+}
+
+.sf-pd-fields > .sf-param-pm:empty {
+    display: none;
+}
+
+/* ===== SLD 化學式面板（輸入框是 tertiary，面板本身用細框而不是灰底） ===== */
+.sf-sld {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-lg);
+}
+
+.sf-sld-title {
+    margin-bottom: var(--spacing-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.sf-sld .form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.sf-sld-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+}
+
+/* ===== 擬合分段 ===== */
+.sf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.sf-actions--fit {
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.sf-progress {
+    min-height: 1.2rem;
+    margin-bottom: var(--spacing-md);
+    font-variant-numeric: tabular-nums;
+}
+
+.sf-result-note,
+.sf-result-file {
+    margin-bottom: var(--spacing-sm);
+}
+
+.sf-result-file {
+    overflow-wrap: anywhere;
+}
+
+/* 提示框內的動作按鈕（「從目前的值繼續擬合」）排在文字下方 */
+.sf-hint-text {
+    display: block;
+}
+
+.sf-hint-text + .btn {
+    margin-top: var(--spacing-sm);
+}
+
+/* ===== 圖區 ===== */
+.sf-plot-header {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
+.sf-plot-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* 模式鈕不換行（「log-log」會在連字號斷開）；放不下時整組工具換到標題下一行 */
+.sf-plot-tools .tab {
+    padding: 0.3125rem 0.75rem;
+    white-space: nowrap;
+}
+
+/* 狀態列固定留一行高度：文字出現或消失時圖不會上下跳 */
+.sf-plot-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    min-height: 1.875rem;
+    margin-bottom: var(--spacing-xs);
+}
+
+.sf-plot-status .stat-sub {
+    margin: 0;
+}
+
+.sf-chart--main {
+    height: 360px;
+}
+
+.sf-chart--residual {
+    height: 160px;
+}
+
+.sf-plot-subtitle {
+    margin: var(--spacing-md) 0 var(--spacing-xs);
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+}
+
+/* 手機：模型搜尋與選單上下排 */
+@media (max-width: 768px) {
+    .sf-model-pick {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+    }
+}
