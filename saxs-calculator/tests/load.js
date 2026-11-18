@@ -48,6 +48,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-product.js',           // IIFE，只掛 globalThis.SasFitProduct；kernel 由呼叫端傳入
     'sasfit-py-models.js',        // IIFE，只掛 globalThis.SasFitPyModels；呼叫時才讀 SasFitMeta
     'sasfit-evaluate.js',         // IIFE，只掛 globalThis.SasFitEvaluate；呼叫時才讀其他 SasFit 模組
+    'sasfit-weighting.js',        // IIFE，只掛 globalThis.SasFitWeighting；純函式，只讀 SasFitValidate
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -82,4 +83,5 @@ module.exports = {
     SasFitProduct: globalThis.SasFitProduct,
     SasFitPyModels: globalThis.SasFitPyModels,
     SasFitEvaluate: globalThis.SasFitEvaluate,
+    SasFitWeighting: globalThis.SasFitWeighting,
 };
