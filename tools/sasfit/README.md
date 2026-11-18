@@ -86,3 +86,15 @@ tools/sasfit/.venv/bin/python tools/sasfit/gen_fixture_dat.py     # → tests/fi
 ```
 
 `gen_reference_sld.py` 只向 periodictable 取元素的 Z 與標準原子量（84 個有 CIAAW 標準原子量的元素），X 光 SLD 照規格 §4.7 的式子與常數（r_e＝2.8179403262e-5 Å、f≈Z）自行計算，不呼叫 `periodictable.xsf`；化學式案例涵蓋括號巢狀、小數計數、水合物（`·` 與括號兩種寫法，組成由腳本手動展開，因為 periodictable 不認得 `·`）、「ASCII 句點一律是小數點」（`CuSO4.5H2O` → O 5.5），並附無效字串與預期的失敗類別。`gen_fixture_dat.py` 以 sasmodels 的 sphere（半徑 50／52／54 Å）加固定種子雜訊，產生版面與官方檔相同（25 行參數回顯、`Single Frame Time` 行、`Q I ERROR` 行、Fortran E 格式、CRLF、5 列 beamstop、1 列 `000 000 000` 佔位、300 列正常資料）的合成檔，所有數值與檔頭值皆為編造，不含任何真實量測資料；sidecar `SYNTH_sphere-truth.json` 記錄真值參數與讀檔應得的結果（點數、檔頭欄位、條件值）。兩支腳本的輸出逐位元穩定，自我檢查失敗一律丟 `RuntimeError`。
+
+## 7. 「SAS 模型擬合」頁面的瀏覽器冒煙測試與 axe（`smoke_ui.py`）
+
+```bash
+~/Projects/text-to-cad/.venv/bin/python tools/sasfit/smoke_ui.py
+```
+
+重用 `smoke_browser.py` 的伺服器與報告工具（匯入前先設 `sys.dont_write_bytecode`，不會留下 `__pycache__`）：自己在隨機埠（只綁 127.0.0.1）服務 `saxs-calculator/`、關閉快取、結束時一定關閉；每個等待都有逾時，整體逾時 240 秒。每項檢查印 PASS／FAIL，全部通過結束碼才是 0；全程（淺色、深色 colour-scheme 各一輪）不得有 console error／pageerror，warning 只列出。
+
+檢查項目：1 開啟分頁；2 載入五個檔（圖色來自 `ChartTheme`、「隱藏了」、壞檔有行號）；3 即時預覽；4 擬合 radius 53→50（含灰色區）；5 慢擬合與停止；6 三種圖模式（主圖與殘差圖繪圖區對齊 < 1 px、縮放同步）；7 主題切換保留縮放；8 hayter_msa；9 wasm 載入失敗與重試；10 預覽暫停（`#sfPreviewNow` 隨選計算）；11 axe（WCAG 2.1 A／AA，空狀態／資料／模型（PD 列與 SLD 面板展開）／擬合結果，淺色與深色，範圍限 `#section-sasfit` 與側欄按鈕；另跑一次整頁並分開列出，並有一個「故意壞元素必被偵測」的負向對照）；12 鍵盤；13 版面；14 量測（重模型預覽時間、表格橫向捲動數字）；15 表單持久化排除；16 開啟分頁前沒有 Worker 請求；17 Worker／importScripts／wasm 請求都帶 `?v=`；18 窄視窗單欄；20 深色 colour-scheme 流程。
+
+axe-core 由 jsdelivr CDN 以固定版本（4.10.2）注入測試瀏覽器（只影響測試，不改網站）；連不上 CDN 時 axe 項目報 FAIL（「could not load axe」），不會默默略過。截圖存於 `tools/sasfit/build/smoke-ui/`（已被 `.gitignore` 排除），路徑列在輸出最後。
