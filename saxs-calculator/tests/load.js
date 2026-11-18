@@ -43,6 +43,7 @@ const LOAD_ORDER = Object.freeze([
     'dndc-astra-ui.js',            // UI 檔，但頂層只有函式宣告；純文案函式從 window.DndcAstraUi 取用
     'sasfit-meta.js',              // 產生檔；IIFE，只掛 globalThis.SasFitMeta
     'sasfit-weights.js',           // IIFE，只掛 globalThis.SasFitWeights
+    'sasfit-kernel.js',            // IIFE，只掛 globalThis.SasFitKernel；wasm bytes 由呼叫端傳入
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -72,4 +73,5 @@ module.exports = {
     ResultTiles: window.ResultTiles,
     SasFitMeta: globalThis.SasFitMeta,
     SasFitWeights: globalThis.SasFitWeights,
+    SasFitKernel: globalThis.SasFitKernel,
 };
