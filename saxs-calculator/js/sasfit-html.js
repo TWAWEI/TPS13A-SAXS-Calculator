@@ -32,7 +32,8 @@
  *   hintsHtml(hints)              SasFitHints hints as compact alerts
  *   statusChipHtml({ text, tone })    a status chip
  *   modelInfoHtml(meta)           title, SasView documentation link, acknowledgement
- *   formatValueError(value, error) -> { value, error };  formatNumber(value, digits);  unitText(units)
+ *   formatValueError(value, error, options?) -> { value, error, kind } (SasFitFormat.valueError)
+ *   formatNumber(value, digits) (SasFitFormat.number for the screen);  unitText(units)
  *   paramFieldId(name, field), paramErrorId(name, field), fileControlId(id, action)   the ids used below
  *
  * Fields of the parameter table carry data-param and data-field: fit, value,
@@ -50,19 +51,21 @@
     const MISSING = '—';
     const UNBOUNDED = '不限';
     const NOT_COMPUTABLE = '無法計算';
-    const ERROR_DIGITS = 2;
     const VALUE_DIGITS = 5;
+    const UNDETERMINED_NOTE = '誤差大於數值，此參數無法由資料決定';
+    const BACKGROUND = 'background';
+    const ABSOLUTE_UNIT = '1/cm';              // intensity of an official (absolute-scale) file
     const CHI2R_DIGITS = 3;
     const SLD_DIGITS = 6;
     const DENSITY_DIGITS = 4;
-    const PLAIN_FROM = 1e-3;                // numbers from here ...
-    const PLAIN_BELOW = 1e5;                // ... to below here are written without an exponent
-    const MAX_DECIMALS = 12;
     const PARAM_COLUMNS = 7;
     const PD_SUFFIX = '_pd';
     const DOCS_URL = 'https://www.sasview.org/docs/user/models/';
     const SLD_UNIT = '1e-6/Ang^2';
-    const UNIT_TEXT = Object.freeze({ Ang: 'Å', '1e-6/Ang^2': '10⁻⁶ Å⁻²', '1/Ang': 'Å⁻¹', '1/cm': 'cm⁻¹', degrees: '°', None: '' });
+    // 'e' alone next to a number reads like an exponent (100 e): it is spelled out
+    const UNIT_TEXT = Object.freeze({
+        Ang: 'Å', '1e-6/Ang^2': '10⁻⁶ Å⁻²', '1/Ang': 'Å⁻¹', '1/cm': 'cm⁻¹', degrees: '°', None: '', e: 'e（基本電荷）',
+    });
     const TONES = Object.freeze(['ok', 'warn', 'error']);
     const ALERT_CLASS = Object.freeze({ ok: 'alert-info', warn: 'alert-warning', error: 'alert-error' });
     const ACTION_LABELS = Object.freeze({ continue: '從目前的值繼續擬合' });
@@ -140,49 +143,11 @@
         return has(UNIT_TEXT, units) ? UNIT_TEXT[units] : units;
     }
 
-    /** value with `digits` significant figures; MISSING for anything that is not a finite number. */
-    function formatNumber(value, digits) {
-        if (!isNumber(value)) return MISSING;
-        if (value === 0) return '0';
-        const size = Math.abs(value);
-        if (size < PLAIN_FROM || size >= PLAIN_BELOW) return value.toExponential(digits - 1).replace('e+', 'e');
-        const fixed = value.toPrecision(digits);
-        return fixed.indexOf('e') >= 0 ? String(Number(fixed)) : fixed;
-    }
+    /** A number for the screen (SasFitFormat.number with U+2212 as minus); MISSING for anything that is not a finite number. */
+    const formatNumber = (value, digits) => globalThis.SasFitFormat.display(globalThis.SasFitFormat.number(value, digits));
 
-    /** x rounded at 10^-decimals as text; negative decimals round to tens, hundreds, ... */
-    function roundedText(x, decimals) {
-        if (decimals >= 0) return x.toFixed(Math.min(decimals, MAX_DECIMALS));
-        const unit = Math.pow(10, -decimals);
-        return String(Math.round(x / unit) * unit);
-    }
-
-    /** The decimal that keeps ERROR_DIGITS significant figures of a positive error (after rounding: 0.0996 -> 0.10). */
-    function decimalsOf(error) {
-        const rounded = Number(error.toPrecision(ERROR_DIGITS));
-        return ERROR_DIGITS - 1 - Math.floor(Math.log10(rounded));
-    }
-
-    function pairText(value, error) {
-        const decimals = decimalsOf(error);
-        return { value: isNumber(value) ? roundedText(value, decimals) : MISSING, error: roundedText(error, decimals) };
-    }
-
-    /**
-     * formatValueError(value, error) -> { value, error } as text: the error with 2 significant figures, the value
-     * to the same decimal. Very small or very large numbers share one exponent. An error that is not a positive
-     * finite number gives MISSING and the value with 5 significant figures.
-     */
-    function formatValueError(value, error) {
-        if (!isNumber(error) || !(error > 0)) return Object.freeze({ value: formatNumber(value, VALUE_DIGITS), error: MISSING });
-        const size = Math.max(isNumber(value) ? Math.abs(value) : 0, error);
-        if (size >= PLAIN_FROM && size < PLAIN_BELOW) return Object.freeze(pairText(value, error));
-        const exponent = Math.floor(Math.log10(isNumber(value) && value !== 0 ? Math.abs(value) : error));
-        const scale = Math.pow(10, exponent);
-        const pair = pairText(isNumber(value) ? value / scale : value, error / scale);
-        const tail = 'e' + exponent;
-        return Object.freeze({ value: pair.value === MISSING ? MISSING : pair.value + tail, error: pair.error + tail });
-    }
+    /** { value, error, kind } for the screen: SasFitFormat.valueError, the one rule of the page. */
+    const formatValueError = (value, error, options) => globalThis.SasFitFormat.valueError(value, error, options);
 
     // ------------------------------------------------------------- shared pieces
 
@@ -202,23 +167,28 @@
         return isObject(r) && resultCtx.matches === true && r.status !== 'stopped' ? r : null;
     }
 
-    /** { value, error } of a fitted name as the page displays it; error is a text (design spec 5.7 item 5). */
+    /**
+     * { value, error, kind } of a fitted name as the page displays it. The value is the one written into the
+     * parameter table (SasFitFormat.inputValue), so a tile and its input never disagree. kind: the kinds of
+     * SasFitFormat.valueError, or 'at-bound' (error = the text of design spec 5.7 item 5).
+     */
     function fittedText(fitResult, name) {
-        const value = isObject(fitResult.params) ? fitResult.params[name] : NaN;
+        const format = globalThis.SasFitFormat;
+        const exact = isObject(fitResult.params) ? fitResult.params[name] : NaN;
         if (isObject(fitResult.atBound) && has(fitResult.atBound, name)) {
-            return { value: formatNumber(value, VALUE_DIGITS), error: globalThis.SasFitHints.AT_BOUND_ERROR_TEXT, plain: true };
+            return { value: formatNumber(exact, VALUE_DIGITS), error: globalThis.SasFitHints.AT_BOUND_ERROR_TEXT, kind: 'at-bound' };
         }
         const errors = globalThis.SasFitWorkerCore.displayErrors(fitResult);
-        const pair = formatValueError(value, isObject(errors) ? errors[name] : NaN);
-        return { value: pair.value, error: pair.error, plain: pair.error === MISSING };
+        const error = isObject(errors) ? errors[name] : NaN;
+        return format.valueError(format.inputValue(exact, error), error, { illConditioned: fitResult.illConditioned === true });
     }
 
     /** The text of the error column for a parameter: empty unless it was fitted in the shown result. */
     function errorCellText(fitResult, name) {
         if (fitResult === null || list(fitResult.names).indexOf(name) < 0) return '';
         const fitted = fittedText(fitResult, name);
-        if (fitted.error === MISSING) return NOT_COMPUTABLE;
-        return fitted.plain ? fitted.error : '± ' + fitted.error;
+        if (fitted.kind === 'no-error') return NOT_COMPUTABLE;
+        return fitted.kind === 'at-bound' || fitted.kind === 'undeterminable' ? fitted.error : '± ' + fitted.error;
     }
 
     // ------------------------------------------------------------- file list (design spec 5.2)
@@ -341,8 +311,8 @@
         return '<td>' + input + button + '</td>';
     }
 
-    function nameCellHtml(row) {
-        const unit = unitText(row.unit);
+    function nameCellHtml(row, absolute) {
+        const unit = unitText(row.name === BACKGROUND && absolute ? ABSOLUTE_UNIT : row.unit);
         return '<th scope="row"><span class="sf-param-name">' + esc(row.label === undefined ? row.name : row.label) + '</span>'
             + (unit === '' ? '' : '<span class="sf-param-unit">' + esc(unit) + '</span>')
             + (text(row.note) === '' ? '' : '<span class="sf-param-note">' + esc(row.note) + '</span>') + '</th>';
@@ -355,14 +325,14 @@
             'aria-controls': 'sfPdRow_' + idToken(row.name), 'aria-label': row.name + ' 的多分散度', disabled: locked }) + '>PD</button></td>';
     }
 
-    function paramRowHtml(row, fitResult, locked) {
+    function paramRowHtml(row, fitResult, locked, absolute) {
         const errors = isObject(row.errors) ? row.errors : {};
         const disabled = locked || row.fittable !== true;
         const bound = (field) => '<td>' + fieldHtml({ name: row.name, field, value: row[field], label: row.name + FIELD_LABELS[field],
             error: errors[field], placeholder: UNBOUNDED, disabled }) + '</td>';
         return '<tr' + attrs({ class: 'sf-param-row', 'data-param': row.name, 'data-group': row.group }) + '>'
             + '<td>' + (row.fittable === true ? checkHtml(row.name, 'fit', '擬合 ' + row.name, row.fit, locked) : '') + '</td>'
-            + nameCellHtml(row) + valueCellHtml(row, errors, disabled)
+            + nameCellHtml(row, absolute) + valueCellHtml(row, errors, disabled)
             + '<td' + attrs({ class: 'sf-param-pm', id: 'sfPm_' + idToken(row.name) }) + '>' + esc(errorCellText(fitResult, row.name)) + '</td>'
             + bound('lower') + bound('upper') + pdToggleHtml(row, locked) + '</tr>'
             + (isObject(row.pd) ? pdRowHtml(row, fitResult, locked) : '');
@@ -371,7 +341,8 @@
     function paramTableHtml(rows, resultCtx) {
         const fitResult = shownResult(resultCtx);
         const locked = isObject(resultCtx) && resultCtx.locked === true;
-        return list(rows).map((row) => paramRowHtml(row, fitResult, locked)).join('');
+        const absolute = isObject(resultCtx) && resultCtx.absolute === true;
+        return list(rows).map((row) => paramRowHtml(row, fitResult, locked, absolute)).join('');
     }
 
     /** [{ id, text }]: the text of every cell of the error column that paramTableHtml(rows, resultCtx) builds. */
@@ -464,9 +435,13 @@
         }).join('');
     }
 
-    /** The display unit of a fitted name: from the model, then the structure factor; dispersities and the rest have none. */
-    function unitOf(modelSpec, name) {
+    /**
+     * The display unit of a fitted name: from the model, then the structure factor; background is in the unit of
+     * the intensity when the data are on absolute scale; dispersities and the rest have none.
+     */
+    function unitOf(modelSpec, name, absolute) {
         const meta = globalThis.SasFitMeta;
+        if (name === BACKGROUND) return absolute ? unitText(ABSOLUTE_UNIT) : '';
         if (!isObject(modelSpec)) return '';
         const models = [modelSpec.model, modelSpec.structure].filter((m) => typeof m === 'string' && has(meta.models, m));
         for (const model of models) {
@@ -481,11 +456,19 @@
         return isPd ? name.slice(0, -PD_SUFFIX.length) + ' 的 PD 寬度' : name;
     }
 
-    function paramTileHtml(fitResult, name) {
+    /** The lines under the value of a parameter tile. */
+    function tileSubLines(fitted) {
+        if (fitted.kind === 'no-error') return ['誤差' + NOT_COMPUTABLE];
+        if (fitted.kind === 'at-bound') return [fitted.error];
+        if (fitted.kind === 'undeterminable') return ['誤差' + fitted.error, UNDETERMINED_NOTE];
+        return fitted.kind === 'undetermined' ? ['± ' + fitted.error, UNDETERMINED_NOTE] : ['± ' + fitted.error];
+    }
+
+    function paramTileHtml(fitResult, name, absolute) {
         const fitted = fittedText(fitResult, name);
-        const sub = fitted.error === MISSING ? '誤差' + NOT_COMPUTABLE : fitted.plain ? fitted.error : '± ' + fitted.error;
         return host().ResultTiles.tile({ label: esc(tileLabel(String(name))), value: esc(fitted.value),
-            unit: esc(unitOf(isObject(fitResult.settings) ? fitResult.settings.modelSpec : null, name)), sub: esc(sub) });
+            unit: esc(unitOf(isObject(fitResult.settings) ? fitResult.settings.modelSpec : null, name, absolute)),
+            sub: tileSubLines(fitted).map(esc) });
     }
 
     function heroTileHtml(fitResult) {
@@ -507,7 +490,8 @@
         const context = isObject(ctx) ? ctx : {};
         const stale = context.matches === true ? '' : '<div class="alert alert--compact alert-warning">' + TEXT.stale + '</div>';
         const file = text(context.fileName) === '' ? '' : '<p class="stat-sub sf-result-file">' + esc(context.fileName) + '</p>';
-        const tiles = [heroTileHtml(fitResult)].concat(list(fitResult.names).map((name) => paramTileHtml(fitResult, name)));
+        const tiles = [heroTileHtml(fitResult)]
+            .concat(list(fitResult.names).map((name) => paramTileHtml(fitResult, name, context.absolute === true)));
         return stale + file + host().ResultTiles.tiles(tiles);
     }
 

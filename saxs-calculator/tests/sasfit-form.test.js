@@ -199,7 +199,10 @@ test('setStructure: refused where S(Q) does not apply; null removes it; setModel
     const vf = rowOf(fromVesicle, 'volfraction');
     assert.deepEqual([vf.group, vf.value, vf.upper], ['S', '0.2', '0.74']);
     const switched = run(form, { type: 'setStructure', structure: 'hardsphere' });
-    assert.deepEqual([rowOf(switched, 'volfraction').value, rowOf(switched, 'radius_effective').value], ['0.2', '50']);
+    assert.deepEqual([rowOf(switched, 'volfraction').value, switched.fields.radius_effective.value], ['0.2', '50']);
+    assert.equal(rowOf(switched, 'radius_effective').value, '—', 'the model derives it: the row shows no number');
+    const free = run(switched, { type: 'setRadiusMode', mode: 0 });
+    assert.equal(rowOf(free, 'radius_effective').value, '50', 'unconstrained: the number of the form');
     const dropped = run(form, { type: 'setModel', model: 'lamellar' });
     assert.equal(dropped.structure, null);
     assert.deepEqual(names(dropped), ['scale', 'background', 'thickness', 'sld', 'sld_solvent']);

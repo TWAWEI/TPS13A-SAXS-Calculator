@@ -72,6 +72,7 @@
     const VOLFRAC_ID = 'volfraction';
     const PD_SUFFIX = '_pd';
     const DERIVED_NOTE = '由模型決定';
+    const DERIVED_VALUE = '—';
     const PD_FIELD_KEYS = Object.freeze(['width', 'lower', 'upper', 'type', 'npts', 'nsigmas']);
     const NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
 
@@ -413,6 +414,8 @@
         return Object.freeze(defsOf(form).map((def) => Object.freeze({
             name: def.name, label: def.name, unit: def.unit, group: def.group,
             ...form.fields[def.name],
+            // the model computes this value: the number kept in the form is not the one in use, so none is shown
+            ...(def.derived ? { value: DERIVED_VALUE } : {}),
             hardMin: def.hardMin, hardMax: def.hardMax,
             fittable: !def.derived, derived: def.derived, note: def.derived ? DERIVED_NOTE : '', isSld: def.isSld,
             pd: def.pdCapable ? pdView(def.name, form.pds[def.name], errors) : null,

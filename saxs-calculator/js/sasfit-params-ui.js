@@ -273,8 +273,8 @@
     // ------------------------------------------------------------- parameter table
 
     /** What decides the rows and controls of the table; while it stays the same the table is updated in place. */
-    function tableKey(form, locked) {
-        return JSON.stringify([form.model, form.structure, form.radiusMode, form.lowQ, locked,
+    function tableKey(form, locked, absolute) {
+        return JSON.stringify([form.model, form.structure, form.radiusMode, form.lowQ, locked, absolute,
             Object.keys(form.pds).map((name) => [name, form.pds[name].open, form.pds[name].type])]);
     }
 
@@ -309,10 +309,14 @@
         const { ctx, store } = ui;
         const html = globalThis.SasFitHtml;
         const result = activeResult(state);
-        const resultCtx = { fitResult: result, matches: result !== null && globalThis.SasFitJobs.resultMatchesForm(form, result), locked };
+        const active = globalThis.SasFitState.active(state);
+        const absolute = active !== null && active.dataset.kind === 'official';      // background is then in 1/cm
+        const resultCtx = {
+            fitResult: result, matches: result !== null && globalThis.SasFitJobs.resultMatchesForm(form, result), locked, absolute,
+        };
         const rows = globalThis.SasFitForm.rows(form);
         ctx.setHtml(ctx.el('sfParamHead'), html.paramTableHeadHtml(resultCtx));
-        const key = tableKey(form, locked);
+        const key = tableKey(form, locked, absolute);
         if (key !== store.get().tableKey) {
             ctx.setHtml(ctx.el('sfParamBody'), html.paramTableHtml(rows, resultCtx));
             store.set({ tableKey: key });

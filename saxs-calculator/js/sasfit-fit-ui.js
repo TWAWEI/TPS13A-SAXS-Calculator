@@ -233,7 +233,9 @@
         const matches = result !== null && globalThis.SasFitJobs.resultMatchesForm(ctx.getForm(), result);
         const locked = isRunning(state);
         const results = ctx.el(RESULTS_ID);
-        ctx.setHtml(results, html.resultsHtml(result, { matches, fileName: file === null ? '' : file.fileName }));
+        ctx.setHtml(results, html.resultsHtml(result, {
+            matches, fileName: file === null ? '' : file.fileName, absolute: file !== null && file.dataset.kind === 'official',
+        }));
         results.setAttribute('aria-busy', String(locked));
         // the hints describe the result as fitted; "continue" must not be offered for other values or during a run
         ctx.setHtml(ctx.el('sfFitHints'), matches && !locked ? html.hintsHtml(globalThis.SasFitHints.fitHints(result)) : '');

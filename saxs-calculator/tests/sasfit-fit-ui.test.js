@@ -319,7 +319,7 @@ test('[sasfit-fit-ui] converged：表單＝applyResult、結果磚與提示、±
     assert.equal(form.fields.radius.value, '50.2');
     assert.equal(Jobs.resultMatchesForm(form, result), true);
     assert.equal(page.Section.getState().fitResults[id], result);
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL, absolute: true }));
     assert.match(page.$('sfFitResults').innerHTML, /tile--hero/);
     assert.equal(page.$('sfFitHints').innerHTML, Html.hintsHtml(Hints.fitHints(result)));
     assert.equal(field(page, 'radius', 'value').value, '50.2', '參數表的值更新');
@@ -562,7 +562,7 @@ test('[sasfit-fit-ui] 擬合後改參數：結果區出現「參數已修改…�
 
     input.value = '50.2';
     input.fire('input');
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL, absolute: true }));
     assert.equal(page.$('sfPm_radius').textContent, '± 0.50');
     assert.equal(lastView(page).series[0].fitCurve.I, result.curve);
     assert.equal(page.$('sfFitHints').innerHTML, Html.hintsHtml(Hints.fitHints(result)));
@@ -582,11 +582,11 @@ test('[sasfit-fit-ui] 換作用中資料：顯示該資料自己的結果（沒�
     assert.equal(lastView(page).series.find((s) => s.id === a).fitCurve.I, fitA.result.curve, '非作用中的 A 畫自己的擬合曲線');
 
     const fitB = await fitOnce(page, { values: { radius: 49.7 } });
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitB.result, { matches: true, fileName: 'SYNTH_sphere_20.dat' }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitB.result, { matches: true, fileName: 'SYNTH_sphere_20.dat', absolute: true }));
 
     page.$(Html.fileControlId(a, 'active')).fire('change');
     assert.equal(page.Section.getForm().fields.radius.value, '49.7', '表單是 B 擬合出來的值');
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitA.result, { matches: false, fileName: 'SYNTH_sphere_10.dat' }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitA.result, { matches: false, fileName: 'SYNTH_sphere_10.dat', absolute: true }));
     assert.match(page.$('sfFitResults').innerHTML, /參數已修改，下列為上次擬合的結果/);
     assert.equal(page.$('sfPm_radius').textContent, '');
     assert.equal(page.$('sfFitHints').innerHTML, '');

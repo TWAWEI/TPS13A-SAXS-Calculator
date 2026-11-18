@@ -14,7 +14,8 @@
  *   fitJob(form, dataset, { range, weighting, maxSteps })
  *                     -> the job of SasFitWorkerClient.fit
  *   fullRange(dataset)-> SasFitState.fullRange
- *   applyResult(form, fitResult)       -> form with the fitted values
+ *   writtenValues(form, fitResult)     -> { name: number } of the fitted names, rounded
+ *   applyResult(form, fitResult)       -> form with the fitted values (writtenValues)
  *   resultMatchesForm(form, fitResult) -> boolean
  *
  * What is sent, and why:
@@ -44,9 +45,15 @@
  * does not send the request by itself, only on the user's "update" button.
  * A fit always uses every point.
  *
+ * Fitted values are written back ROUNDED (SasFitFormat.inputValue: two digits
+ * beyond the error's second significant figure, 6 to 15 significant figures;
+ * a value on a bound is kept exactly): writtenValues(form, fitResult).
+ * "Continue from the current values" therefore starts from the rounded
+ * values, less than 0.001 sigma away from the exact ones.
+ *
  * resultMatchesForm replaces a "result is stale" flag: it compares
- * settings.modelSpec and EVERY key of fitResult.params with params(form), in
- * both directions. Bounds and fit ticks do not take part. A stopped result
+ * settings.modelSpec and EVERY key of fitResult.params (the fitted names
+ * through the same rounding) with params(form), in both directions. Bounds and fit ticks do not take part. A stopped result
  * and an invalid form never match.
  *
  * Nothing given is modified; what is returned is frozen (typed arrays cannot
@@ -252,7 +259,33 @@
         }
     }
 
-    /** The fitted values (fitResult.names) written into the form; everything else stays as it is. */
+    /** [lower, upper] of a fitted name as the form has them now (an empty or unreadable bound is open). */
+    function boundsOf(form, name) {
+        const base = name.slice(0, -PD_SUFFIX.length);
+        const holder = has(form.fields, name) ? form.fields[name]
+            : (name.endsWith(PD_SUFFIX) && has(form.pds, base) ? form.pds[base] : null);
+        if (holder === null) return null;
+        const read = (text, open) => (typeof text === 'string' && text.trim() !== '' && Number.isFinite(Number(text)) ? Number(text) : open);
+        return [read(holder.lower, -Infinity), read(holder.upper, Infinity)];
+    }
+
+    /**
+     * { name: number } of the fitted names as the page writes and shows them: rounded by SasFitFormat.inputValue
+     * with the error the page displays (a value on a bound stays exactly there). applyResult writes these numbers
+     * and resultMatchesForm compares with them, so a result matches the form it was written into.
+     */
+    function writtenValues(form, fitResult) {
+        const format = globalThis.SasFitFormat;
+        const shown = isObject(fitResult.errors) || isObject(fitResult.errorsScaled) ? globalThis.SasFitWorkerCore.displayErrors(fitResult) : null;
+        const atBound = isObject(fitResult.atBound) ? fitResult.atBound : {};
+        return Object.freeze(Object.fromEntries(fitResult.names.map((name) => {
+            const exact = fitResult.params[name];
+            if (has(atBound, name)) return [name, exact];
+            return [name, format.inputValue(exact, isObject(shown) ? shown[name] : NaN, boundsOf(form, name))];
+        })));
+    }
+
+    /** The fitted values (fitResult.names) written into the form, rounded (writtenValues); everything else stays as it is. */
     function applyResult(form, fitResult) {
         assertResult(fitResult, 'applyResult');
         if (fitResult.names.length === 0) return form;
@@ -260,21 +293,20 @@
             throw new Error('applyResult: the result belongs to ' + JSON.stringify(fitResult.settings && fitResult.settings.modelSpec)
                 + ', the form is ' + JSON.stringify(modelSpec(form)));
         }
-        const values = Object.fromEntries(fitResult.names.map((name) => [name, fitResult.params[name]]));
-        return globalThis.SasFitForm.reduce(form, { type: 'applyValues', values });
+        return globalThis.SasFitForm.reduce(form, { type: 'applyValues', values: writtenValues(form, fitResult) });
     }
 
     function resultMatchesForm(form, fitResult) {
         if (!isObject(fitResult) || !isObject(fitResult.params) || fitResult.status === STOPPED) return false;
         if (!sameSpec(form, fitResult) || !globalThis.SasFitForm.validate(form).valid) return false;
         const mine = paramsOfValid(form);
-        const theirs = fitResult.params;
+        const theirs = { ...fitResult.params, ...(Array.isArray(fitResult.names) ? writtenValues(form, fitResult) : {}) };
         const keys = Object.keys(theirs);
         return keys.length === Object.keys(mine).length && keys.every((key) => has(mine, key) && mine[key] === theirs[key]);
     }
 
     globalThis.SasFitJobs = Object.freeze({
         CUTOFF, PREVIEW_BUDGET, PREVIEW_PAUSE_COST, PREVIEW_MIN_POINTS,
-        modelSpec, params, previewGrid, previewRequest, fitReadiness, fitJob, fullRange, applyResult, resultMatchesForm,
+        modelSpec, params, previewGrid, previewRequest, fitReadiness, fitJob, fullRange, writtenValues, applyResult, resultMatchesForm,
     });
 })();

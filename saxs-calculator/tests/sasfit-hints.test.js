@@ -232,13 +232,31 @@ test('the order of fit hints is fixed', () => {
     const all = H.fitHints(weighted('none', {
         status: 'failed', blockedByNonFinite: true, jacobianNonFinite: true, illConditioned: true, nonFiniteCurvePoints: 2,
         atBound: { radius: 'upper' }, correlation: [[1, 0.99, 0], [0.99, 1, 0], [0, 0, 1]], errors: { scale: NaN, radius: 1, thickness: 1 },
+        errorsScaled: { scale: NaN, radius: 1, thickness: 30 },
     }));
-    assert.deepEqual(ids(all), ['blocked', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'strong-correlation',
+    assert.deepEqual(ids(all), ['blocked', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'undetermined', 'strong-correlation',
         'non-finite-curve', 'scaled-errors']);
     assert.deepEqual(ids(H.fitHints(result({ iterations: 0, chi2r: 50 }))), ['zero-steps', 'local-minimum']);
     assert.deepEqual(ids(H.fitHints(result({ status: 'maxiter', chi2r: 0.01 }))), ['maxiter', 'overestimated-errors']);
     assert.deepEqual([...H.FIT_HINT_IDS], ['stopped', 'blocked', 'failed', 'maxiter', 'zero-steps', 'local-minimum',
-        'overestimated-errors', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'strong-correlation', 'non-finite-curve', 'scaled-errors']);
+        'overestimated-errors', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'undetermined', 'strong-correlation', 'non-finite-curve',
+        'scaled-errors']);
+});
+
+test('undetermined: fitted parameters whose DISPLAYED error is >= |value|, without those on a bound', () => {
+    const none = byId(H.fitHints(result()), 'undetermined');
+    assert.equal(none, undefined);
+    const r = result({ params: { scale: 0.04871, background: 0.001, radius: 72.7417, thickness: 10 }, errors: { scale: 1.0, radius: 5700, thickness: 9.99 } });
+    const hint = byId(H.fitHints(r), 'undetermined');
+    assert.equal(hint.tone, 'warn');
+    assert.equal(hint.text, '下列參數的誤差大於數值，無法由資料決定：scale、radius');
+    assert.deepEqual([...hint.params], ['scale', 'radius']);
+    const bound = result({ params: r.params, errors: r.errors, atBound: { radius: 'upper' } });
+    assert.deepEqual([...byId(H.fitHints(bound), 'undetermined').params], ['scale'], 'a parameter on a bound has its own hint');
+    const scaled = weighted('none', { errors: { scale: 0.5, radius: 0.5, thickness: 0.2 }, errorsScaled: { scale: 5, radius: 5, thickness: 2 } });
+    assert.deepEqual([...byId(H.fitHints(scaled), 'undetermined').params], ['scale'], 'the error the page shows decides');
+    const nan = result({ errors: { scale: NaN, radius: 0.5, thickness: 0.2 } });
+    assert.equal(byId(H.fitHints(nan), 'undetermined'), undefined, 'an error that cannot be computed is another hint');
 });
 
 test('a real FitResult from SasFitWorkerCore: unweighted fit of exact data', async () => {

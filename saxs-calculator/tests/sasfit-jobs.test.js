@@ -393,8 +393,13 @@ test('a built fit job runs end to end through SasFitWorkerCore and recovers the 
     assert.deepEqual({ ...result.settings.modelSpec }, { ...J.modelSpec(START) });
 
     const applied = J.applyResult(START, result);
-    assert.equal(applied.fields.radius.value, String(result.params.radius));
-    assert.equal(applied.pds.radius.width, String(result.params.radius_pd));
+    const written = J.writtenValues(START, result);
+    assert.equal(applied.fields.radius.value, String(written.radius));
+    assert.equal(applied.pds.radius.width, String(written.radius_pd));
+    const shown = globalThis.SasFitWorkerCore.displayErrors(result);
+    result.names.forEach((name) => {
+        assert.ok(Math.abs(written[name] - result.params[name]) < 0.01 * shown[name], name + ' moved by more than 0.01 sigma');
+    });
     assert.deepEqual(applied.fields.sld, START.fields.sld, 'fixed parameters untouched');
     assert.equal(applied.fields.radius.upper, START.fields.radius.upper);
     assert.equal(START.fields.radius.value, '55', 'the form given is not changed');
@@ -423,12 +428,17 @@ function resultFor(form, values, extra) {
     return Object.freeze({ status: 'converged', names, params: Object.freeze({ ...J.params(form), ...values }), settings, ...extra });
 }
 
-test('applyResult: only the fitted names are written, as strings that give the number back', () => {
+test('applyResult: only the fitted names are written, rounded by SasFitFormat.inputValue', () => {
     const form = run(START, { type: 'setStructure', structure: 'hardsphere' });
     const result = resultFor(form, { radius: 61.123456789012345, radius_pd: 0.1 });
     const applied = J.applyResult(form, result);
-    assert.equal(Number(applied.fields.radius.value), 61.123456789012345);
+    assert.equal(applied.fields.radius.value, '61.123457', 'no error in the result: 8 significant figures');
     assert.equal(applied.pds.radius.width, '0.1');
+    const withErrors = { ...result, errors: { radius: 0.0312, radius_pd: 0.004 }, displayErrorsScaled: false };
+    const rounded = J.applyResult(form, withErrors);
+    assert.equal(rounded.fields.radius.value, '61.12346', 'two digits beyond the second significant figure of the error');
+    assert.equal(rounded.pds.radius.width, '0.1');
+    assert.deepEqual({ ...J.writtenValues(form, withErrors) }, { radius: 61.12346, radius_pd: 0.1 });
     assert.deepEqual(applied.fields.scale, form.fields.scale);
     assert.equal(applied.structureMode, form.structureMode);
     assert.equal(J.applyResult(form, resultFor(form, {}, { status: 'stopped' })), form, 'nothing fitted: the same form');
@@ -487,4 +497,54 @@ test('nothing given is modified', async () => {
     J.fitJob(START, ds, fullOf(ds));
     J.resultMatchesForm(START, resultFor(START, { radius: 1 }));
     assert.equal(JSON.stringify([START, Array.from(ds.q), Array.from(ds.I), Array.from(ds.sigma)]), before);
+});
+
+// ------------------------------------------------------------------ rounded write-back (fix pass A, number rule 6)
+
+const fullResult = (form, values, errors, extra) => resultFor(form, values, {
+    errors: Object.freeze(errors), errorsScaled: Object.freeze(errors), displayErrorsScaled: false, atBound: Object.freeze({}), ...extra,
+});
+
+test('write-back: apply -> the result matches its own form -> edit -> no match -> the old text -> match again', () => {
+    const exact = { scale: 1.0013090858486413, background: 0.0013628359882335626, radius: 49.99493550916302 };
+    const errors = { scale: 0.002073006854671509, background: 0.0001943752294732052, radius: 0.0033299359837592308 };
+    const result = fullResult(START, exact, errors);
+    const applied = J.applyResult(START, result);
+    assert.deepEqual([applied.fields.scale.value, applied.fields.background.value, applied.fields.radius.value],
+        ['1.001309', '0.00136284', '49.994936']);
+    assert.equal(J.resultMatchesForm(applied, result), true);
+    assert.equal(J.resultMatchesForm(START, result), false, 'the form before the fit (revert) does not match');
+    const edited = run(applied, setValue('radius', '49.99'));
+    assert.equal(J.resultMatchesForm(edited, result), false);
+    assert.equal(J.resultMatchesForm(run(edited, setValue('radius', '49.994936')), result), true);
+    assert.equal(J.resultMatchesForm(run(edited, setValue('radius', String(exact.radius))), result), false,
+        'the exact double is no longer what the page holds');
+    assert.equal(J.applyResult(applied, result).fields.radius.value, '49.994936', 'applying twice changes nothing');
+});
+
+test('write-back: no input ever holds more than 15 significant digits; every value moves by < 0.01 sigma', () => {
+    const exact = { scale: 1622.876520500591, background: -0.00022497415222375204, radius: 15.776024832728607 };
+    for (const ratio of [1e-12, 1e-6, 1e-3, 0.05, 1, 40, 1e7]) {
+        const errors = Object.fromEntries(Object.keys(exact).map((k) => [k, Math.abs(exact[k]) * ratio]));
+        const result = fullResult(START, exact, errors);
+        const applied = J.applyResult(START, result);
+        Object.keys(exact).forEach((name) => {
+            const text = applied.fields[name].value;
+            assert.ok(text.replace(/e.*$/, '').replace(/[-.]/g, '').replace(/^0+/, '').length <= 15, name + ': ' + text);
+            if (ratio >= 1e-6) assert.ok(Math.abs(Number(text) - exact[name]) < 0.01 * errors[name], name + ' ' + text + ' at ratio ' + ratio);
+        });
+        assert.equal(J.resultMatchesForm(applied, result), true, 'ratio ' + ratio);
+        assert.equal(F.validate(applied).valid, true);
+    }
+});
+
+test('write-back: a value on a bound is written exactly; rounding never leaves the bounds of the form', () => {
+    const bounded = run(START, { type: 'setLower', name: 'radius', value: '49.99493551' }, { type: 'setUpper', name: 'scale', value: '1.0013089' });
+    const onBound = fullResult(bounded, { radius: 49.99493551, scale: 1.00130889 }, { radius: 0.5, scale: 0.5 }, { atBound: { radius: 'lower' } });
+    const applied = J.applyResult(bounded, onBound);
+    assert.equal(applied.fields.radius.value, '49.99493551', 'on the bound: exactly the bound');
+    assert.equal(applied.fields.scale.value, '1.0013089', 'rounding to 1.00131 would pass the upper bound');
+    assert.equal(J.resultMatchesForm(applied, onBound), true);
+    const pd = fullResult(START, { radius_pd: 0.39999951 }, { radius_pd: 0.3 });
+    assert.equal(J.applyResult(START, pd).pds.radius.width, '0.4', 'the upper bound of the width (0.4) is respected');
 });

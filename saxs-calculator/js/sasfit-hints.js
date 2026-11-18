@@ -21,6 +21,8 @@
  *                          error (item 3); never speaks of correlation
  *     ill-conditioned      illConditioned (item 3)
  *     at-bound             parameters on a bound: their errors mean nothing (item 5)
+ *     undetermined         fitted parameters whose displayed error is >= |value|
+ *                          (SasFitFormat.isUndetermined): the data do not determine them
  *     strong-correlation   pairs with |correlation| > CORRELATION_WARN (item 6)
  *     non-finite-curve     nonFiniteCurvePoints > 0 (item 4)
  *     scaled-errors        the errors shown are multiplied by sqrt(chi2r);
@@ -85,7 +87,7 @@
     });
     const NOT_FITTED = Object.freeze({ text: '未擬合', tone: 'warn' });
     const FIT_HINT_IDS = Object.freeze(['stopped', 'blocked', 'failed', 'maxiter', 'zero-steps', 'local-minimum',
-        'overestimated-errors', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'strong-correlation', 'non-finite-curve',
+        'overestimated-errors', 'jacobian-nan', 'ill-conditioned', 'at-bound', 'undetermined', 'strong-correlation', 'non-finite-curve',
         'scaled-errors']);
     const PRE_FIT_HINT_IDS = Object.freeze(['hayter', 'no-sigma', 'invalid-sigma', 'nonpositive-weight', 'suspect-nm']);
     const TEXT = Object.freeze({
@@ -184,6 +186,16 @@
         return hint('at-bound', 'warn', '下列參數停在邊界上，誤差沒有意義：' + list, { params: Object.freeze(params) });
     }
 
+    /** Fitted parameters whose displayed error is at least as large as the value (not those on a bound: they have their own hint). */
+    function undeterminedHint(fitResult) {
+        const errors = globalThis.SasFitWorkerCore.displayErrors(fitResult);
+        if (!isObject(errors) || !isObject(fitResult.params)) return null;
+        const params = fitResult.names.filter((name) => !has(fitResult.atBound || {}, name)
+            && globalThis.SasFitFormat.isUndetermined(fitResult.params[name], errors[name]));
+        if (params.length === 0) return null;
+        return hint('undetermined', 'warn', '下列參數的誤差大於數值，無法由資料決定：' + params.join(LIST_SEPARATOR), { params: Object.freeze(params) });
+    }
+
     /** sqrt(chi2r) when the page shows the multiplied errors and the factor is a usable number, else null. */
     function scaleFactor(fitResult) {
         const factor = Math.sqrt(fitResult.chi2r);
@@ -223,6 +235,7 @@
             jacobianHint(r),
             r.illConditioned ? hint('ill-conditioned', 'warn', TEXT.illConditioned) : null,
             atBoundHint(r),
+            undeterminedHint(r),
             correlationHint(r),
             r.nonFiniteCurvePoints > 0 ? hint('non-finite-curve', 'warn', nonFiniteCurveText(r.nonFiniteCurvePoints)) : null,
             r.displayErrorsScaled ? hint('scaled-errors', 'ok', scaledErrorsText(r), { factor: scaleFactor(r) }) : null,
