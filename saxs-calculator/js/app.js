@@ -39,5 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initDetectorSection();
     initIUCrSection();
     window.LiposomeSection?.init();
+    window.SasFitSection?.init();
     initDndcLock();
 });

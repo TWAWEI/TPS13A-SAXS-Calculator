@@ -179,3 +179,65 @@ test('[mass-dom] 舊存檔裡 < 1,000 的值不換算，也不說「已換算」
     assert.equal(state.massMigrated, false);
     assert.equal(stored().massUnit, 'kDa');
 });
+
+// ---------------------------------------------------------------- SAS 模型擬合分頁不持久化
+// 規格 §1「重新整理即清除」：#section-sasfit 內的欄位不存檔、也不還原（M3 計畫「起草時實查」B）。
+/** 假欄位；inSasfit 的元素其 closest('#section-sasfit') 回傳真值，其餘回 null。 */
+function fakeField(id, props, inSasfit) {
+    return {
+        id, tagName: 'INPUT', type: 'text', value: '', defaultValue: '', checked: false, defaultChecked: false,
+        ...props,
+        closest: selector => (inSasfit && selector === '#section-sasfit' ? { id: 'section-sasfit' } : null),
+    };
+}
+
+/** 以假 document 執行 fn（form-persistence.js 以裸名稱取用 document），結束後還原。 */
+function withFields(fields, fn) {
+    const saved = globalThis.document;
+    globalThis.document = {
+        querySelectorAll: () => fields,
+        getElementById: id => fields.find(f => f.id === id) || null,   // 沒有 main-content：還原提示條不建立
+    };
+    try {
+        return fn();
+    } finally {
+        if (saved === undefined) delete globalThis.document;
+        else globalThis.document = saved;
+    }
+}
+
+test('[persist] isPersistableField：#section-sasfit 內的欄位不持久化；沒有 closest 的元素照舊', () => {
+    assert.equal(isPersistableField(fakeField('sfQMin', {}, true)), false);
+    assert.equal(isPersistableField(fakeField('uvAbsorbance', {}, false)), true);
+    assert.equal(isPersistableField({ id: 'uvAbsorbance', type: 'text' }), true, '測試用的假元素沒有 closest');
+    assert.equal(isPersistableField(fakeField('dndcPasswordInput', { type: 'password' }, false)), false);
+});
+
+test('[persist] saveFormState：sasfit 分頁的輸入、下拉與核取方塊都不存檔，其他欄位照存', () => {
+    STORE.clear();
+    const fields = [
+        fakeField('uvAbsorbance', { value: '0.5' }, false),
+        fakeField('reducedCysteine', { type: 'checkbox', checked: true }, false),
+        fakeField('sfQMin', { type: 'number', value: '0.012' }, true),
+        fakeField('sfMaxSteps', { type: 'number', value: '50', defaultValue: '200' }, true),
+        fakeField('sfStagger', { type: 'checkbox', checked: true }, true),
+        fakeField('sfValue_radius', { value: '55' }, true),
+    ];
+    withFields(fields, () => saveFormState());
+    assert.deepEqual(stored().values, { uvAbsorbance: '0.5', reducedCysteine: true });
+});
+
+test('[persist] restoreFormState：舊存檔裡的 sasfit 欄位不還原，其他欄位照還原', () => {
+    seed({ savedAt: null, massUnit: 'kDa', values: { uvAbsorbance: '0.7', sfQMin: '0.02', sfMaxSteps: '50', sfStagger: true } });
+    const fields = [
+        fakeField('uvAbsorbance', {}, false),
+        fakeField('sfQMin', { type: 'number' }, true),
+        fakeField('sfMaxSteps', { type: 'number', value: '200', defaultValue: '200' }, true),
+        fakeField('sfStagger', { type: 'checkbox' }, true),
+    ];
+    withFields(fields, () => restoreFormState());
+    assert.equal(fields[0].value, '0.7');
+    assert.equal(fields[1].value, '');
+    assert.equal(fields[2].value, '200');
+    assert.equal(fields[3].checked, false);
+});

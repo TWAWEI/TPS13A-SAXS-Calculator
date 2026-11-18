@@ -44,6 +44,10 @@ function withAutoSaveSuppressed(fn) {
     }
 }
 
+// 整個分頁都不持久化：SAS 模型擬合的資料重新整理即清除，範圍、權重、參數值離開了資料沒有意義
+// （動態產生的參數欄位也在這個容器內）
+const PERSIST_SKIP_CONTAINER = '#section-sasfit';
+
 /**
  * 這個欄位可以被持久化嗎？
  *
@@ -51,7 +55,8 @@ function withAutoSaveSuppressed(fn) {
  * @returns {boolean} 可持久化為 true
  */
 function isPersistableField(el) {
-    return !PERSIST_SKIP_TYPES.includes(el.type) && !PERSIST_SKIP_IDS.includes(el.id);
+    if (PERSIST_SKIP_TYPES.includes(el.type) || PERSIST_SKIP_IDS.includes(el.id)) return false;
+    return !(typeof el.closest === 'function' && el.closest(PERSIST_SKIP_CONTAINER));
 }
 
 /**
