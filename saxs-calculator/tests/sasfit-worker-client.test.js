@@ -84,7 +84,8 @@ test('module: frozen, loads without document, lists its error codes', () => {
     assert.equal(typeof SasFitWorkerClient.create, 'function');
     assert.equal(SasFitWorkerClient.WORKER_PATH, 'js/sasfit-worker.js');
     assert.ok(Object.isFrozen(SasFitWorkerClient.ERROR_CODES));
-    assert.deepEqual([...SasFitWorkerClient.ERROR_CODES], ['SUPERSEDED', 'BUSY', 'STOPPED', 'WORKER_CRASH', 'DISPOSED', 'POST_FAILED']);
+    assert.deepEqual([...SasFitWorkerClient.ERROR_CODES],
+        ['SUPERSEDED', 'BUSY', 'STOPPED', 'WORKER_CRASH', 'WORKER_START_FAILED', 'DISPOSED', 'POST_FAILED']);
     assert.equal(SasFitWorkerClient.scriptVersion, null, 'no document.currentScript in Node');
 });
 
@@ -240,7 +241,7 @@ test('fit: a job the core would refuse outright is rejected before anything is p
     await ok;
 });
 
-test('stop(): terminate, a fresh worker, the fit resolves as the synthetic stopped result, evaluate rejects', async () => {
+test('stop(): terminate, the fit resolves as the synthetic stopped result, evaluate rejects; the next request gets a fresh worker', async () => {
     const { client, workers } = fakeWorkers();
     const job = fitJob(CASE_1, { weighting: 'none' });
     const fit = client.fit(job);
@@ -249,8 +250,7 @@ test('stop(): terminate, a fresh worker, the fit resolves as the synthetic stopp
     workers[0].reply({ type: 'progress', jobId: 1, iteration: 4, chi2r: 3 });
     client.stop();
     assert.equal(workers[0].terminated, 1);
-    assert.equal(workers.length, 2, 'a new worker replaces the terminated one');
-    assert.equal(workers[1].url, WORKER_URL);
+    assert.equal(workers.length, 1, 'the replacement is started by the next request');
 
     const result = await fit;
     assert.deepEqual(Object.keys(result).sort(), [...FIT_RESULT_FIELDS].sort());
@@ -272,8 +272,10 @@ test('stop(): terminate, a fresh worker, the fit resolves as the synthetic stopp
     // late messages of the dead worker are ignored; the new worker serves the next requests
     workers[0].reply({ type: 'result', jobId: 1, fitResult: { status: 'converged' } });
     workers[0].onerror({ message: 'late' });
-    assert.equal(workers.length, 2);
+    assert.equal(workers.length, 1);
     const next = client.fit(fitJob(CASE_1));
+    assert.equal(workers.length, 2);
+    assert.equal(workers[1].url, WORKER_URL);
     assert.equal(workers[1].sent[0].jobId, 3);
     workers[1].reply({ type: 'result', jobId: 3, fitResult: { status: 'converged', params: {}, settings: {} } });
     assert.equal((await next).status, 'converged');
@@ -289,9 +291,9 @@ test('stop(): sigma weighting and no progress yet -> displayErrorsScaled false, 
     assert.equal(result.status, 'stopped');
     assert.equal(result.displayErrorsScaled, false);
     assert.equal(result.iterations, 0);
-    client.stop();                                          // idle, with a worker: restart it
-    assert.equal(workers.length, 3);
-    assert.deepEqual(workers.map((w) => w.terminated), [1, 1, 0]);
+    client.stop();                                          // idle: nothing to stop
+    assert.equal(workers.length, 1);
+    assert.deepEqual(workers.map((w) => w.terminated), [1]);
 });
 
 test('Worker onerror: pending requests reject with WORKER_CRASH, the worker is replaced, later requests work', async () => {
@@ -424,6 +426,7 @@ function runWorkerEntry(search, options) {
             urls.forEach((url) => {
                 log.imports.push(url);
                 const file = url.split('?')[0];
+                if (file === opts.failImport) throw new Error('NetworkError: failed to load ' + url);
                 assert.match(file, /^sasfit-[a-z-]+\.js$/, 'importScripts URL is relative to the worker script: ' + url);
                 vm.runInContext(fs.readFileSync(path.join(JS_DIR, file), 'utf8'), sandbox, { filename: file });
             });
@@ -445,6 +448,7 @@ function runWorkerEntry(search, options) {
         },
     };
     sandbox.self = sandbox;
+    if (opts.onLog) opts.onLog({ log });
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(path.join(JS_DIR, 'sasfit-worker.js'), 'utf8'), sandbox, { filename: 'sasfit-worker.js' });
     /** Deliver a message built inside the context (typed arrays must belong to its realm). */
@@ -529,6 +533,33 @@ test('worker entry: only C models of SasFitMeta ever reach a wasm URL; yieldTask
     assert.equal(w.log.timers, 1);
     post({ type: 'probe' });
     assert.deepEqual(w.log.posts, [{ type: 'probe' }]);
+});
+
+test('worker entry: importScripts failing -> one error message WORKER_START_FAILED with the cause, then the exception goes on', () => {
+    let thrown = null;
+    let log = null;
+    try {
+        runWorkerEntry('?v=' + VERSION, { failImport: 'sasfit-linalg.js', onLog: (entry) => { log = entry.log; } });
+    } catch (err) {
+        thrown = err;
+    }
+    assert.ok(thrown, 'the entry script still fails (the client gets the error event as well)');
+    assert.match(thrown.message, /failed to load sasfit-linalg\.js\?v=9\.87/);
+    assert.equal(log.posts.length, 1);
+    assert.deepEqual(Object.keys(log.posts[0]).sort(), ['code', 'detail', 'type']);
+    assert.deepEqual([log.posts[0].type, log.posts[0].code], ['error', 'WORKER_START_FAILED']);
+    assert.match(log.posts[0].detail, /importScripts/);
+    assert.match(log.posts[0].detail, /failed to load sasfit-linalg\.js/);
+});
+
+test('worker entry: a message that cannot be deserialised (messageerror) is answered with BAD_MESSAGE', () => {
+    const w = runWorkerEntry('?v=' + VERSION);
+    assert.equal(typeof w.sandbox.onmessageerror, 'function');
+    w.sandbox.onmessageerror({ data: null });
+    assert.equal(w.log.posts.length, 1);
+    assert.deepEqual(Object.keys(w.log.posts[0]).sort(), ['code', 'detail', 'type']);
+    assert.deepEqual([w.log.posts[0].type, w.log.posts[0].code], ['error', 'BAD_MESSAGE']);
+    assert.equal(typeof w.log.posts[0].detail, 'string');
 });
 
 test('worker entry is short and has no top-level declarations', () => {
@@ -640,11 +671,12 @@ test('end to end: client.fit through the real core reaches the bumps reference; 
         assert.ok(Object.isFrozen(part), 'the arrays of a received result are frozen');
     }
     assert.deepEqual(out.params, job.params);
-    assert.equal(stats.created, 2);
+    assert.equal(stats.created, 1, 'stop() does not start the replacement');
     await settle();
     assert.equal(stats.posted.filter((type) => type === 'result').length, 1, 'the stopped job produced no result');
     const again = await client.fit(fitJob(fitFix.cases.find((c) => c.label.startsWith('9a '))));
     assert.equal(again.status, 'converged');
     assert.equal(again.displayErrorsScaled, true);
+    assert.equal(stats.created, 2, 'the fit after stop() started it');
     client.dispose();
 });

@@ -19,9 +19,19 @@
  *   settle()                 Promise resolved in a later macrotask (setImmediate)
  *   makeCore(overrides)      { core, posts, loads, ofType(type) }: a SasFitWorkerCore with a counting
  *                            loadWasm, collected posts and an immediate yieldTask
+ *
+ *   CLIENT_VERSION           the cache version the client tests create their clients with
+ *   evalRequest(extra)       a small sphere request for SasFitWorkerClient.evaluate
+ *   fakeWorkers(options)     { client, workers, last() }: a client over hand-driven fake Workers. Every
+ *                            created worker records url, sent messages and terminate calls, and has
+ *                            reply(data) to feed a message. options: Client = the module to use
+ *                            (default the loaded one), onCreate(count) called before each creation
+ *                            (may throw, or return a replacement for the worker object)
+ *   rejection(promise)       the Error a promise rejects with (fails when it resolves)
+ *   outcome(promise)         'pending' | 'resolved' | 'rejected' after a macrotask, without waiting further
  */
 const assert = require('node:assert/strict');
-const { SasFitKernel, SasFitWorkerCore } = require('./load.js');
+const { SasFitKernel, SasFitWorkerCore, SasFitWorkerClient } = require('./load.js');
 const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
 
 const FIT_RESULT_FIELDS = Object.freeze(['params', 'names', 'errors', 'errorsScaled', 'displayErrorsScaled',
@@ -77,6 +87,47 @@ function makeCore(overrides) {
     return { core, posts, loads, ofType };
 }
 
+const CLIENT_VERSION = '9.87';
+const EVAL_Q = Float64Array.from({ length: 30 }, (_, i) => 0.006 * Math.pow(1.08, i));
+const evalRequest = (extra) => Object.assign({ modelSpec: { model: 'sphere' }, params: { radius: 40 }, q: EVAL_Q, opts: { cutoff: 1e-5 } }, extra);
+
+function fakeWorkers(options) {
+    const o = options || {};
+    const workers = [];
+    let created = 0;
+    const createWorker = (url) => {
+        created += 1;
+        const replacement = o.onCreate ? o.onCreate(created) : undefined;
+        if (replacement !== undefined) return replacement;
+        const worker = { url, sent: [], terminated: 0, onmessage: null, onerror: null, onmessageerror: null };
+        worker.postMessage = (message) => { worker.sent.push(message); };
+        worker.terminate = () => { worker.terminated += 1; };
+        worker.reply = (data) => worker.onmessage({ data });
+        workers.push(worker);
+        return worker;
+    };
+    const client = (o.Client || SasFitWorkerClient).create({ createWorker, version: CLIENT_VERSION });
+    return { workers, client, last: () => workers[workers.length - 1], created: () => created };
+}
+
+async function rejection(promise) {
+    try {
+        await promise;
+    } catch (err) {
+        // by name: an Error made in another realm (a vm context) is not `instanceof Error` here
+        assert.ok(err !== null && typeof err === 'object' && typeof err.message === 'string', 'rejections are Error objects, got ' + String(err));
+        return err;
+    }
+    return assert.fail('the promise did not reject');
+}
+
+async function outcome(promise) {
+    let state = 'pending';
+    promise.then(() => { state = 'resolved'; }, () => { state = 'rejected'; });
+    await settle();
+    return state;
+}
+
 /** Sum of 12 uniform numbers of a 32-bit LCG, minus 6 (mean 0, variance 1). */
 function pseudoGaussian(seed) {
     let state = seed >>> 0;
@@ -124,4 +175,5 @@ function recordCalls(residuals) {
 module.exports = {
     pseudoGaussian, decayProblem, expDecay, recordCalls,
     FIT_RESULT_FIELDS, fitFixture, caseOf, fitJob, fitMessage, directKernels, settle, makeCore,
+    CLIENT_VERSION, EVAL_Q, evalRequest, fakeWorkers, rejection, outcome,
 };

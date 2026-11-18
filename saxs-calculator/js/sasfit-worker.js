@@ -9,6 +9,10 @@
  * never mixes files of two versions. Without a v the URLs carry no query.
  * URLs are relative to this script: the modules sit next to it, the wasm
  * files in ../wasm/.
+ *
+ * Two errors are reported by this file itself, as { type: 'error', code,
+ * detail } without ids and without a message (the client has the texts):
+ * WORKER_START_FAILED when importScripts throws, BAD_MESSAGE on messageerror.
  */
 
 (function () {
@@ -34,7 +38,13 @@
     const query = version ? '?v=' + encodeURIComponent(version) : '';
     const versioned = (url) => url + query;
 
-    self.importScripts(...MODULES.map(versioned));
+    try {
+        self.importScripts(...MODULES.map(versioned));
+    } catch (err) {
+        // Tell the client why before the script dies (it also gets the error event); the client supplies the user's text.
+        self.postMessage({ type: 'error', code: 'WORKER_START_FAILED', detail: 'importScripts failed: ' + String((err && err.message) || err) });
+        throw err;
+    }
 
     /** Bytes of one model. Only the names of C models in SasFitMeta ever become part of a URL. */
     function loadWasm(name) {
@@ -58,4 +68,8 @@
     });
 
     self.onmessage = (event) => { core.handle(event.data); };
+    // A message that could not be deserialised has no data and no id: every pending request of the client ends.
+    self.onmessageerror = () => {
+        self.postMessage({ type: 'error', code: 'BAD_MESSAGE', detail: 'the Worker could not deserialise a message' });
+    };
 })();

@@ -19,30 +19,50 @@
  *     job = { modelSpec, params, fitFlags, bounds, data: { q, I, sigma },
  *     range, weighting, options }. One fit at a time: a second one rejects with
  *     code 'BUSY'. onProgress({ iteration, chi2r }) once per accepted step.
+ *     An onProgress that throws does not disturb the fit: the exception is
+ *     caught, later progress is still delivered, the fit settles as usual, and
+ *     the exception is rethrown from a microtask (queueMicrotask), so it shows
+ *     up as an uncaught error of the page instead of vanishing.
  *     The FitResult (see sasfit-worker-core.js) is frozen, apart from the two
  *     typed arrays, which cannot be.
  *   client.stop()
- *     Terminates the Worker (a running fit cannot be interrupted otherwise) and
- *     starts a new one. A pending fit RESOLVES with a synthetic result that has
- *     the keys of a real FitResult: status 'stopped', params as they were sent,
- *     names / covariance / correlation empty, no errors, the three flags false,
+ *     With nothing pending it does nothing (a warm Worker with its loaded wasm
+ *     is kept). Otherwise it terminates the Worker -- a running fit cannot be
+ *     interrupted in any other way -- and settles everything pending: a fit
+ *     RESOLVES with a synthetic result that has the keys of a real FitResult
+ *     (status 'stopped', params as they were sent, names / covariance /
+ *     correlation empty, no errors, the three flags false,
  *     nonFiniteCurvePoints 0, chi2 / chi2r / dof / curve / residuals null,
- *     iterations = the last reported one. A pending
- *     evaluate rejects with code 'STOPPED'.
+ *     iterations = the last reported one); an evaluate rejects with code
+ *     'STOPPED'. The replacement Worker is started lazily, by the next request.
  *   client.dispose()
  *     Terminates without a new Worker; pending and later requests reject with
  *     code 'DISPOSED'.
  *   client.version
  *
- * Rejections are Error objects with `code`, a Traditional-Chinese `message`
- * for the user and, where there is one, `detail` (technical, English). Codes:
- * ERROR_CODES below for the client's own, SasFitWorkerCore.ERROR_CODES for
- * those the Worker reports.
+ * Every promise settles on every path. Rejections are Error objects with
+ * `code`, a Traditional-Chinese `message` for the user and, where there is
+ * one, `detail` (technical, English). Codes: ERROR_CODES below for the
+ * client's own, SasFitWorkerCore.ERROR_CODES for those the Worker reports.
+ *   SUPERSEDED / BUSY / STOPPED / DISPOSED   as described above
+ *   WORKER_START_FAILED   the Worker could not be created (createWorker threw),
+ *                         its script could not be fetched (an error event
+ *                         without a message), or its entry script reported
+ *                         that importScripts failed
+ *   POST_FAILED           postMessage threw (data that cannot be cloned)
+ *   WORKER_CRASH          the Worker's error event with a message (an uncaught
+ *                         exception; detail = "message (file:line)"), its
+ *                         messageerror event, or a 'result' / 'curve' message
+ *                         that is not what the protocol says (fitResult not
+ *                         an object, I not a Float64Array, ...)
  *
- * A Worker that fails (its error or messageerror event) is terminated and
- * every pending request rejects with 'WORKER_CRASH'. The replacement is
- * started by the next request, not at once: if the Worker script itself
- * cannot load, an immediate restart would fail and restart for ever.
+ * A Worker that fails in one of the WORKER_CRASH ways, or after it started in
+ * one of the last two WORKER_START_FAILED ways, is terminated and
+ * every pending request rejects. The replacement is started by the next
+ * request, not at once: if the Worker script itself cannot load, an immediate
+ * restart would fail and restart for ever. If terminate() itself throws, the
+ * pending requests are settled first and the exception then propagates to the
+ * caller (of stop / dispose, or the event dispatcher).
  *
  * Request ids come from one counter per client; nothing here uses the clock
  * or random numbers. Arguments are never modified; q and the data arrays are
@@ -59,6 +79,7 @@
         BUSY: '擬合正在進行中，請等它結束或先按停止。',
         STOPPED: '計算已停止。',
         WORKER_CRASH: '計算執行緒異常結束，已重設，可直接重試。',
+        WORKER_START_FAILED: '計算執行緒無法啟動，請確認網路連線並重新整理頁面後再試。',
         DISPOSED: '計算功能已關閉，請重新整理頁面。',
         POST_FAILED: '計算請求無法送出，請檢查輸入資料。',
     });
@@ -85,11 +106,20 @@
         return Object.assign(new Error(MESSAGES[code]), { code, detail: detail === undefined ? '' : String(detail) }, extra);
     }
 
+    /** The user's text for an 'error' message: its own, else (the Worker entry sends none) the client's for that code. */
+    function remoteText(data) {
+        if (typeof data.message === 'string' && data.message !== '') return data.message;
+        if (data.code === BAD_MESSAGE) return BAD_MESSAGE_TEXT;
+        return Object.prototype.hasOwnProperty.call(MESSAGES, data.code) ? MESSAGES[data.code] : String(data.code);
+    }
+
     /** The Error for an 'error' message of the Worker. */
     function remoteError(data) {
-        const message = typeof data.message === 'string' && data.message !== '' ? data.message : String(data.code);
-        return Object.assign(new Error(message), { code: data.code, detail: data.detail === undefined ? '' : String(data.detail) });
+        return Object.assign(new Error(remoteText(data)), { code: data.code, detail: data.detail === undefined ? '' : String(data.detail) });
     }
+
+    const errorText = (err) => (err instanceof Error ? err.message : String(err));
+    const isFloat64Array = (v) => Object.prototype.toString.call(v) === '[object Float64Array]';
 
     const frozenCopy = (obj) => Object.freeze({ ...obj });
 
@@ -167,53 +197,127 @@
         if (fitting) fitting.reject(makeError());
     }
 
-    function onReply(c, data) {
+    /** Forget the current Worker, then terminate it (in this order: a terminate() that throws leaves no stale Worker). */
+    function dropWorker(c) {
+        const worker = c.worker;
+        c.worker = null;
+        if (worker) worker.terminate();
+    }
+
+    /** "message (file:line)" of a Worker error event, as far as the event has them. */
+    function crashDetail(event) {
+        if (!isObject(event) || !event.message) return 'worker error';
+        const line = event.lineno ? ':' + event.lineno : '';
+        return String(event.message) + (event.filename ? ' (' + event.filename + line + ')' : '');
+    }
+
+    /** Terminate the Worker (if it is still the current one) and reject everything pending with makeError(). */
+    function abandon(c, worker, makeError) {
+        if (c.worker !== worker) return;
+        try {
+            dropWorker(c);
+        } finally {
+            rejectAll(c, makeError);
+        }
+    }
+
+    function onCrash(c, worker, event) {
+        abandon(c, worker, () => clientError('WORKER_CRASH', crashDetail(event)));
+    }
+
+    /**
+     * The Worker's error event. A script that throws gives an ErrorEvent with a message; a Worker
+     * script that cannot be fetched gives a bare Event, which is a failed start, not a crash.
+     */
+    function onWorkerError(c, worker, event) {
+        if (isObject(event) && event.message) onCrash(c, worker, event);
+        else abandon(c, worker, () => clientError('WORKER_START_FAILED', 'the Worker script could not be loaded (error event without a message)'));
+    }
+
+    /** Hand a progress message to the caller; an exception of the callback is rethrown later, outside the message handler. */
+    function reportProgress(fit, data) {
+        fit.iteration = data.iteration;
+        try {
+            fit.onProgress(Object.freeze({ iteration: data.iteration, chi2r: data.chi2r }));
+        } catch (err) {
+            queueMicrotask(() => { throw err; });
+        }
+    }
+
+    function settleEvaluation(c, worker, ev, data) {
+        if (data.type === 'curve' && (!isFloat64Array(data.I) || !isObject(data.extras))) {
+            onCrash(c, worker, { message: 'malformed curve message: I must be a Float64Array and extras an object' });
+            return;
+        }
+        c.evaluation = null;
+        if (data.type === 'error') ev.reject(remoteError(data));
+        else ev.resolve(Object.freeze({ I: data.I, extras: frozenCopy(data.extras) }));
+    }
+
+    function settleFit(c, worker, fit, data) {
+        if (data.type === 'result' && (!isObject(data.fitResult) || Array.isArray(data.fitResult))) {
+            onCrash(c, worker, { message: 'malformed result message: fitResult must be an object' });
+            return;
+        }
+        c.fitting = null;
+        if (data.type === 'error') fit.reject(remoteError(data));
+        else fit.resolve(freezeResult(data.fitResult));
+    }
+
+    function onReply(c, worker, data) {
         if (!isObject(data) || typeof data.type !== 'string') return;      // not a protocol message: nothing to settle
         const ev = c.evaluation;
         const fit = c.fitting;
         if (data.type === 'error' && data.reqId === undefined && data.jobId === undefined) {
-            rejectAll(c, () => remoteError(data));
+            // The entry script reporting that it cannot start is about to die: do not post to it again.
+            if (data.code === 'WORKER_START_FAILED') abandon(c, worker, () => remoteError(data));
+            else rejectAll(c, () => remoteError(data));
         } else if (ev && data.reqId === ev.reqId && (data.type === 'curve' || data.type === 'error')) {
-            c.evaluation = null;
-            if (data.type === 'error') ev.reject(remoteError(data));
-            else ev.resolve(Object.freeze({ I: data.I, extras: frozenCopy(data.extras) }));
+            settleEvaluation(c, worker, ev, data);
         } else if (fit && data.jobId === fit.jobId && data.type === 'progress') {
-            fit.iteration = data.iteration;
-            fit.onProgress(Object.freeze({ iteration: data.iteration, chi2r: data.chi2r }));
+            reportProgress(fit, data);
         } else if (fit && data.jobId === fit.jobId && (data.type === 'result' || data.type === 'error')) {
-            c.fitting = null;
-            if (data.type === 'error') fit.reject(remoteError(data));
-            else fit.resolve(freezeResult(data.fitResult));
+            settleFit(c, worker, fit, data);
         }
         // anything else belongs to a request that was superseded or stopped: ignored on purpose
     }
 
-    function onCrash(c, worker, event) {
+    /** onReply, with anything it might throw turned into a crash of that Worker, so that no promise is left hanging. */
+    function onMessage(c, worker, event) {
         if (c.worker !== worker) return;
-        c.worker = null;
-        worker.terminate();
-        const detail = isObject(event) && event.message ? String(event.message) : 'worker error';
-        rejectAll(c, () => clientError('WORKER_CRASH', detail));
+        try {
+            onReply(c, worker, event.data);
+        } catch (err) {
+            onCrash(c, worker, { message: 'reply could not be handled: ' + errorText(err) });
+        }
     }
 
     /** Start a Worker and wire it; events of a Worker that is no longer the current one are ignored. */
     function startWorker(c) {
         const worker = c.createWorker(workerUrl(c.version));
-        worker.onmessage = (event) => { if (c.worker === worker) onReply(c, event.data); };
-        worker.onerror = (event) => onCrash(c, worker, event);
-        worker.onmessageerror = (event) => onCrash(c, worker, event);
+        if (!isObject(worker) || typeof worker.postMessage !== 'function') throw new Error('createWorker did not return a Worker');
+        worker.onmessage = (event) => onMessage(c, worker, event);
+        worker.onerror = (event) => onWorkerError(c, worker, event);
+        worker.onmessageerror = (event) => onCrash(c, worker, { message: 'a message of the Worker could not be deserialised' });
         c.worker = worker;
         return worker;
     }
 
-    /** Post to the (possibly new) Worker; false with the reason passed to onFail when postMessage throws. */
+    /** Post to the Worker, starting one if there is none; a failure of either step goes to onFail with its own code. */
     function post(c, message, onFail) {
+        let worker = c.worker;
+        if (!worker) {
+            try {
+                worker = startWorker(c);
+            } catch (err) {
+                onFail(clientError('WORKER_START_FAILED', errorText(err)));
+                return;
+            }
+        }
         try {
-            (c.worker || startWorker(c)).postMessage(message);
-            return true;
+            worker.postMessage(message);
         } catch (err) {
-            onFail(clientError('POST_FAILED', err instanceof Error ? err.message : String(err)));
-            return false;
+            onFail(clientError('POST_FAILED', errorText(err)));
         }
     }
 
@@ -279,21 +383,23 @@
     function stop(c) {
         if (c.disposed) return;
         const { evaluation, fitting } = takePending(c);
-        if (c.worker) {
-            c.worker.terminate();
-            c.worker = null;
-            startWorker(c);
+        if (!evaluation && !fitting) return;        // idle: keep the warm Worker
+        try {
+            dropWorker(c);
+        } finally {
+            if (evaluation) evaluation.reject(clientError('STOPPED'));
+            if (fitting) fitting.resolve(stoppedResult(fitting));
         }
-        if (evaluation) evaluation.reject(clientError('STOPPED'));
-        if (fitting) fitting.resolve(stoppedResult(fitting));
     }
 
     function dispose(c) {
         if (c.disposed) return;
         c.disposed = true;
-        if (c.worker) c.worker.terminate();
-        c.worker = null;
-        rejectAll(c, () => clientError('DISPOSED'));
+        try {
+            dropWorker(c);
+        } finally {
+            rejectAll(c, () => clientError('DISPOSED'));
+        }
     }
 
     function create(options) {
