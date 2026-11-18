@@ -228,3 +228,34 @@ test('results are frozen and parse is repeatable and does not touch its input', 
     const bad = parse('generic-bad.txt');
     assert.ok(Object.isFrozen(bad.issues[0]));
 });
+
+test('synthetic official files: parse agrees with the sidecar SYNTH_sphere-truth.json', () => {
+    const truth = JSON.parse(read('SYNTH_sphere-truth.json'));
+    assert.deepEqual(truth.files.map((f) => f.fileName),
+        ['SYNTH_sphere_10.dat', 'SYNTH_sphere_20.dat', 'SYNTH_sphere_30.dat']);
+    const rowAt = (ds, i) => ({ q: ds.q[i], I: ds.I[i], sigma: ds.sigma[i] });
+    truth.files.forEach((t) => {
+        const r = parse(t.fileName);
+        const ds = r.dataset;
+        const tag = t.fileName;
+        assert.notEqual(ds, null, tag);
+        assert.equal(ds.kind, t.kind, tag);
+        assert.equal(ds.fileName, t.fileName);
+        assert.deepEqual(r.issues, [], tag);
+        assert.deepEqual({ ...r.notes }, { skipped: 0, placeholders: t.placeholders, sorted: false, suspectNm: false }, tag);
+        assert.equal(ds.q.length, t.points, tag + ' points');
+        assert.equal(ds.I.length, t.points);
+        assert.equal(ds.sigma.length, t.points);
+        assert.equal(t.points + t.placeholders, t.dataRows);
+        assert.equal(ds.dq, null);
+        assert.equal(ds.qUnit, 'A');
+        assert.deepEqual({ ...ds.header }, t.header, tag + ' header');
+        assert.equal(ds.condition, t.condition, tag + ' condition');
+        assert.deepEqual(rowAt(ds, 0), t.firstRow, tag + ' first row');
+        assert.deepEqual(rowAt(ds, t.points - 1), t.lastRow, tag + ' last row');
+        assert.deepEqual(rowAt(ds, t.beamstopPoints), t.firstNormalRow, tag + ' first normal row');
+        assert.deepEqual(t.beamstopRows.map((_, i) => rowAt(ds, i)), t.beamstopRows, tag + ' beamstop rows');
+        assert.equal(arr(ds.I).filter((v) => v < 0).length, t.negativePoints, tag + ' negative points');
+        assert.deepEqual({ ...W.defaultRange(ds, 'sigma') }, t.defaultRange.sigma, tag + ' default range');
+    });
+});
