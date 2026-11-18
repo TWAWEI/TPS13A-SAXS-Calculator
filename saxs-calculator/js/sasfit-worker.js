@@ -53,6 +53,8 @@
         post: (message) => self.postMessage(message),
         // A later task, not a microtask: queued messages get in first (latest-wins, see the core).
         yieldTask: () => new Promise((resolve) => setTimeout(resolve, 0)),
+        // Nothing can be posted any more (not even the error about it): the console is all that is left.
+        onFatal: (err) => { console.error('sasfit worker: a message could not be posted', err); },
     });
 
     self.onmessage = (event) => { core.handle(event.data); };

@@ -14,13 +14,12 @@ const {
     SasFitMeta, SasFitKernel, SasFitEvaluate, SasFitWeighting, SasFitWorkerCore,
 } = require('./load.js');
 const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
+const { FIT_RESULT_FIELDS } = require('./sasfit-fit-helpers.js');
 
 const fitFix = loadFixture('fit');
 const G4_PARAM_SIGMA = 0.01;     // design spec 11, G4 -- the same limits as sasfit-fitter.test.js
 const G4_STDERR_REL = 0.02;
 const G4_CHI2R_REL = 1e-3;
-const FIT_RESULT_FIELDS = Object.freeze(['params', 'errors', 'errorsScaled', 'displayErrorsScaled', 'chi2',
-    'chi2r', 'dof', 'iterations', 'status', 'atBound', 'illConditioned', 'curve', 'residuals', 'settings']);
 const Q = Float64Array.from({ length: 40 }, (_, i) => 0.005 * Math.pow(1.06, i));
 const CUT = Object.freeze({ cutoff: 1e-5 });
 // The scan of the hayter_msa characterisation test in sasfit-product.test.js (design spec 16)
@@ -114,6 +113,7 @@ test('module is frozen and exports the interface', () => {
     assert.deepEqual([...SasFitWorkerCore.ERROR_CODES], ['BAD_MESSAGE', 'UNKNOWN_TYPE', 'UNKNOWN_MODEL',
         'BAD_PARAMS', 'BAD_FIT_FLAGS', 'BAD_BOUNDS', 'BAD_DATA', 'BAD_RANGE', 'BAD_WEIGHTING', 'BAD_OPTIONS',
         'TOO_FEW_POINTS', 'WASM_LOAD', 'WASM_TRAP', 'INTERNAL']);
+    assert.equal(SasFitWorkerCore.MAX_STEPS, 10000);
 });
 
 test('create needs loadWasm, post and yieldTask (no silent default for yieldTask)', () => {
@@ -705,6 +705,7 @@ test('P@hayter_msa with charge allowed down to 0: the fit ends as a result (fail
     const result = driven.ofType('result')[0].fitResult;
     t.diagnostic('driven towards 0: status ' + result.status + ', charge ' + result.params.charge + ', ' + result.iterations + ' steps');
     assert.ok(['failed', 'converged'].includes(result.status), result.status);
+    assert.equal(result.blockedByNonFinite, result.status === 'failed', 'failed always comes with blockedByNonFinite');
     assert.ok(result.params.charge >= 0 && result.params.charge <= 100);
     assert.equal(result.curve.length, HMSA_Q.length);
     assert.ok(Number.isFinite(result.params.radius) && Number.isFinite(result.params.volfraction));
@@ -719,6 +720,8 @@ test('P@hayter_msa with charge allowed down to 0: the fit ends as a result (fail
     assert.equal(failed.iterations, 0);
     assert.deepEqual(failed.params, message.params, 'the parameters are returned as they were sent');
     assert.equal(failed.chi2, Infinity);
+    assert.deepEqual([failed.blockedByNonFinite, failed.jacobianNonFinite, failed.illConditioned, failed.nonFiniteCurvePoints],
+        [true, true, false, HMSA_Q.length]);
     assert.ok(Number.isNaN(failed.errors.charge) && Number.isNaN(failed.errorsScaled.charge));
     assert.ok(failed.curve.every(Number.isNaN) && failed.residuals.every(Number.isNaN));
     assert.deepEqual(failed.atBound, { charge: 'lower' });
@@ -744,8 +747,9 @@ test('buildFitResult is a pure function of its inputs', () => {
     const selection = SasFitWeighting.select(data, 'none', { qMin: 0.02, qMax: 0.04 });
     const fit = Object.freeze({
         names: Object.freeze(['a', 'b']), values: Object.freeze([2, 3]), errors: Object.freeze([0.5, 0.25]),
-        illConditioned: true, chi2: 8, dof: 2, chi2r: 4, iterations: 6, status: 'maxiter',
-        atBound: Object.freeze({ b: 'upper' }), covariance: Object.freeze([]),
+        illConditioned: true, jacobianNonFinite: false, blockedByNonFinite: false, chi2: 8, dof: 2, chi2r: 4,
+        iterations: 6, status: 'maxiter', atBound: Object.freeze({ b: 'upper' }),
+        covariance: Object.freeze([Object.freeze([0.25, 0]), Object.freeze([0, 0.0625])]),
     });
     const input = {
         params: Object.freeze({ a: 1, b: 1, c: 9 }), fit, data, selection,

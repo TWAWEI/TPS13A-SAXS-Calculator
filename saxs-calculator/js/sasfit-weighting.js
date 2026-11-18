@@ -58,9 +58,8 @@
         return w;
     }
 
-    /** 1 where the point may take part in a fit (all conditions of spec 4.8). */
-    function mask(dataset, mode) {
-        const w = weights(dataset, mode);
+    /** The mask for weights w that were already computed for this dataset. */
+    function maskOf(dataset, w) {
         const { q, I } = dataset;
         const m = new Uint8Array(q.length);
         for (let i = 0; i < q.length; i++) {
@@ -70,7 +69,25 @@
         return m;
     }
 
-    const defaultMode = (dataset) => (dataset && dataset.sigma ? 'sigma' : 'none');
+    /** 1 where the point may take part in a fit (all conditions of spec 4.8). */
+    function mask(dataset, mode) {
+        return maskOf(dataset, weights(dataset, mode));
+    }
+
+    /** How many points of the dataset the mask of this mode leaves out (the page shows it per mode). */
+    function countExcluded(dataset, mode) {
+        return mask(dataset, mode).reduce((count, usable) => count + (usable ? 0 : 1), 0);
+    }
+
+    /**
+     * 'sigma' when the dataset has an error column with at least one usable value
+     * (finite and > 0), else 'none': a column of zeros or NaN would leave no point to fit.
+     */
+    function defaultMode(dataset) {
+        const sigma = dataset ? dataset.sigma : null;
+        if (!(sigma instanceof Float64Array)) return 'none';
+        return sigma.some((s) => Number.isFinite(s) && s > 0) ? 'sigma' : 'none';
+    }
 
     /** header.qStart when it applies: official file and a finite positive number. */
     function officialQStart(dataset) {
@@ -108,7 +125,7 @@
             throw new Error('range must be { qMin, qMax } with qMin <= qMax, got ' + JSON.stringify(range));
         }
         const w = weights(dataset, mode);
-        const m = mask(dataset, mode);
+        const m = maskOf(dataset, w);
         const { q, I } = dataset;
         const keep = [];
         for (let i = 0; i < m.length; i++) {
@@ -122,5 +139,5 @@
         };
     }
 
-    globalThis.SasFitWeighting = Object.freeze({ MODES, weights, mask, defaultMode, defaultRange, select });
+    globalThis.SasFitWeighting = Object.freeze({ MODES, weights, mask, countExcluded, defaultMode, defaultRange, select });
 })();

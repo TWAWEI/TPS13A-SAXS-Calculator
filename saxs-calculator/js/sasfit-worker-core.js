@@ -2,7 +2,7 @@
  * sasfit-worker-core.js -- the Web Worker's "message -> computation -> message"
  * logic as plain functions (design spec 4.9, 4.10, 12). Original code.
  *
- *   SasFitWorkerCore.create({ loadWasm, post, yieldTask, instantiate? }) -> { handle }
+ *   SasFitWorkerCore.create({ loadWasm, post, yieldTask, instantiate?, onFatal? }) -> { handle }
  *     loadWasm(modelName) -> Promise<ArrayBuffer | typed array>   bytes of one model
  *     post(message)                                               outgoing message
  *     yieldTask() -> Promise   resolves in a LATER TASK (the Worker passes a
@@ -12,6 +12,12 @@
  *                 nothing once the wasm is cached.
  *     instantiate(bytes) -> Promise<wasm exports>   optional, SasFitKernel.instantiate
  *                 by default; tests use it to make a kernel trap.
+ *     onFatal(err)   optional; called when a message could not be posted and
+ *                 the error message about that could not be posted either, so
+ *                 nobody can be told through the channel. The Worker entry
+ *                 logs it. Without onFatal the error is rethrown from a
+ *                 microtask, i.e. it becomes an uncaught error of the Worker
+ *                 (the client then sees WORKER_CRASH): never dropped.
  *   core.handle(message) -> Promise<void>; never rejects, every failure
  *     becomes an 'error' message.
  *
@@ -20,6 +26,9 @@
  *   { type: 'fit', jobId, modelSpec, params, fitFlags: { name: true }, bounds: { name: [lo, hi] },
  *     data: { q, I: Float64Array, sigma: Float64Array | null }, range: { qMin, qMax },
  *     weighting: one of SasFitWeighting.MODES, options?: { maxSteps, cutoff } }
+ *     options.maxSteps: integer 1..MAX_STEPS (10000), default 200; options.cutoff:
+ *     finite, >= 0, default 1e-5. ftol and xtol are fixed (SasFitFitter.DEFAULTS)
+ *     and cannot be set through a message.
  *   reqId / jobId: a finite number or a non-empty string.
  * Outgoing (plain, not frozen; the receiver freezes what it keeps):
  *   { type: 'curve', reqId, I, extras }
@@ -28,6 +37,12 @@
  *   { type: 'error', reqId | jobId, code, message, detail }
  *     code: one of ERROR_CODES; message: Traditional Chinese, for the user;
  *     detail: the technical text (English), for the console.
+ *     BAD_PARAMS is decided by where an Error comes from, not by its type:
+ *     the explicit checks of this file, and a plain Error (name 'Error')
+ *     thrown by SasFitEvaluate.evaluate -- the compute core's own validation
+ *     of the model and its parameters. Any other kind thrown there, and
+ *     anything thrown elsewhere (SasFitFitter, SasFitWeighting, this file),
+ *     is a bug and reported as INTERNAL.
  *
  * evaluate is latest-wins: a request is dropped without any answer (errors
  * included) as soon as a newer evaluate has arrived. A fit is never dropped.
@@ -48,17 +63,27 @@
  *     r = (I - I_model)/w. The number of selected points must exceed the
  *     number of fitted parameters (TOO_FEW_POINTS).
  *   - Non-finite model output is expected input (hayter_msa, design spec 16):
- *     the fitter rejects such steps; a fit that cannot start or continue ends
- *     as a result with status 'failed', not as an error.
+ *     the fitter rejects such steps; a fit that cannot start or is stopped by
+ *     a non-finite region ends as a result with status 'failed' and
+ *     blockedByNonFinite, not as an error.
  *
- * FitResult (design spec 4.9): { params, errors, errorsScaled,
- *   displayErrorsScaled, chi2, chi2r, dof, iterations, status, atBound,
- *   illConditioned, curve, residuals, settings }
+ * FitResult (design spec 4.9): { params, names, errors, errorsScaled,
+ *   displayErrorsScaled, covariance, correlation, chi2, chi2r, dof,
+ *   iterations, status, atBound, illConditioned, blockedByNonFinite,
+ *   jacobianNonFinite, nonFiniteCurvePoints, curve, residuals, settings }
  *   params        every parameter that was sent, fitted ones replaced
+ *   names         the fitted names in fitter order (the key order of fitFlags):
+ *                 the row/column order of covariance and correlation
  *   errors        { name: sqrt(C_jj) } of the fitted parameters
  *   errorsScaled  { name: error * sqrt(chi2r) }
  *   displayErrorsScaled   weighting !== 'sigma' (decisions 2 and 16): which
  *                 of the two the page shows; displayErrors(fitResult) picks it
+ *   covariance    C as n plain arrays of n (not scaled by chi2r)
+ *   correlation   C_ij/sqrt(C_ii*C_jj) in the same layout; NaN wherever one
+ *                 of the two variances is not a positive number
+ *   illConditioned, blockedByNonFinite, jacobianNonFinite   the flags of
+ *                 SasFitFitter, see sasfit-fitter.js; always booleans
+ *   nonFiniteCurvePoints   how many values of `curve` are not finite
  *   curve         model on ALL data points; residuals: (I - curve)/w on the
  *                 points that took part, NaN elsewhere
  *   settings      { modelSpec, weighting, range, cutoff, maxSteps, method, ftol, xtol }
@@ -74,6 +99,7 @@
     'use strict';
 
     const METHOD = 'lm';
+    const MAX_STEPS = 10000;          // upper limit of options.maxSteps (the default is 200)
     const LOWQ_NAMES = Object.freeze(['lowq_scale', 'lowq_power']);
     const COMMON_NAMES = Object.freeze(['scale', 'background']);
     const PD_WIDTH_SUFFIX = '_pd';
@@ -89,7 +115,7 @@
         BAD_DATA: '資料格式不正確，無法擬合。',
         BAD_RANGE: '擬合範圍不合法：Qmin 不可大於 Qmax。',
         BAD_WEIGHTING: '權重選項不合法；資料沒有誤差欄時不能使用「資料 σ」。',
-        BAD_OPTIONS: '擬合設定不合法（最大步數或 cutoff）。',
+        BAD_OPTIONS: '擬合設定不合法（最大步數須為 1 到 10000 的整數，cutoff 須為不小於 0 的數）。',
         TOO_FEW_POINTS: '範圍內可參與擬合的資料點太少，必須多於要擬合的參數個數。',
         WASM_LOAD: '模型計算模組載入失敗，請確認網路連線後重試。',
         WASM_TRAP: '模型計算發生執行期錯誤，計算模組已重設，可直接重試。',
@@ -211,7 +237,9 @@
         if (!isPlainObject(o)) throw fail('BAD_OPTIONS', 'options must be an object');
         const maxSteps = o.maxSteps === undefined ? globalThis.SasFitFitter.DEFAULTS.maxSteps : o.maxSteps;
         const cutoff = o.cutoff === undefined ? globalThis.SasFitEvaluate.DEFAULT_CUTOFF : o.cutoff;
-        if (!Number.isInteger(maxSteps) || maxSteps < 1) throw fail('BAD_OPTIONS', 'maxSteps must be a positive integer, got ' + String(maxSteps));
+        if (!Number.isInteger(maxSteps) || maxSteps < 1 || maxSteps > MAX_STEPS) {
+            throw fail('BAD_OPTIONS', 'maxSteps must be an integer from 1 to ' + MAX_STEPS + ', got ' + String(maxSteps));
+        }
         if (typeof cutoff !== 'number' || !(cutoff >= 0) || !Number.isFinite(cutoff)) {
             throw fail('BAD_OPTIONS', 'cutoff must be a finite number >= 0, got ' + String(cutoff));
         }
@@ -274,6 +302,20 @@
         return out;
     }
 
+    /** C_ij/sqrt(C_ii*C_jj) as plain rows; NaN where one of the two variances is not a positive number. */
+    function correlationOf(covariance) {
+        const positive = (v) => typeof v === 'number' && v > 0;
+        return covariance.map((row, i) => row.map((value, j) => (
+            positive(covariance[i][i]) && positive(covariance[j][j]) ? value / Math.sqrt(covariance[i][i] * covariance[j][j]) : NaN
+        )));
+    }
+
+    function countNonFinite(values) {
+        let count = 0;
+        for (let i = 0; i < values.length; i++) if (!Number.isFinite(values[i])) count++;
+        return count;
+    }
+
     /**
      * buildFitResult({ params, fit, data, selection, curve, weighting, settings }) -> FitResult
      *   params     the parameters as sent (flat); fit: the SasFitFitter result
@@ -284,11 +326,15 @@
     function buildFitResult({ params, fit, data, selection, curve, weighting, settings }) {
         const byName = (values) => Object.fromEntries(fit.names.map((name, j) => [name, values[j]]));
         const root = Math.sqrt(fit.chi2r);
+        const covariance = fit.covariance.map((row) => Array.from(row));
         return {
             params: { ...params, ...byName(fit.values) },
+            names: Array.from(fit.names),
             errors: byName(fit.errors),
             errorsScaled: byName(fit.errors.map((e) => e * root)),
             displayErrorsScaled: weighting !== 'sigma',
+            covariance,
+            correlation: correlationOf(covariance),
             chi2: fit.chi2,
             chi2r: fit.chi2r,
             dof: fit.dof,
@@ -296,6 +342,9 @@
             status: fit.status,
             atBound: { ...fit.atBound },
             illConditioned: fit.illConditioned,
+            blockedByNonFinite: fit.blockedByNonFinite,
+            jacobianNonFinite: fit.jacobianNonFinite,
+            nonFiniteCurvePoints: countNonFinite(curve),
             curve: Float64Array.from(curve),
             residuals: residualsOf(data, selection, curve),
             settings: { ...settings, modelSpec: { ...settings.modelSpec }, range: { ...settings.range } },
@@ -312,16 +361,28 @@
     }
 
     /**
-     * { code, message, detail } of anything thrown. A plain Error without a
-     * code comes from the compute core's input checks (BAD_PARAMS); any other
-     * kind (TypeError, ...) is a bug and reported as INTERNAL.
+     * { code, message, detail } of anything thrown: the code an Error carries
+     * (fail() above), WASM_TRAP for a kernel failure, INTERNAL for the rest.
      */
     function describe(err) {
         if (!(err instanceof Error)) return { code: 'INTERNAL', message: MESSAGES.INTERNAL, detail: String(err) };
         if (has(MESSAGES, err.code)) return { code: err.code, message: err.message, detail: err.detail };
         if (trappedModel(err) !== null) return { code: 'WASM_TRAP', message: MESSAGES.WASM_TRAP, detail: err.message };
-        if (err.constructor === Error) return { code: 'BAD_PARAMS', message: MESSAGES.BAD_PARAMS, detail: err.message };
         return { code: 'INTERNAL', message: MESSAGES.INTERNAL, detail: String(err.stack || err.message) };
+    }
+
+    /**
+     * SasFitEvaluate.evaluate, the one call whose plain Errors are the compute
+     * core's validation of the model and its parameters: those become BAD_PARAMS.
+     * Wasm failures and every other kind of error pass through unchanged.
+     */
+    function evaluateModel(spec, params, q, opts, kernels) {
+        try {
+            return globalThis.SasFitEvaluate.evaluate(spec, params, q, opts, kernels);
+        } catch (err) {
+            const plain = err instanceof Error && err.name === 'Error' && !has(MESSAGES, err.code) && trappedModel(err) === null;
+            throw plain ? fail('BAD_PARAMS', err.message) : err;
+        }
     }
 
     /** reqId and jobId of a message, where they are usable ids. */
@@ -336,16 +397,32 @@
         ['loadWasm', 'post', 'yieldTask'].forEach((key) => {
             if (!isObject(deps) || typeof deps[key] !== 'function') throw new Error('SasFitWorkerCore.create needs ' + key + ' as a function');
         });
-        if (deps.instantiate !== undefined && typeof deps.instantiate !== 'function') {
-            throw new Error('SasFitWorkerCore.create: instantiate must be a function when given');
-        }
+        ['instantiate', 'onFatal'].forEach((key) => {
+            if (deps[key] !== undefined && typeof deps[key] !== 'function') {
+                throw new Error('SasFitWorkerCore.create: ' + key + ' must be a function when given');
+            }
+        });
+    }
+
+    /** Surface an error nobody can be handed: thrown from a microtask, it is an uncaught error of the Worker. */
+    function rethrowLater(err) {
+        queueMicrotask(() => { throw err; });
     }
 
     // Below, `ctx` is the private state of one core: the injected functions,
     // `cache` (model name -> Promise<wasm exports>) and `evaluateSeq`, a
     // one-element counter holding the sequence number of the newest evaluate.
 
-    /** Post; if that throws (a message that cannot be cloned), say so once. */
+    /** The last resort when nothing can be posted: the injected onFatal, which itself must not make handle() reject. */
+    function reportFatal(ctx, err) {
+        try {
+            ctx.onFatal(err);
+        } catch (again) {
+            rethrowLater(again);
+        }
+    }
+
+    /** Post; if that throws (a message that cannot be cloned), say so once; if that fails too, onFatal. */
     function send(ctx, message) {
         try {
             ctx.post(message);
@@ -354,8 +431,7 @@
             try {
                 ctx.post({ type: 'error', ...idsOf(message), code: 'INTERNAL', message: MESSAGES.INTERNAL, detail: text });
             } catch (again) {
-                // No channel is left to report on, and handle() must not reject: the caller's
-                // post is broken for plain data too, which only the caller can notice.
+                reportFatal(ctx, again);
             }
         }
     }
@@ -394,7 +470,7 @@
             const req = readEvaluate(message);
             const kernels = await kernelsFor(ctx, req.spec);
             if (superseded()) return;
-            const out = globalThis.SasFitEvaluate.evaluate(req.spec, req.params, req.q, req.opts, kernels);
+            const out = evaluateModel(req.spec, req.params, req.q, req.opts, kernels);
             send(ctx, { type: 'curve', reqId: message.reqId, I: out.I, extras: { ...out.extras } });
         } catch (err) {
             if (!superseded()) sendError(ctx, message, err);
@@ -405,7 +481,7 @@
     function fitProblem(job, selection, kernels) {
         const { modelSpec, cutoff } = job.settings;
         const withValues = (values) => ({ ...job.params, ...Object.fromEntries(job.names.map((name, j) => [name, values[j]])) });
-        const model = (values, q) => globalThis.SasFitEvaluate.evaluate(modelSpec, withValues(values), q, { cutoff }, kernels).I;
+        const model = (values, q) => evaluateModel(modelSpec, withValues(values), q, { cutoff }, kernels).I;
         const residuals = (p) => {
             const I = model(p, selection.q);
             return Float64Array.from(I, (value, i) => (selection.I[i] - value) / selection.w[i]);
@@ -451,6 +527,7 @@
             post: deps.post,
             yieldTask: deps.yieldTask,
             instantiate: deps.instantiate || globalThis.SasFitKernel.instantiate,
+            onFatal: deps.onFatal || rethrowLater,
             cache: new Map(),
             evaluateSeq: new Uint32Array(1),
         };
@@ -458,6 +535,6 @@
     }
 
     globalThis.SasFitWorkerCore = Object.freeze({
-        create, buildFitResult, modelsOf, settingsOf, displayErrors, ERROR_CODES,
+        create, buildFitResult, modelsOf, settingsOf, displayErrors, ERROR_CODES, MAX_STEPS,
     });
 })();

@@ -8,7 +8,74 @@
  *   expDecay                 the reviewer's 2-parameter wall problem a*exp(-k*t), true k = 0.70:
  *                            { exact(p) -> residuals, problem(residuals, start) }
  *   recordCalls(residuals)   { residuals, calls }: the same function, recording every p it is given
+ *
+ *   FIT_RESULT_FIELDS        the keys of a FitResult as the worker core and the client deliver it
+ *   fitFixture()             fixtures/sasfit/fit.json (parsed once)
+ *   caseOf(prefix)           the one fit.json case whose label starts with prefix
+ *   fitJob(c, extra)         a fit.json case as the job of SasFitWorkerClient.fit: bounds as numbers,
+ *                            typed arrays, the case's own `range` when it has one, else the full q range
+ *   fitMessage(c, jobId, extra)   the same as the 'fit' message of SasFitWorkerCore
+ *   directKernels(names)     Promise<{ name: wasm exports }> straight from the .wasm files
+ *   settle()                 Promise resolved in a later macrotask (setImmediate)
+ *   makeCore(overrides)      { core, posts, loads, ofType(type) }: a SasFitWorkerCore with a counting
+ *                            loadWasm, collected posts and an immediate yieldTask
  */
+const assert = require('node:assert/strict');
+const { SasFitKernel, SasFitWorkerCore } = require('./load.js');
+const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
+
+const FIT_RESULT_FIELDS = Object.freeze(['params', 'names', 'errors', 'errorsScaled', 'displayErrorsScaled',
+    'covariance', 'correlation', 'chi2', 'chi2r', 'dof', 'iterations', 'status', 'atBound', 'illConditioned',
+    'blockedByNonFinite', 'jacobianNonFinite', 'nonFiniteCurvePoints', 'curve', 'residuals', 'settings']);
+
+let fitFixtureCache = null;
+function fitFixture() {
+    if (fitFixtureCache === null) fitFixtureCache = loadFixture('fit');
+    return fitFixtureCache;
+}
+
+function caseOf(prefix) {
+    const found = fitFixture().cases.filter((c) => c.label.startsWith(prefix));
+    assert.equal(found.length, 1, 'fit.json case ' + prefix);
+    return found[0];
+}
+
+function fitJob(c, extra) {
+    const q = Float64Array.from(c.data.q);
+    const fix = fitFixture();
+    return Object.assign({
+        modelSpec: c.modelSpec,
+        params: c.params,
+        fitFlags: c.fitFlags,
+        bounds: Object.fromEntries(Object.entries(c.bounds).map(([k, [lo, hi]]) => [k, [num(lo), num(hi)]])),
+        data: { q, I: Float64Array.from(c.data.I), sigma: Float64Array.from(c.data.sigma), kind: 'generic', header: null },
+        range: c.range ? { qMin: c.range.qMin, qMax: c.range.qMax } : { qMin: q[0], qMax: q[q.length - 1] },
+        weighting: c.weighting,
+        options: { maxSteps: fix.fitOptions.steps, cutoff: fix.cutoff },
+    }, extra);
+}
+
+const fitMessage = (c, jobId, extra) => Object.assign({ type: 'fit', jobId }, fitJob(c), extra);
+
+async function directKernels(names) {
+    const list = await Promise.all(names.map((name) => SasFitKernel.instantiate(loadWasm(name))));
+    return Object.fromEntries(names.map((name, i) => [name, list[i]]));
+}
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+function makeCore(overrides) {
+    const posts = [];
+    const loads = [];
+    const deps = Object.assign({
+        loadWasm: (name) => { loads.push(name); return Promise.resolve(loadWasm(name)); },
+        post: (message) => { posts.push(message); },
+        yieldTask: () => Promise.resolve(),
+    }, overrides);
+    const core = SasFitWorkerCore.create(deps);
+    const ofType = (type) => posts.filter((m) => m.type === type);
+    return { core, posts, loads, ofType };
+}
 
 /** Sum of 12 uniform numbers of a 32-bit LCG, minus 6 (mean 0, variance 1). */
 function pseudoGaussian(seed) {
@@ -54,4 +121,7 @@ function recordCalls(residuals) {
     return { calls, residuals: (p) => { calls.push(Array.from(p)); return residuals(p); } };
 }
 
-module.exports = { pseudoGaussian, decayProblem, expDecay, recordCalls };
+module.exports = {
+    pseudoGaussian, decayProblem, expDecay, recordCalls,
+    FIT_RESULT_FIELDS, fitFixture, caseOf, fitJob, fitMessage, directKernels, settle, makeCore,
+};

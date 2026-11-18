@@ -12,7 +12,7 @@ const arr = (x) => Array.from(x);
 test('module is frozen and exports the interface', () => {
     assert.ok(Object.isFrozen(W));
     assert.deepEqual(W.MODES, ['sigma', 'sqrtI', 'absI', 'none']);
-    for (const n of ['weights', 'mask', 'defaultMode', 'defaultRange', 'select']) assert.equal(typeof W[n], 'function', n);
+    for (const n of ['weights', 'mask', 'countExcluded', 'defaultMode', 'defaultRange', 'select']) assert.equal(typeof W[n], 'function', n);
 });
 
 test('weights: the four modes of spec 4.8 (12: sqrt|I| and |I| take the absolute value)', () => {
@@ -56,6 +56,42 @@ test('mask sqrtI / absI: I=0 gives w=0 -> out (spec table); I<0 uses |I| -> in; 
 test('defaultMode: sigma when present, else none (spec 4.8: missing sigma -> unweighted)', () => {
     assert.equal(W.defaultMode(ds([1], [1], [1])), 'sigma');
     assert.equal(W.defaultMode(ds([1], [1], null)), 'none');
+});
+
+test('defaultMode: an error column without a single usable value (finite, > 0) falls back to none', () => {
+    assert.equal(W.defaultMode(ds([1, 2, 3], [1, 1, 1], [0, 0, 0])), 'none');
+    assert.equal(W.defaultMode(ds([1, 2, 3], [1, 1, 1], [0, -1, NaN])), 'none');
+    assert.equal(W.defaultMode(ds([1, 2], [1, 1], [Infinity, -Infinity])), 'none');
+    assert.equal(W.defaultMode(ds([1, 2, 3], [1, 1, 1], [0, NaN, 1e-300])), 'sigma', 'one usable value is enough');
+    assert.equal(W.defaultMode({ q: f64([1]), I: f64([1]), sigma: undefined }), 'none');
+    assert.equal(W.defaultMode({ q: f64([]), I: f64([]), sigma: f64([]) }), 'none');
+    assert.equal(W.defaultMode(null), 'none');
+    // the mode it returns always leaves the usable points of that mode to fit
+    assert.equal(W.defaultRange(ds([1, 2, 3], [1, 1, 1], [0, 0, 0]), W.defaultMode(ds([1, 2, 3], [1, 1, 1], [0, 0, 0]))).qMin, 1);
+});
+
+test('countExcluded: the number of points the mask of each mode leaves out', () => {
+    const d = ds(Q, I, S);                               // the 11 rows of the mask tests below
+    assert.equal(W.countExcluded(d, 'sigma'), 8);
+    assert.equal(W.countExcluded(d, 'sqrtI'), 6);
+    assert.equal(W.countExcluded(d, 'absI'), 6);
+    assert.equal(W.countExcluded(d, 'none'), 5);
+    for (const mode of W.MODES) {
+        assert.equal(W.countExcluded(d, mode), arr(W.mask(d, mode)).filter((m) => m === 0).length, mode);
+    }
+    assert.equal(W.countExcluded(ds([1, 2], [3, 4], [1, 1]), 'sigma'), 0);
+    assert.throws(() => W.countExcluded(ds([1], [1], null), 'sigma'), /sigma/);
+    assert.throws(() => W.countExcluded(ds([1], [1], null), 'bogus'), /bogus/);
+});
+
+test('select and mask agree for every mode (select computes the weights once and reuses them)', () => {
+    const d = ds(Q.map((q, i) => (q === 1 ? 1 + i : q)), I, S);
+    for (const mode of W.MODES) {
+        const m = arr(W.mask(d, mode));
+        const s = W.select(d, mode, { qMin: 0, qMax: Infinity });
+        assert.deepEqual(arr(s.index), m.map((v, i) => (v ? i : -1)).filter((i) => i >= 0), mode);
+        assert.deepEqual(arr(s.w), arr(s.index).map((i) => W.weights(d, mode)[i]), mode);
+    }
 });
 
 // Official-file-like: first 5 points I<0 and sigma=0 (beamstop region), qStart 0.005 (spec 15 row 4).

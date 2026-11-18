@@ -21,6 +21,7 @@ const {
     SasFitKernel, SasFitEvaluate, SasFitWorkerCore, SasFitWorkerClient,
 } = require('./load.js');
 const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
+const { FIT_RESULT_FIELDS } = require('./sasfit-fit-helpers.js');
 
 const JS_DIR = path.join(__dirname, '..', 'js');
 const fitFix = loadFixture('fit');
@@ -28,8 +29,6 @@ const CASE_1 = fitFix.cases.find((c) => c.label === '1 sphere');
 const VERSION = '9.87';
 const WORKER_URL = 'js/sasfit-worker.js?v=' + VERSION;
 const Q = Float64Array.from({ length: 30 }, (_, i) => 0.006 * Math.pow(1.08, i));
-const STOPPED_FIELDS = Object.freeze(['params', 'errors', 'errorsScaled', 'displayErrorsScaled', 'chi2', 'chi2r',
-    'dof', 'iterations', 'status', 'atBound', 'illConditioned', 'curve', 'residuals', 'settings']);
 const WORKER_MODULES = Object.freeze(['sasfit-meta.js', 'sasfit-validate.js', 'sasfit-weights.js', 'sasfit-kernel.js',
     'sasfit-product.js', 'sasfit-py-models.js', 'sasfit-evaluate.js', 'sasfit-weighting.js', 'sasfit-linalg.js',
     'sasfit-fitter.js', 'sasfit-worker-core.js']);
@@ -184,8 +183,9 @@ test('fit: progress goes to onProgress, the result resolves frozen, ids are not 
     assert.ok(seen.every(Object.isFrozen));
 
     const fitResult = {
-        params: { radius: 50 }, errors: { radius: 1 }, errorsScaled: { radius: 2 }, displayErrorsScaled: false,
-        chi2: 4, chi2r: 4, dof: 1, iterations: 2, status: 'converged', atBound: {}, illConditioned: false,
+        params: { radius: 50 }, names: ['radius'], errors: { radius: 1 }, errorsScaled: { radius: 2 }, displayErrorsScaled: false,
+        covariance: [[1]], correlation: [[1]], chi2: 4, chi2r: 4, dof: 1, iterations: 2, status: 'converged', atBound: {},
+        illConditioned: false, blockedByNonFinite: false, jacobianNonFinite: false, nonFiniteCurvePoints: 0,
         curve: new Float64Array(2), residuals: new Float64Array(2),
         settings: { modelSpec: { model: 'sphere', structure: null, lowQPowerLaw: false }, range: { qMin: 0, qMax: 1 } },
     };
@@ -193,7 +193,9 @@ test('fit: progress goes to onProgress, the result resolves frozen, ids are not 
     const result = await pending;
     assert.deepEqual(result, fitResult);
     for (const part of [result, result.params, result.errors, result.errorsScaled, result.atBound, result.settings,
-        result.settings.modelSpec, result.settings.range]) assert.ok(Object.isFrozen(part));
+        result.settings.modelSpec, result.settings.range, result.names, result.covariance, result.covariance[0],
+        result.correlation]) assert.ok(Object.isFrozen(part));
+    assert.ok(!Object.isFrozen(fitResult.covariance) && !Object.isFrozen(fitResult.covariance[0]), 'the message itself is left alone');
 
     // the next request of either kind gets the next id
     const next = client.evaluate(evalRequest());
@@ -251,12 +253,14 @@ test('stop(): terminate, a fresh worker, the fit resolves as the synthetic stopp
     assert.equal(workers[1].url, WORKER_URL);
 
     const result = await fit;
-    assert.deepEqual(Object.keys(result).sort(), [...STOPPED_FIELDS].sort());
+    assert.deepEqual(Object.keys(result).sort(), [...FIT_RESULT_FIELDS].sort());
     assert.deepEqual(result, {
-        status: 'stopped', params: job.params, errors: {}, errorsScaled: {}, displayErrorsScaled: true,
-        chi2: null, chi2r: null, dof: null, iterations: 4, atBound: {}, illConditioned: false, curve: null, residuals: null,
-        settings: SasFitWorkerCore.settingsOf(job),
+        status: 'stopped', params: job.params, names: [], errors: {}, errorsScaled: {}, displayErrorsScaled: true,
+        covariance: [], correlation: [], chi2: null, chi2r: null, dof: null, iterations: 4, atBound: {},
+        illConditioned: false, blockedByNonFinite: false, jacobianNonFinite: false, nonFiniteCurvePoints: 0,
+        curve: null, residuals: null, settings: SasFitWorkerCore.settingsOf(job),
     });
+    for (const part of [result.names, result.covariance, result.correlation]) assert.ok(Object.isFrozen(part));
     assert.notEqual(result.params, job.params, 'a copy: the caller\'s object is not frozen');
     assert.ok(!Object.isFrozen(job.params));
     for (const part of [result, result.params, result.errors, result.errorsScaled, result.atBound, result.settings,
@@ -409,9 +413,10 @@ test('script version: read from document.currentScript.src at load time, and use
  */
 function runWorkerEntry(search, options) {
     const opts = options || {};
-    const log = { imports: [], fetches: [], posts: [], timers: 0 };
+    const log = { imports: [], fetches: [], posts: [], errors: [], timers: 0 };
     const sandbox = {
         URLSearchParams,
+        console: { error: (...args) => { log.errors.push(args); } },
         location: { search },
         setTimeout: (fn, ms) => { log.timers += 1; return setTimeout(fn, ms); },
         postMessage: (message) => { log.posts.push(message); },
@@ -502,7 +507,11 @@ test('worker entry: a non-2xx wasm response becomes WASM_LOAD with the status in
 
 test('worker entry: only C models of SasFitMeta ever reach a wasm URL; yieldTask is a later task', async () => {
     const w = runWorkerEntry('?v=' + VERSION);
-    const { loadWasm: entryLoadWasm, yieldTask, post } = w.log.deps;
+    const { loadWasm: entryLoadWasm, yieldTask, post, onFatal } = w.log.deps;
+    const lost = new Error('DataCloneError');
+    onFatal(lost);
+    assert.equal(w.log.errors.length, 1, 'onFatal reports through console.error');
+    assert.equal(w.log.errors[0][w.log.errors[0].length - 1], lost);
     for (const name of ['../../secret', 'constructor', '__proto__', 'toString', 'sphere?x=1', '', 'power_law', 'guinier_porod', undefined]) {
         await assert.rejects(Promise.resolve().then(() => entryLoadWasm(name)), /model/, String(name));
     }
@@ -625,6 +634,11 @@ test('end to end: client.fit through the real core reaches the bumps reference; 
     client.stop();
     const out = await stopped;
     assert.equal(out.status, 'stopped');
+    assert.deepEqual(Object.keys(out).sort(), Object.keys(result).sort(), 'the synthetic stopped result has the keys of a real one');
+    assert.deepEqual(Object.keys(result).sort(), [...FIT_RESULT_FIELDS].sort());
+    for (const part of [result.names, result.covariance, result.covariance[0], result.correlation, result.correlation[0]]) {
+        assert.ok(Object.isFrozen(part), 'the arrays of a received result are frozen');
+    }
     assert.deepEqual(out.params, job.params);
     assert.equal(stats.created, 2);
     await settle();

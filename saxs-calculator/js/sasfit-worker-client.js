@@ -23,9 +23,11 @@
  *     typed arrays, which cannot be.
  *   client.stop()
  *     Terminates the Worker (a running fit cannot be interrupted otherwise) and
- *     starts a new one. A pending fit RESOLVES with a synthetic result:
- *     status 'stopped', params as they were sent, no errors, chi2 / chi2r / dof
- *     / curve / residuals null, iterations = the last reported one. A pending
+ *     starts a new one. A pending fit RESOLVES with a synthetic result that has
+ *     the keys of a real FitResult: status 'stopped', params as they were sent,
+ *     names / covariance / correlation empty, no errors, the three flags false,
+ *     nonFiniteCurvePoints 0, chi2 / chi2r / dof / curve / residuals null,
+ *     iterations = the last reported one. A pending
  *     evaluate rejects with code 'STOPPED'.
  *   client.dispose()
  *     Terminates without a new Worker; pending and later requests reject with
@@ -91,7 +93,12 @@
 
     const frozenCopy = (obj) => Object.freeze({ ...obj });
 
-    /** A FitResult with its plain objects frozen (new objects; the typed arrays are shared as received). */
+    /** A frozen copy of a matrix given as an array of rows; anything else is returned as it is. */
+    const frozenRows = (rows) => (Array.isArray(rows)
+        ? Object.freeze(rows.map((row) => (Array.isArray(row) ? Object.freeze(row.slice()) : row)))
+        : rows);
+
+    /** A FitResult with its plain objects and arrays frozen (new objects; the typed arrays are shared as received). */
     function freezeResult(fitResult) {
         const settings = isObject(fitResult.settings)
             ? Object.freeze({
@@ -104,6 +111,9 @@
         return Object.freeze({
             ...fitResult,
             params: part('params'),
+            names: Array.isArray(fitResult.names) ? Object.freeze(fitResult.names.slice()) : fitResult.names,
+            covariance: frozenRows(fitResult.covariance),
+            correlation: frozenRows(fitResult.correlation),
             errors: part('errors'),
             errorsScaled: part('errorsScaled'),
             atBound: part('atBound'),
@@ -116,15 +126,21 @@
         return freezeResult({
             status: 'stopped',
             params: pendingFit.params,
+            names: [],
             errors: {},
             errorsScaled: {},
             displayErrorsScaled: pendingFit.settings.weighting !== 'sigma',
+            covariance: [],
+            correlation: [],
             chi2: null,
             chi2r: null,
             dof: null,
             iterations: pendingFit.iteration,
             atBound: {},
             illConditioned: false,
+            blockedByNonFinite: false,
+            jacobianNonFinite: false,
+            nonFiniteCurvePoints: 0,
             curve: null,
             residuals: null,
             settings: pendingFit.settings,
