@@ -105,28 +105,38 @@ test('F1: a NaN right next to a real minimum hides no gain (predicted reduction 
 
 test('F1: a non-finite step followed by shorter finite steps that are refused on their merits is not a wall', () => {
     const base = decayProblem();
-    const at = polishedDecay().values;
+    const polished = polishedDecay();
+    const at = polished.values;
     const hb = JAC_STEP * Math.abs(at[1]);
-    let calls = 0;
     let poisoned = 0;
-    // A jump of the model (finite, wrong) in the Jacobian column of b -- the column comes out as
-    // 0.05*r -- sends the iteration in a useless direction with a large predicted gain: every finite
-    // trial is worse. One trial in the middle of that run cannot be computed.
-    const r0 = base.residuals(at);
     const trials = [];
+    // What hayter_msa does next to a minimum (design spec 16), made deterministic:
+    //  - a jump of the model (finite, wrong) in the Jacobian column of b -- the column comes out as
+    //    0.05*r -- sends the iteration in a useless direction with a large predicted gain;
+    //  - no trial point is better than the start (every one is made 0.1 % worse), so each finite
+    //    trial is refused on its merits, whatever the damping does;
+    //  - the second trial cannot be computed at all.
+    // A trial point is any point that is neither the start nor one of the Jacobian's neighbours of the
+    // start (one parameter moved by exactly its step h). Nothing here depends on the values the damping takes.
+    const r0 = base.residuals(at);
+    const isStartOrNeighbour = (p) => {
+        const moved = at.map((v, j) => j).filter((j) => p[j] !== at[j]);
+        return moved.length === 0 || (moved.length === 1 && p[moved[0]] === at[moved[0]] + JAC_STEP * Math.abs(at[moved[0]]));
+    };
     const residuals = (p) => {
-        calls++;
         if (p[0] === at[0] && p[2] === at[2] && p[1] === at[1] + hb) return r0.map((v) => v * (1 + 0.05 * hb));
-        if (calls > 4 && trials.length < 12) trials.push(calls === 6 ? 'NaN' : 'finite');
-        if (calls === 6) { poisoned++; return r0.map(() => NaN); }      // start, 3 columns, trial 1, trial 2
-        return base.residuals(p);
+        if (isStartOrNeighbour(p)) return base.residuals(p);
+        trials.push(trials.length === 1 ? 'NaN' : 'finite');
+        if (trials.length === 2) { poisoned++; return r0.map(() => NaN); }
+        return base.residuals(p).map((v) => v * 1.001);
     };
     const result = SasFitFitter.fit({ ...base, start: at, residuals });
     assert.equal(poisoned, 1);
     assert.deepEqual(trials.slice(0, 4), ['finite', 'NaN', 'finite', 'finite'], 'finite trials before and after the non-finite one');
-    assert.ok(calls > 12, calls + ' evaluations');
+    // The outcome: the fit ends where it started, as converged; the NaN in the middle of the run is not a wall.
     assert.deepEqual([result.status, result.blockedByNonFinite, result.iterations], ['converged', false, 0]);
     assert.deepEqual(result.values, at);
+    assert.equal(result.chi2, polished.chi2);
 });
 
 // ----------------------------------------------------------- F2: stripes

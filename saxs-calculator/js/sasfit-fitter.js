@@ -53,6 +53,16 @@
  * free, like bumps. The Jacobian of the iteration and of the covariance is the
  * same function.
  *
+ * The damping factor lambda (start 1e-3, floor 1e-12) follows Nielsen's update
+ * (H. B. Nielsen, "Damping parameter in Marquardt's method", IMM-REP-1999-05):
+ * after an accepted step with ratio rho = actred/prered,
+ *     lambda <- lambda * max(1/3, 1 - (2*rho - 1)^3),
+ * and after a rejected step lambda <- lambda*nu, nu <- 2*nu, with nu = 2 at the
+ * start of every iteration. Compared with "x10 when rejected, /10 after a well
+ * predicted step" it needs a third of the steps in long curved valleys (a
+ * low-Q power law with its exponent free: about 100 -> 30) and the same number
+ * elsewhere; tests/sasfit-g4.test.js keeps a ceiling on that case.
+ *
  * Termination follows bumps' lm, i.e. MPFit (mpfit.py), tested after every
  * trial step, accepted or not:
  *   ftol (mpfit.py:1317)  |actred| <= ftol and prered <= ftol and ratio <= 2,
@@ -62,7 +72,7 @@
  *   xtol (mpfit.py:1319)  MPFit tests its trust radius against xtol*|D x|; this
  *        fitter has a damping factor instead of a radius, so it tests the scaled
  *        length of the trial step, |D dp| <= xtol*|D p|. A rejected step raises
- *        the damping tenfold, which shortens the next one.
+ *        the damping, which shortens the next one.
  *   damping               the damping factor passed 1e30: no shorter step exists
  *   gtol (mpfit.py:1182)  the cosine between r and every free column of J is
  *        <= 1e-10; bumps leaves MPFit's default in force (fitters.py:716)
@@ -130,10 +140,9 @@
     const ACCEPT_RATIO = 1e-4;        // mpfit.py:1307
     const DEFAULTS = Object.freeze({ method: 'lm', maxSteps: 200, ftol: 1e-10, xtol: 1e-10 });
     const LAMBDA_START = 1e-3;
-    const LAMBDA_FACTOR = 10;
+    const NU_START = 2;               // first factor of a rejected step; doubles while steps keep being rejected
     const LAMBDA_MIN = 1e-12;
     const LAMBDA_MAX = 1e30;
-    const GOOD_RATIO = 0.75;          // lower the damping after a step this well predicted
     const NOOP = () => {};
     const NEVER = () => false;
 
@@ -340,9 +349,16 @@
         return { accepted, finite: Number.isFinite(chi2), actred, prered, ratio, pnorm, xnorm, p, r, chi2 };
     }
 
-    function nextLambda(lambda, trial) {
-        if (!trial.accepted) return lambda * LAMBDA_FACTOR;
-        return trial.ratio >= GOOD_RATIO ? Math.max(lambda / LAMBDA_FACTOR, LAMBDA_MIN) : lambda;
+    /**
+     * Nielsen's damping update. After an accepted step lambda is multiplied by
+     * max(1/3, 1 - (2*ratio - 1)^3): a third for a well predicted step, up to 2 for a poorly
+     * predicted one. A rejected step multiplies it by nu, which doubles with every rejection
+     * in a row (2, 4, 8, ...) and starts again at 2 in the next iteration.
+     */
+    function nextLambda(lambda, trial, nu) {
+        if (!trial.accepted) return lambda * nu;
+        const factor = Math.max(1 / 3, 1 - Math.pow(2 * trial.ratio - 1, 3));
+        return Math.max(lambda * factor, LAMBDA_MIN);
     }
 
     /** The termination tests after a trial step (see the file header); null = go on. */
@@ -380,14 +396,14 @@
         const inherited = sys.held > 0 && state.wall === null ? lambda : state.wall;
         let wall = inherited;
         let hidden = false;             // the last rejected step with a predicted gain above ftol was non-finite
-        for (;;) {
+        for (let nu = NU_START; ; nu *= 2) {
             const used = lambda;
             const trial = trialStep(prob, state, sys, used);
             if (!trial.accepted && trial.prered > cfg.ftol) {
                 hidden = !trial.finite;
                 wall = hidden ? Math.min(used, wall === null ? used : wall) : inherited;
             }
-            lambda = nextLambda(used, trial);
+            lambda = nextLambda(used, trial, nu);
             const iterations = state.iterations + (trial.accepted ? 1 : 0);
             if (trial.accepted) cfg.onProgress(Object.freeze({ iteration: iterations, chi2: trial.chi2 }));
             const status = statusAfter(cfg, trial, iterations, lambda);
@@ -416,7 +432,7 @@
         const iterations = state.iterations + 1;
         cfg.onProgress(Object.freeze({ iteration: iterations, chi2: trial.chi2 }));
         const status = iterations >= cfg.maxSteps ? 'maxiter' : null;
-        return acceptedState(state, trial, nextLambda(state.wall, trial), null, status);
+        return acceptedState(state, trial, nextLambda(state.wall, trial, NU_START), null, status);
     }
 
     function iterate(prob, cfg, first) {

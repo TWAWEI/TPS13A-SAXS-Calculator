@@ -16,10 +16,11 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SasFitFitter } = require('./load.js');
+const { SasFitEvaluate, SasFitFitter } = require('./load.js');
 const { num } = require('./sasfit-helpers.js');
 const {
     fitFixture, fitMessage, makeCore, loadKernels, usedPoints, buildProblem, refVector, covarianceError, G4, g4Ratios,
+    pseudoGaussian,
 } = require('./sasfit-fit-helpers.js');
 
 const fitFix = fitFixture();
@@ -204,6 +205,50 @@ test('G4 through the message interface: all fit.json cases, with the mask count 
         for (const [name, side] of Object.entries(fitResult.atBound)) {
             assert.equal(fitResult.params[name], num(c.bounds[name][side === 'lower' ? 0 : 1]), c.label + ': exactly on the bound');
         }
+    }
+});
+
+// ------------------------------------------------- damping (speed regression)
+
+/** sphere + low-Q power law on seeded synthetic data, fitting radius, lowq_scale, lowq_power and background. */
+function lowQProblem(seed, kernels) {
+    const q = Float64Array.from({ length: 150 }, (_, i) => Math.pow(10, -2.3 + 1.8 * i / 149));
+    const spec = { model: 'sphere', structure: null, lowQPowerLaw: true };
+    const truth = { scale: 0.02, background: 0.005, sld: 1, sld_solvent: 6, radius: 50, lowq_scale: 1e-8, lowq_power: 4 };
+    const model = (params) => SasFitEvaluate.evaluate(spec, params, q, { cutoff: fitFix.cutoff }, kernels).I;
+    const exact = model(truth);
+    const noise = pseudoGaussian(seed);
+    const sigma = Float64Array.from(exact, (v) => 0.03 * Math.abs(v) + 1e-4);
+    const I = Float64Array.from(exact, (v, i) => v + noise() * sigma[i]);
+    const residuals = (p) => {
+        const curve = model({ ...truth, radius: p[0], lowq_scale: p[1], lowq_power: p[2], background: p[3] });
+        return Float64Array.from(curve, (v, i) => (I[i] - v) / sigma[i]);
+    };
+    return {
+        names: ['radius', 'lowq_scale', 'lowq_power', 'background'], start: [56, 1.3e-8, 3.7, 0.004],
+        lower: [1, 0, 0, -Infinity], upper: [1000, Infinity, 6, Infinity], residuals,
+    };
+}
+
+test('damping: a low-Q power law with lowq_power free converges to the minimum in a few dozen steps', async () => {
+    // The valley of (lowq_scale, lowq_power) is long and curved. With the first damping rule (x10 on a
+    // rejected step, /10 only after a well predicted one) these three fits took 101, 111 and 102 accepted
+    // steps; with Nielsen's update they take 26, 35 and 31 (measured 2026-11-18; the M2 reviewer measured
+    // 8-24 for bumps lm on fits of this kind). The ceiling leaves more than 50 % headroom over the slowest and is half the old count.
+    const MAX_ITERATIONS = 55;
+    const kernels = await loadKernels();
+    for (const seed of [901, 902, 908]) {
+        const problem = lowQProblem(seed, kernels);
+        const result = SasFitFitter.fit(problem);
+        // the reference chi2: the same fit continued from its result with tolerances far below the defaults
+        const polished = SasFitFitter.fit({ ...problem, start: result.values }, { ftol: 1e-15, xtol: 1e-15 });
+        console.log('damping seed ' + seed + ': ' + result.iterations + ' steps, chi2 ' + result.chi2 + ' (polished ' + polished.chi2 + ')');
+        assert.deepEqual([result.status, result.blockedByNonFinite, result.illConditioned], ['converged', false, false], 'seed ' + seed);
+        assert.deepEqual({ ...result.atBound }, {}, 'seed ' + seed);
+        assert.ok(result.chi2r > 0.6 && result.chi2r < 1.6, 'seed ' + seed + ': chi2r ' + result.chi2r);
+        assert.ok(Math.abs(result.chi2 - polished.chi2) <= 1e-9 * polished.chi2, 'seed ' + seed + ': chi2 ' + result.chi2 + ' vs ' + polished.chi2);
+        result.values.forEach((v, j) => assert.ok(Math.abs(v - polished.values[j]) <= 1e-3 * polished.errors[j], 'seed ' + seed + ' ' + problem.names[j]));
+        assert.ok(result.iterations <= MAX_ITERATIONS, 'seed ' + seed + ': ' + result.iterations + ' accepted steps (ceiling ' + MAX_ITERATIONS + ')');
     }
 });
 
