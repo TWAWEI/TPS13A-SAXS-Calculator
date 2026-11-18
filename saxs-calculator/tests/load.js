@@ -49,6 +49,8 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-py-models.js',        // IIFE，只掛 globalThis.SasFitPyModels；呼叫時才讀 SasFitMeta
     'sasfit-evaluate.js',         // IIFE，只掛 globalThis.SasFitEvaluate；呼叫時才讀其他 SasFit 模組
     'sasfit-weighting.js',        // IIFE，只掛 globalThis.SasFitWeighting；純函式，只讀 SasFitValidate
+    'sasfit-linalg.js',           // IIFE，只掛 globalThis.SasFitLinalg；Jacobi SVD 與共變異，無相依
+    'sasfit-fitter.js',           // IIFE，只掛 globalThis.SasFitFitter；載入時讀 SasFitLinalg，與模型無關
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -84,4 +86,6 @@ module.exports = {
     SasFitPyModels: globalThis.SasFitPyModels,
     SasFitEvaluate: globalThis.SasFitEvaluate,
     SasFitWeighting: globalThis.SasFitWeighting,
+    SasFitLinalg: globalThis.SasFitLinalg,
+    SasFitFitter: globalThis.SasFitFitter,
 };
