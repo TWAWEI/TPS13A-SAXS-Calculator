@@ -1,86 +1,24 @@
 'use strict';
 /**
  * sasfit-fitter.js and sasfit-linalg.js, in layers that can fail on their own:
- * SVD -> covariance -> Jacobian -> LM against the polished bumps reference
- * (gate G4, design spec 11) -> behaviour -> determinism.
- *
- * The fitter knows no model. `buildProblem` below turns a fit.json case into
- * residuals(p) = (I - I_model)/w with SasFitEvaluate, SasFitWeighting and the
- * wasm kernels; the production version of that glue belongs to the worker core.
- * bumps' residual has the opposite sign, (theory - I)/w, so its Jacobian is
- * compared with the sign flipped; chi2 and the covariance do not depend on it.
+ * SVD -> covariance -> the Jacobian step rule -> behaviour of the LM fit.
+ * The comparisons with bumps on the fit.json cases (Jacobian, gate G4,
+ * determinism) are in sasfit-g4.test.js; non-finite model output is in
+ * sasfit-fitter-nonfinite.test.js.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {
-    SasFitMeta, SasFitKernel, SasFitEvaluate, SasFitWeighting, SasFitLinalg, SasFitFitter,
-} = require('./load.js');
-const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
-const { decayProblem } = require('./sasfit-fit-helpers.js');
+const { SasFitLinalg, SasFitFitter } = require('./load.js');
+const { loadFixture } = require('./sasfit-helpers.js');
+const { decayProblem, covarianceError } = require('./sasfit-fit-helpers.js');
 
 const svdFix = loadFixture('svd');
-const fitFix = loadFixture('fit');
 
 const SV_REL = 1e-10;            // singular values: relative ...
 const SV_ABS_SCALE = 1e-12;      // ... plus this times the largest one
 const ORTHO_TOL = 1e-12;
 const COV_TOL = 1e-8;            // |dC_ij| <= tol*sqrt(C_ii*C_jj)
-const JAC_TOL = 1e-6;            // per column: |dJ_ij| <= tol*max_i|J_ij|
-const G4_PARAM_SIGMA = 0.01;     // design spec 11, G4
-const G4_STDERR_REL = 0.02;
-const G4_CHI2R_REL = 1e-3;
-const FIT_CASES = 12;
-const WASM_MODELS = SasFitMeta.order.filter((name) => SasFitMeta.models[name].kind === 'c');
-
-let kernelsPromise = null;
-function loadKernels() {
-    if (!kernelsPromise) {
-        kernelsPromise = Promise.all(WASM_MODELS.map((name) => SasFitKernel.instantiate(loadWasm(name))))
-            .then((list) => Object.freeze(Object.fromEntries(WASM_MODELS.map((name, i) => [name, list[i]]))));
-    }
-    return kernelsPromise;
-}
-
 const flat = (rows) => Float64Array.from(rows.flat());
-
-/** residuals(p) and the fit problem of a fit.json case (all points take part). */
-function buildProblem(c, kernels) {
-    const dataset = {
-        q: Float64Array.from(c.data.q), I: Float64Array.from(c.data.I),
-        sigma: Float64Array.from(c.data.sigma), kind: 'generic', header: null,
-    };
-    const range = { qMin: dataset.q[0], qMax: dataset.q[dataset.q.length - 1] };
-    const sel = SasFitWeighting.select(dataset, c.weighting, range);
-    assert.equal(sel.q.length, dataset.q.length, c.label + ': every point is usable');
-    const opts = { cutoff: fitFix.cutoff };
-    const residuals = (p) => {
-        const params = { ...c.params, ...Object.fromEntries(c.names.map((name, j) => [name, p[j]])) };
-        const { I } = SasFitEvaluate.evaluate(c.modelSpec, params, sel.q, opts, kernels);
-        return Float64Array.from(I, (model, i) => (sel.I[i] - model) / sel.w[i]);
-    };
-    return {
-        names: c.names,
-        start: c.names.map((name) => c.params[name]),
-        lower: c.names.map((name) => num(c.bounds[name][0])),
-        upper: c.names.map((name) => num(c.bounds[name][1])),
-        residuals,
-    };
-}
-
-const refVector = (c, key) => c.names.map((name) => c[key].values[name]);
-
-/** Largest |dC_ij| / sqrt(C_ii*C_jj) between C (row-major, or rows) and reference rows. */
-function covarianceError(C, refRows) {
-    const n = refRows.length;
-    let worst = 0;
-    for (let i = 0; i < n; i++) {
-        for (let j = 0; j < n; j++) {
-            const got = Array.isArray(C[i]) ? C[i][j] : C[i * n + j];
-            worst = Math.max(worst, Math.abs(got - refRows[i][j]) / Math.sqrt(refRows[i][i] * refRows[j][j]));
-        }
-    }
-    return worst;
-}
 
 // ---------------------------------------------------------------------- SVD
 
@@ -185,24 +123,6 @@ test('covariance: a non-finite Jacobian gives NaN and nonFinite, not illConditio
     assert.throws(() => SasFitLinalg.covariance(Float64Array.of(1, 2), 1, 2), /m >= n/);
 });
 
-test('covariance of the bumps Jacobian of every fit case reproduces bumps covariance and stderr', () => {
-    let worst = 0;
-    for (const c of fitFix.cases) {
-        const m = c.ref.jacobian.length;
-        const n = c.names.length;
-        const { C, illConditioned } = SasFitFitter.covariance(flat(c.ref.jacobian), m, n);
-        assert.equal(illConditioned, false, c.label);     // min singular value >= 0.195 in the fixture
-        const err = covarianceError(C, c.ref.covariance);
-        assert.ok(err <= COV_TOL, c.label + ': ' + err);
-        worst = Math.max(worst, err);
-        c.names.forEach((name, j) => {
-            const rel = Math.abs(Math.sqrt(C[j * n + j]) - c.ref.stderr[name]) / c.ref.stderr[name];
-            assert.ok(rel <= COV_TOL, c.label + ' stderr ' + name + ' ' + rel);
-        });
-    }
-    console.log('covariance from bumps Jacobians: worst scaled error = ' + worst.toExponential(2));
-});
-
 test('svd / covariance: `converged` is false when the sweep cap is reached, true otherwise; the fitter reports it as illConditioned', () => {
     const big = svdFix.cases.find((c) => c.label === '50x12');
     const A = flat(big.A);
@@ -228,43 +148,6 @@ test('svd / covariance: `converged` is false when the sweep cap is reached, true
 
 // ----------------------------------------------------------------- Jacobian
 
-test('fit.json holds the twelve G4 cases with the documented conventions', () => {
-    assert.equal(fitFix.cases.length, FIT_CASES);
-    assert.equal(fitFix.bumps, '1.0.4');
-    assert.equal(fitFix.cutoff, 1e-5);
-    assert.deepEqual(fitFix.fitOptions, { steps: 200, ftol: 1e-10, xtol: 1e-10 });
-    assert.deepEqual(fitFix.cases.map((c) => c.weighting).filter((w) => w !== 'sigma'), ['sqrtI', 'absI', 'none']);
-    assert.deepEqual(fitFix.cases.filter((c) => Object.keys(c.ref.atBound).length > 0).map((c) => c.ref.atBound),
-        [{ rg: 'upper' }, { radius: 'lower' }]);
-    assert.ok(fitFix.cases.some((c) => c.names.includes('radius_pd')));
-    assert.ok(fitFix.cases.some((c) => c.modelSpec.structure === 'hardsphere'));
-    assert.ok(fitFix.cases.some((c) => c.modelSpec.lowQPowerLaw));
-});
-
-test('jacobian: residuals and Jacobian at the reference point against bumps lsqerror.jacobian', async () => {
-    const kernels = await loadKernels();
-    for (const c of fitFix.cases) {
-        const problem = buildProblem(c, kernels);
-        const p = refVector(c, 'ref');
-        const r = problem.residuals(Float64Array.from(p));
-        const rScale = c.ref.residuals.reduce((max, v) => Math.max(max, Math.abs(v)), 0);
-        const rErr = c.ref.residuals.reduce((max, v, i) => Math.max(max, Math.abs(-r[i] - v)), 0) / rScale;
-        const { J, m, n } = SasFitFitter.jacobian(problem.residuals, p, problem.lower, problem.upper);
-        assert.equal(m, c.ref.jacobian.length);
-        assert.equal(n, c.names.length);
-        let worst = 0;
-        for (let j = 0; j < n; j++) {
-            const colMax = c.ref.jacobian.reduce((max, row) => Math.max(max, Math.abs(row[j])), 0);
-            for (let i = 0; i < m; i++) {
-                worst = Math.max(worst, Math.abs(-J[i * n + j] - c.ref.jacobian[i][j]) / colMax);
-            }
-        }
-        console.log('jacobian ' + c.label.padEnd(36) + ' worst column-scaled error ' + worst.toExponential(2)
-            + ' | residuals ' + rErr.toExponential(2));
-        assert.ok(worst <= JAC_TOL, c.label + ': Jacobian error ' + worst);
-    }
-});
-
 test('jacobian: the bumps step rule (h = 1e-4|p|, 1e-4 at 0, backward only when p + h > upper)', () => {
     const calls = [];
     const residuals = (p) => {
@@ -288,83 +171,6 @@ test('jacobian: the bumps step rule (h = 1e-4|p|, 1e-4 at 0, backward only when 
     assert.equal(J[2 * 4 + 2], ((1e-4 + 15) - 15) / 1e-4);
     assert.equal(J[2 * 4 + 3], ((0 + 3 * (5 + 5e-4)) - 15) / 5e-4);
     assert.deepEqual(p, [2, 10, 0, 5]);
-});
-
-/** The Jacobian rule as it was before the retries existed: one step per column, nothing else. */
-function plainForwardJacobian(residuals, p, upper) {
-    const r0 = residuals(Float64Array.from(p));
-    const n = p.length;
-    const J = new Float64Array(r0.length * n);
-    for (let j = 0; j < n; j++) {
-        const size = Math.abs(p[j]) * 1e-4 || 1e-4;
-        const h = p[j] + size > upper[j] ? -size : size;
-        const shifted = Float64Array.from(p);
-        shifted[j] = p[j] + h;
-        const r1 = residuals(shifted);
-        for (let i = 0; i < r0.length; i++) J[i * n + j] = (r1[i] - r0[i]) / h;
-    }
-    return J;
-}
-
-test('jacobian: without a non-finite neighbour it is bit-identical to the single-step rule and costs n + 1 evaluations', async () => {
-    const kernels = await loadKernels();
-    let compared = 0;
-    for (const c of fitFix.cases) {
-        const problem = buildProblem(c, kernels);
-        for (const p of [problem.start, refVector(c, 'ref'), refVector(c, 'bumpsRaw')]) {
-            let evaluations = 0;
-            const counted = (x) => { evaluations++; return problem.residuals(x); };
-            const { J, nonFiniteColumns } = SasFitFitter.jacobian(counted, p, problem.lower, problem.upper);
-            assert.equal(evaluations, p.length + 1, c.label + ': no retry');
-            assert.deepEqual(nonFiniteColumns, [], c.label);
-            const want = plainForwardJacobian(problem.residuals, p, problem.upper);
-            assert.equal(Buffer.from(J.buffer).toString('hex'), Buffer.from(want.buffer).toString('hex'), c.label + ': bit-identical');
-            compared += J.length;
-        }
-    }
-    console.log('jacobian default path: ' + compared + ' entries bit-identical to the single-step rule');
-});
-
-// ------------------------------------------------------------------ G4 (LM)
-
-/** The three G4 ratios of a result against a reference { values, stderr } and chi2r. */
-function g4Ratios(c, result, values, stderr, chi2r) {
-    let dp = 0;
-    let de = 0;
-    c.names.forEach((name, j) => {
-        dp = Math.max(dp, Math.abs(result.values[j] - values[name]) / stderr[name]);
-        de = Math.max(de, Math.abs(result.errors[j] - stderr[name]) / stderr[name]);
-    });
-    return { dp, de, dchi: Math.abs(result.chi2r - chi2r) / chi2r };
-}
-
-const sci = (v) => v.toExponential(2);
-
-test('G4: LM from the same start against the polished bumps reference', async () => {
-    const kernels = await loadKernels();
-    const failures = [];
-    for (const c of fitFix.cases) {
-        const problem = buildProblem(c, kernels);
-        const result = SasFitFitter.fit(problem, { method: 'lm' });
-        const ref = g4Ratios(c, result, c.ref.values, c.ref.stderr, c.ref.chi2r);
-        const raw = g4Ratios(c, result, c.bumpsRaw.values, c.bumpsRaw.stderr, c.bumpsRaw.sumsq / c.ref.dof);
-        console.log('G4 ' + c.label.padEnd(36) + ' it ' + String(result.iterations).padStart(2)
-            + ' | vs polished: dp/sigma ' + sci(ref.dp) + ' dstderr ' + sci(ref.de) + ' dchi2r ' + sci(ref.dchi)
-            + ' | vs raw bumps: dp/sigma ' + sci(raw.dp) + ' dstderr ' + sci(raw.de) + ' dchi2r ' + sci(raw.dchi)
-            + ' | bumps nit ' + c.bumpsRaw.nit);
-        assert.equal(result.status, 'converged', c.label);
-        assert.equal(result.dof, c.ref.dof, c.label);
-        assert.equal(result.illConditioned, false, c.label);
-        assert.deepEqual({ ...result.atBound }, c.ref.atBound, c.label);
-        for (const [name, side] of Object.entries(c.ref.atBound)) {
-            const j = c.names.indexOf(name);
-            assert.equal(result.values[j], side === 'upper' ? problem.upper[j] : problem.lower[j], c.label + ': exactly on the bound');
-            assert.ok(Number.isFinite(result.errors[j]) && result.errors[j] > 0, c.label + ': error of a parameter on a bound');
-        }
-        if (!(ref.dp < G4_PARAM_SIGMA) || !(ref.de <= G4_STDERR_REL) || !(ref.dchi <= G4_CHI2R_REL)) failures.push(c.label);
-        assert.ok(covarianceError(result.covariance, c.ref.covariance) <= G4_STDERR_REL * 2, c.label + ': covariance');
-    }
-    assert.deepEqual(failures, [], 'G4 thresholds (0.01 sigma, 2 %, 1e-3) exceeded');
 });
 
 // ---------------------------------------------------------------- behaviour
@@ -529,17 +335,4 @@ test('fit: the problem, its arrays and the p handed to residuals are not shared 
     assert.equal(result.status, 'converged');
     assert.deepEqual(result.values, SasFitFitter.fit(decayProblem()).values);
     assert.notEqual(result.names, frozen.names);
-});
-
-// -------------------------------------------------------------- determinism
-
-test('determinism: the same input twice gives bit-identical results', async () => {
-    const kernels = await loadKernels();
-    for (const c of [fitFix.cases[0], fitFix.cases[4], fitFix.cases[7]]) {
-        const a = SasFitFitter.fit(buildProblem(c, kernels));
-        const b = SasFitFitter.fit(buildProblem(c, kernels));
-        assert.deepEqual(a, b, c.label);
-        const bits = (r) => Buffer.from(Float64Array.from([...r.values, ...r.errors, r.chi2, ...r.covariance.flat()]).buffer).toString('hex');
-        assert.equal(bits(a), bits(b), c.label);
-    }
 });

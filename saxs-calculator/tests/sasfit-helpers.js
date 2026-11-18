@@ -15,6 +15,9 @@
  *                            same shape with a caller-given relative term; ONLY for the
  *                            end-to-end I(q) of P@S cases (see the comment at the function)
  *   loadWasm(model)          bytes of saxs-calculator/wasm/sas-<model>.wasm
+ *   WORKER_MODULES           the modules js/sasfit-worker.js must importScripts, in load order
+ *                            (design spec 3.3). The one list the tests compare against;
+ *                            js/sasfit-worker.js itself is the production source.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,6 +28,11 @@ const WASM_DIR = path.join(__dirname, '..', 'wasm');
 const REL_TOL = 1e-9;
 const ABS_TOL_SCALE = 1e-12;
 const NON_FINITE = Object.freeze({ inf: Infinity, '-inf': -Infinity, nan: NaN });
+const WORKER_MODULES = Object.freeze([
+    'sasfit-meta.js', 'sasfit-validate.js', 'sasfit-weights.js', 'sasfit-kernel.js', 'sasfit-product.js',
+    'sasfit-py-models.js', 'sasfit-evaluate.js', 'sasfit-weighting.js', 'sasfit-linalg.js', 'sasfit-fitter.js',
+    'sasfit-worker-core.js',
+]);
 
 function loadFixture(name) {
     return JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, name + '.json'), 'utf8'));
@@ -97,4 +105,4 @@ function assertCloseRel(got, ref, label, rel) {
     assertWithin(got, ref, label, rel);
 }
 
-module.exports = { loadFixture, num, qOf, isComponentGated, assertClose, assertCloseRel, loadWasm };
+module.exports = { loadFixture, num, qOf, isComponentGated, assertClose, assertCloseRel, loadWasm, WORKER_MODULES };

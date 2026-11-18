@@ -1,80 +1,33 @@
 'use strict';
 /**
- * sasfit-worker-client.js (main thread) and sasfit-worker.js (Worker entry);
- * design spec 3.3, 4.10 and plan M2 Task 5 with review section D.
+ * sasfit-worker-client.js (main thread); design spec 3.3, 4.10 and plan M2
+ * Task 5 with review section D.
  *
- * Node has no Worker, so there are three layers:
- *   1. the client against a hand-driven fake Worker (the test feeds the replies);
- *   2. the Worker entry file run in a vm context whose importScripts loads the
- *      real modules and whose fetch reads the real .wasm files;
+ * Node has no Worker, so the client is tested in layers:
+ *   1. against a hand-driven fake Worker (the test feeds the replies) -- here,
+ *      and in sasfit-worker-client-settle.test.js for the paths on which a
+ *      promise could be left hanging;
+ *   2. the Worker entry file run in a vm context: sasfit-worker-entry.test.js;
  *   3. client + the real SasFitWorkerCore behind a fake Worker that passes
  *      every message through structuredClone on a macrotask, with real wasm --
- *      this is what catches a protocol mismatch between the two sides.
- * A real browser Worker is exercised by the smoke test of Task 6.
+ *      here; this is what catches a protocol mismatch between the two sides.
+ * A real browser Worker is exercised by tools/sasfit/smoke_browser.py.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { SasFitEvaluate, SasFitWorkerCore, SasFitWorkerClient } = require('./load.js');
+const { loadWasm } = require('./sasfit-helpers.js');
 const {
-    SasFitKernel, SasFitEvaluate, SasFitWorkerCore, SasFitWorkerClient,
-} = require('./load.js');
-const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
-const { FIT_RESULT_FIELDS } = require('./sasfit-fit-helpers.js');
+    FIT_RESULT_FIELDS, G4, CLIENT_VERSION: VERSION, EVAL_Q: Q, caseOf, fitJob, evalRequest, fakeWorkers, rejection,
+    directKernels, settle,
+} = require('./sasfit-fit-helpers.js');
 
 const JS_DIR = path.join(__dirname, '..', 'js');
-const fitFix = loadFixture('fit');
-const CASE_1 = fitFix.cases.find((c) => c.label === '1 sphere');
-const VERSION = '9.87';
+const CASE_1 = caseOf('1 sphere');
 const WORKER_URL = 'js/sasfit-worker.js?v=' + VERSION;
-const Q = Float64Array.from({ length: 30 }, (_, i) => 0.006 * Math.pow(1.08, i));
-const WORKER_MODULES = Object.freeze(['sasfit-meta.js', 'sasfit-validate.js', 'sasfit-weights.js', 'sasfit-kernel.js',
-    'sasfit-product.js', 'sasfit-py-models.js', 'sasfit-evaluate.js', 'sasfit-weighting.js', 'sasfit-linalg.js',
-    'sasfit-fitter.js', 'sasfit-worker-core.js']);
-
-const settle = () => new Promise((resolve) => setImmediate(resolve));
-const evalRequest = (extra) => Object.assign({ modelSpec: { model: 'sphere' }, params: { radius: 40 }, q: Q, opts: { cutoff: 1e-5 } }, extra);
-
-function fitJob(c, extra) {
-    const q = Float64Array.from(c.data.q);
-    return Object.assign({
-        modelSpec: c.modelSpec,
-        params: c.params,
-        fitFlags: c.fitFlags,
-        bounds: Object.fromEntries(Object.entries(c.bounds).map(([k, [lo, hi]]) => [k, [num(lo), num(hi)]])),
-        data: { q, I: Float64Array.from(c.data.I), sigma: Float64Array.from(c.data.sigma), kind: 'generic', header: null },
-        range: { qMin: q[0], qMax: q[q.length - 1] },
-        weighting: c.weighting,
-        options: { maxSteps: 200, cutoff: 1e-5 },
-    }, extra);
-}
-
-/** Fake Workers driven by the test: every created worker is recorded with its url, messages and terminate count. */
-function fakeWorkers() {
-    const workers = [];
-    const createWorker = (url) => {
-        const worker = { url, sent: [], terminated: 0, onmessage: null, onerror: null, onmessageerror: null };
-        worker.postMessage = (message) => { worker.sent.push(message); };
-        worker.terminate = () => { worker.terminated += 1; };
-        worker.reply = (data) => worker.onmessage({ data });
-        workers.push(worker);
-        return worker;
-    };
-    const client = SasFitWorkerClient.create({ createWorker, version: VERSION });
-    return { workers, client, last: () => workers[workers.length - 1] };
-}
-
-/** The rejection of a promise, which must be an Error. */
-async function rejection(promise) {
-    try {
-        await promise;
-    } catch (err) {
-        assert.ok(err instanceof Error, 'rejections are Error objects, got ' + String(err));
-        return err;
-    }
-    return assert.fail('the promise did not reject');
-}
 
 // ------------------------------------------------------------ 1. the client
 
@@ -402,172 +355,18 @@ test('script version: read from document.currentScript.src at load time, and use
     assert.deepEqual(made, ['js/sasfit-worker.js?v=7.31']);
     client.dispose();
 
+    // A version with URL metacharacters: read decoded, and refused before it can reach a URL
+    // (were it accepted, workerUrl() would encode it -- see the entry test for the Worker's side).
+    const odd = load('https://example.org/js/sasfit-worker-client.js?v=5.2%26x%3D1');
+    assert.equal(odd.scriptVersion, '5.2&x=1');
+    assert.throws(() => odd.create(), /version/);
+    assert.equal(made.length, 1, 'no Worker was created for it');
+    // the first of several query parameters named v, whatever comes with it
+    assert.equal(load('https://example.org/js/sasfit-worker-client.js?x=1&v=8.0&y=2').scriptVersion, '8.0');
+
     assert.equal(load('https://example.org/js/sasfit-worker-client.js').scriptVersion, null);
     assert.equal(load(null).scriptVersion, null);
     assert.throws(() => load('https://example.org/js/sasfit-worker-client.js').create(), /version/);
-});
-
-// ------------------------------------------------------- 2. the Worker entry
-
-/**
- * Run js/sasfit-worker.js in a fresh context that looks like a Worker global:
- * importScripts executes the real module files, fetch serves the real wasm.
- */
-function runWorkerEntry(search, options) {
-    const opts = options || {};
-    const log = { imports: [], fetches: [], posts: [], errors: [], timers: 0 };
-    const sandbox = {
-        URLSearchParams,
-        console: { error: (...args) => { log.errors.push(args); } },
-        location: { search },
-        setTimeout: (fn, ms) => { log.timers += 1; return setTimeout(fn, ms); },
-        postMessage: (message) => { log.posts.push(message); },
-        importScripts: (...urls) => {
-            urls.forEach((url) => {
-                log.imports.push(url);
-                const file = url.split('?')[0];
-                if (file === opts.failImport) throw new Error('NetworkError: failed to load ' + url);
-                assert.match(file, /^sasfit-[a-z-]+\.js$/, 'importScripts URL is relative to the worker script: ' + url);
-                vm.runInContext(fs.readFileSync(path.join(JS_DIR, file), 'utf8'), sandbox, { filename: file });
-            });
-            // record what the entry hands to the core (loadWasm, post, yieldTask); the core itself is the real one
-            const real = sandbox.SasFitWorkerCore;
-            sandbox.SasFitWorkerCore = Object.assign({}, real, {
-                create: (deps) => { log.deps = deps; return real.create(deps); },
-            });
-        },
-        fetch: (url) => {
-            log.fetches.push(url);
-            const status = opts.status || 200;
-            const name = /^\.\.\/wasm\/sas-([a-z_]+)\.wasm/.exec(url);
-            assert.ok(name, 'wasm URL is relative to the worker script: ' + url);
-            return Promise.resolve({
-                ok: status >= 200 && status < 300, status, url,
-                arrayBuffer: () => Promise.resolve(loadWasm(name[1])),
-            });
-        },
-    };
-    sandbox.self = sandbox;
-    if (opts.onLog) opts.onLog({ log });
-    vm.createContext(sandbox);
-    vm.runInContext(fs.readFileSync(path.join(JS_DIR, 'sasfit-worker.js'), 'utf8'), sandbox, { filename: 'sasfit-worker.js' });
-    /** Deliver a message built inside the context (typed arrays must belong to its realm). */
-    const deliver = (message) => {
-        sandbox.__incoming = JSON.stringify(message);
-        const data = vm.runInContext('(() => { const m = JSON.parse(__incoming); if (m.q) m.q = Float64Array.from(m.q); return m; })()', sandbox);
-        return sandbox.onmessage({ data });
-    };
-    const nextPost = async () => {
-        const count = log.posts.length;
-        for (let i = 0; i < 200 && log.posts.length === count; i++) await new Promise((resolve) => setTimeout(resolve, 5));
-        assert.ok(log.posts.length > count, 'the worker did not answer');
-        return log.posts[log.posts.length - 1];
-    };
-    return { sandbox, log, deliver, nextPost };
-}
-
-test('worker entry: importScripts the module list with ?v=, fetches versioned wasm, answers an evaluate', async () => {
-    const w = runWorkerEntry('?v=' + VERSION);
-    assert.deepEqual(w.log.imports, WORKER_MODULES.map((file) => file + '?v=' + VERSION));
-    assert.equal(typeof w.sandbox.onmessage, 'function');
-    assert.deepEqual(w.log.fetches, [], 'no wasm is fetched before it is needed');
-
-    w.deliver({ type: 'evaluate', reqId: 1, modelSpec: { model: 'sphere', structure: 'hardsphere' }, params: {}, q: Array.from(Q) });
-    const curve = await w.nextPost();
-    assert.equal(curve.type, 'curve', JSON.stringify(curve).slice(0, 300));
-    assert.equal(curve.reqId, 1);
-    assert.deepEqual([...w.log.fetches].sort(),
-        ['../wasm/sas-hardsphere.wasm?v=' + VERSION, '../wasm/sas-sphere.wasm?v=' + VERSION]);
-    assert.ok(w.log.timers >= 1, 'yieldTask goes through setTimeout (a later task)');
-    const kernels = Object.fromEntries(await Promise.all(['sphere', 'hardsphere']
-        .map(async (name) => [name, await SasFitKernel.instantiate(loadWasm(name))])));
-    const want = SasFitEvaluate.evaluate({ model: 'sphere', structure: 'hardsphere' }, {}, Q, { cutoff: 1e-5 }, kernels).I;
-    assert.deepEqual(Array.from(curve.I), Array.from(want));
-
-    w.deliver({ type: 'evaluate', reqId: 2, modelSpec: { model: 'sphere' }, params: {}, q: Array.from(Q) });
-    await w.nextPost();
-    assert.equal(w.log.fetches.length, 2, 'each wasm is fetched once');
-});
-
-test('worker entry: without ?v= it still works and adds no query; an odd version is URL-encoded', async () => {
-    for (const search of ['', '?other=1', '?v=']) {
-        const w = runWorkerEntry(search);
-        assert.deepEqual(w.log.imports, [...WORKER_MODULES], 'search ' + JSON.stringify(search));
-        w.deliver({ type: 'evaluate', reqId: 1, modelSpec: { model: 'sphere' }, params: {}, q: Array.from(Q) });
-        assert.equal((await w.nextPost()).type, 'curve');
-        assert.deepEqual(w.log.fetches, ['../wasm/sas-sphere.wasm']);
-    }
-    const odd = runWorkerEntry('?v=' + encodeURIComponent('5.2&x=../'));
-    assert.deepEqual(odd.log.imports, WORKER_MODULES.map((file) => file + '?v=5.2%26x%3D..%2F'));
-});
-
-test('worker entry: a non-2xx wasm response becomes WASM_LOAD with the status in the detail', async () => {
-    const w = runWorkerEntry('?v=' + VERSION, { status: 404 });
-    w.deliver({ type: 'evaluate', reqId: 5, modelSpec: { model: 'sphere' }, params: {}, q: Array.from(Q) });
-    const err = await w.nextPost();
-    assert.deepEqual([err.type, err.code, err.reqId], ['error', 'WASM_LOAD', 5]);
-    assert.match(err.detail, /404/);
-});
-
-test('worker entry: only C models of SasFitMeta ever reach a wasm URL; yieldTask is a later task', async () => {
-    const w = runWorkerEntry('?v=' + VERSION);
-    const { loadWasm: entryLoadWasm, yieldTask, post, onFatal } = w.log.deps;
-    const lost = new Error('DataCloneError');
-    onFatal(lost);
-    assert.equal(w.log.errors.length, 1, 'onFatal reports through console.error');
-    assert.equal(w.log.errors[0][w.log.errors[0].length - 1], lost);
-    for (const name of ['../../secret', 'constructor', '__proto__', 'toString', 'sphere?x=1', '', 'power_law', 'guinier_porod', undefined]) {
-        await assert.rejects(Promise.resolve().then(() => entryLoadWasm(name)), /model/, String(name));
-    }
-    assert.deepEqual(w.log.fetches, [], 'nothing was fetched for a name that is not a C model');
-    const bytes = await entryLoadWasm('cylinder');
-    assert.ok(bytes.byteLength > 1000);
-    assert.deepEqual(w.log.fetches, ['../wasm/sas-cylinder.wasm?v=' + VERSION]);
-
-    let resolved = false;
-    const yielded = yieldTask().then(() => { resolved = true; });
-    await Promise.resolve();
-    await Promise.resolve();
-    assert.equal(resolved, false, 'not resolved in a microtask');
-    await yielded;
-    assert.equal(w.log.timers, 1);
-    post({ type: 'probe' });
-    assert.deepEqual(w.log.posts, [{ type: 'probe' }]);
-});
-
-test('worker entry: importScripts failing -> one error message WORKER_START_FAILED with the cause, then the exception goes on', () => {
-    let thrown = null;
-    let log = null;
-    try {
-        runWorkerEntry('?v=' + VERSION, { failImport: 'sasfit-linalg.js', onLog: (entry) => { log = entry.log; } });
-    } catch (err) {
-        thrown = err;
-    }
-    assert.ok(thrown, 'the entry script still fails (the client gets the error event as well)');
-    assert.match(thrown.message, /failed to load sasfit-linalg\.js\?v=9\.87/);
-    assert.equal(log.posts.length, 1);
-    assert.deepEqual(Object.keys(log.posts[0]).sort(), ['code', 'detail', 'type']);
-    assert.deepEqual([log.posts[0].type, log.posts[0].code], ['error', 'WORKER_START_FAILED']);
-    assert.match(log.posts[0].detail, /importScripts/);
-    assert.match(log.posts[0].detail, /failed to load sasfit-linalg\.js/);
-});
-
-test('worker entry: a message that cannot be deserialised (messageerror) is answered with BAD_MESSAGE', () => {
-    const w = runWorkerEntry('?v=' + VERSION);
-    assert.equal(typeof w.sandbox.onmessageerror, 'function');
-    w.sandbox.onmessageerror({ data: null });
-    assert.equal(w.log.posts.length, 1);
-    assert.deepEqual(Object.keys(w.log.posts[0]).sort(), ['code', 'detail', 'type']);
-    assert.deepEqual([w.log.posts[0].type, w.log.posts[0].code], ['error', 'BAD_MESSAGE']);
-    assert.equal(typeof w.log.posts[0].detail, 'string');
-});
-
-test('worker entry is short and has no top-level declarations', () => {
-    const source = fs.readFileSync(path.join(JS_DIR, 'sasfit-worker.js'), 'utf8');
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((line) => line.trim() !== '');
-    assert.ok(code.length < 60, 'code lines: ' + code.length);
-    assert.equal(code[0], '(function () {');
-    assert.equal(code[code.length - 1], '})();');
 });
 
 // ------------------------------------- 3. client + real core, end to end
@@ -606,8 +405,7 @@ test('end to end: client.evaluate through the real core equals a direct evaluati
     const spec = { model: 'sphere', structure: 'hayter_msa', lowQPowerLaw: true };
     const params = { radius: 35, volfraction: 0.08, lowq_scale: 1e-9, lowq_power: 3.5 };
     const result = await client.evaluate({ modelSpec: spec, params, q: Q, opts: { cutoff: 1e-5 } });
-    const kernels = Object.fromEntries(await Promise.all(['sphere', 'hayter_msa']
-        .map(async (name) => [name, await SasFitKernel.instantiate(loadWasm(name))])));
+    const kernels = await directKernels(['sphere', 'hayter_msa']);
     const want = SasFitEvaluate.evaluate(spec, params, Q, { cutoff: 1e-5 }, kernels);
     assert.ok(result.I instanceof Float64Array);
     assert.deepEqual(Array.from(result.I), Array.from(want.I));
@@ -646,8 +444,8 @@ test('end to end: client.fit through the real core reaches the bumps reference; 
     assert.equal(result.iterations, progress.length);
     for (const name of CASE_1.names) {
         const off = Math.abs(result.params[name] - CASE_1.ref.values[name]) / CASE_1.ref.stderr[name];
-        assert.ok(off < 0.01, name + ' off by ' + off + ' sigma');
-        assert.ok(Math.abs(result.errors[name] - CASE_1.ref.stderr[name]) <= 0.02 * CASE_1.ref.stderr[name], name);
+        assert.ok(off < G4.PARAM_SIGMA, name + ' off by ' + off + ' sigma');
+        assert.ok(Math.abs(result.errors[name] - CASE_1.ref.stderr[name]) <= G4.STDERR_REL * CASE_1.ref.stderr[name], name);
     }
     assert.equal(result.params.sld, CASE_1.params.sld);
     assert.equal(result.curve.length, job.data.q.length);
@@ -674,7 +472,7 @@ test('end to end: client.fit through the real core reaches the bumps reference; 
     assert.equal(stats.created, 1, 'stop() does not start the replacement');
     await settle();
     assert.equal(stats.posted.filter((type) => type === 'result').length, 1, 'the stopped job produced no result');
-    const again = await client.fit(fitJob(fitFix.cases.find((c) => c.label.startsWith('9a '))));
+    const again = await client.fit(fitJob(caseOf('9a ')));
     assert.equal(again.status, 'converged');
     assert.equal(again.displayErrorsScaled, true);
     assert.equal(stats.created, 2, 'the fit after stop() started it');

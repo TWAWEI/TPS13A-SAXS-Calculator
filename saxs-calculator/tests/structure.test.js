@@ -39,11 +39,8 @@ const SPLIT_GROUPS = Object.freeze({
 const WORKER_ONLY = Object.freeze(['sasfit-worker.js']);
 
 // sasfit-worker.js 以 importScripts 載入的純計算模組，順序即載入順序（規格 §3.3）。
-const WORKER_IMPORTS = Object.freeze([
-    'sasfit-meta.js', 'sasfit-validate.js', 'sasfit-weights.js', 'sasfit-kernel.js', 'sasfit-product.js',
-    'sasfit-py-models.js', 'sasfit-evaluate.js', 'sasfit-weighting.js', 'sasfit-linalg.js', 'sasfit-fitter.js',
-    'sasfit-worker-core.js',
-]);
+// 測試端只有這一份清單（tests/sasfit-helpers.js），Worker 入口的行為測試也用它。
+const { WORKER_MODULES: WORKER_IMPORTS } = require('./sasfit-helpers.js');
 
 const listFiles = (dir, ext) =>
     fs.readdirSync(dir).filter(f => f.endsWith(ext)).sort();
@@ -165,33 +162,19 @@ test('[structure] sasfit-worker.js 的 importScripts 清單＝純計算模組，
     assert.match(code, /^\(function \(\) \{/m, 'Worker 入口必須包在 IIFE 內');
 });
 
-test('[structure] Worker 版本機制：不寫死版本；client 讀 document.currentScript，worker 讀 self.location.search', () => {
+test('[structure] Worker 版本機制：不寫死版本；只有一個 new Worker；模型名稱走 SasFitMeta 白名單', () => {
+    // 這裡只留靜態才看得出來的規則。「Worker、importScripts、wasm 的網址都帶 ?v=、且經過編碼」
+    // 「版本取自 document.currentScript／self.location.search」是行為，由 vm 測試證明：
+    // tests/sasfit-worker-client.test.js（script version）與 tests/sasfit-worker-entry.test.js。
     const worker = stripComments(readJs('sasfit-worker.js'));
     const client = stripComments(readJs('sasfit-worker-client.js'));
+    assert.ok(PAGE_VERSION, '找不到側欄 footer 的「Version X.Y」');
     for (const [file, code] of [['sasfit-worker.js', worker], ['sasfit-worker-client.js', client]]) {
-        assert.ok(!/[?&]v=\s*['"`]?\s*\d/.test(code), `${file} 寫死了 ?v= 版本`);
-        assert.ok(!/['"`]\d+(?:\.\d+)+['"`]/.test(code), `${file} 有寫死的版本字串`);
-        assert.ok(PAGE_VERSION && !code.includes(PAGE_VERSION), `${file} 出現了目前的版本號 ${PAGE_VERSION}`);
+        assert.ok(!code.includes(PAGE_VERSION), `${file} 出現了目前的版本號 ${PAGE_VERSION}`);
     }
-    // client：載入時由 document.currentScript 取版本，建立 Worker 的網址一律帶 ?v=
-    assert.match(client, /document\.currentScript/, 'worker-client 必須以 document.currentScript 取版本');
     assert.match(client, /typeof document\b/, 'worker-client 頂層必須先確認 document 存在（Node 與 tests/load.js 沒有）');
-    assert.match(client, /['"`]js\/sasfit-worker\.js['"`]/, 'worker-client 必須載入 js/sasfit-worker.js');
-    const workerUrls = [...client.matchAll(/createWorker\(([^)]*)\)/g)].map(m => m[1]);
-    assert.ok(workerUrls.length >= 1, 'worker-client 沒有建立 Worker 的呼叫');
-    for (const arg of workerUrls) {
-        assert.match(arg, /^workerUrl\(/, `建立 Worker 的網址必須經過 workerUrl()（帶 ?v=）：createWorker(${arg})`);
-    }
-    assert.match(client, /function workerUrl\([^)]*\) \{\s*return WORKER_PATH \+ ['"`]\?v=['"`] \+ /,
-        'workerUrl() 必須回傳 WORKER_PATH + "?v=" + 版本');
     assert.equal((client.match(/new Worker\(/g) || []).length, 1, 'new Worker 只能出現在預設的 createWorker 裡');
-
-    // worker：版本取自 self.location.search，importScripts 與 wasm fetch 的網址都經過同一個 versioned()
-    assert.match(worker, /self\.location\.search/, 'sasfit-worker.js 必須以 self.location.search 取版本');
-    assert.match(worker, /importScripts\(\.\.\.\w+\.map\(versioned\)\)/, '每個 importScripts 網址都要經過 versioned()');
-    const fetches = [...worker.matchAll(/\bfetch\(([^\n]*)/g)].map(m => m[1]);
-    assert.equal(fetches.length, 1, 'sasfit-worker.js 只能有一個 fetch（wasm）');
-    assert.match(fetches[0], /^versioned\(/, 'wasm 的 fetch 網址必須經過 versioned()');
+    assert.equal((worker.match(/new Worker\(/g) || []).length, 0, 'Worker 入口不得再開 Worker');
     assert.match(worker, /SasFitMeta\.models/, '組 wasm 網址前必須以 SasFitMeta.models 白名單檢查模型名稱');
 });
 

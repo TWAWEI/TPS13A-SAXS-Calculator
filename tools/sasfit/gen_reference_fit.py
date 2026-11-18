@@ -27,6 +27,16 @@ the polished point with bumps' own lsqerror functions.  The raw bumps result
 is kept as `bumpsRaw`.  A parameter that bumps leaves on a bound is held there
 exactly while the others are polished (design spec 15, decision 20).
 
+Cases appended after the M2 review (labels 10a-13) come after the first twelve,
+whose bytes do not change.  They add what the first twelve do not exercise:
+"dirty" data on which the site's mask removes points (sigma = 0, sigma < 0,
+I = 0, and noise-dominated I <= 0) under each of the four weightings, a fit
+range restricted on both sides, a parameter pegged on a bound while the free
+ones are nonlinear, and a P@hayter_msa fit.  bumps keeps points with dy <= 0,
+so the script applies the site's mask and range itself before it builds the
+data for bumps; the fixture stores the FULL data, the `range` and `nUsed`, the
+number of points that take part.
+
 The script raises, and writes nothing, when a case is not converged, when the
 raw and the polished solution differ by 0.02 sigma or more, when the polished
 point is not stationary, or when a bound case is not exactly on its bound.
@@ -61,6 +71,12 @@ EXPECTED_BUMPS = "1.0.4"
 Q_FIT = np.logspace(-2.3, -0.5, 120)
 STEPS, FTOL, XTOL = 200, 1e-10, 1e-10      # bumps lm defaults (fitters.py MPFit.settings)
 SV_FLOOR = 1e-8                            # lsqerror.jacobian_cov tol
+DIRTY_FLOOR = 8e-3                         # noise floor of the "dirty" data of cases 10a-10d
+# Noise seed of cases 10a-10d.  The first design used seed 110: there bumps' raw |I|-weighted
+# result (10c) ended 0.041 sigma from the polished minimum (seed 116: 0.037), outside the 0.02
+# sigma "same solution" check, so it could not serve as a reference.  With this seed all four
+# weightings pass the unchanged checks on the same data.
+DIRTY_SEED = 119
 RAW_VS_POLISHED_MAX = 0.02                 # sigma; raw bumps and polished are the same solution
 REFIT_MOVE_MAX = 1e-3                      # sigma; a refit from the solution stays put
 STATIONARY_MAX = 1e-4                      # sigma; Gauss-Newton step left at the polished point (P@S: ~3e-6, hardsphere.c round-off)
@@ -165,11 +181,16 @@ SCHULZ = {"radius_pd_type": "schulz", "radius_pd_n": 80, "radius_pd_nsigma": 3}
 
 
 def _case(label, model, truth, start, bounds, seed, structure=None, low_q=False,
-          weighting="sigma", floor=1e-4, at_bound=None, alt_start=None):
+          weighting="sigma", floor=1e-4, at_bound=None, alt_start=None, q=None,
+          dirty=None, q_range=None):
+    """One fit case.  q: its own grid (default Q_FIT); dirty: {"sigmaZero", "sigmaNegative",
+    "iZero": index lists, "nonPositive": (min, max) points with I <= 0 the script insists on};
+    q_range: (qMin, qMax), both inclusive.  Cases with dirty or q_range store `nUsed`."""
     return {"label": label, "model": model, "structure": structure, "lowQ": low_q,
             "truth": truth, "start": start, "bounds": bounds, "seed": seed,
             "weighting": weighting, "floor": floor, "atBound": at_bound or {},
-            "altStart": alt_start}
+            "altStart": alt_start, "q": Q_FIT if q is None else q, "dirty": dirty,
+            "range": q_range}
 
 
 def fit_cases():
@@ -222,6 +243,44 @@ def fit_cases():
     for tag, mode in (("9a", "sqrtI"), ("9b", "absI"), ("9c", "none")):
         cases.append(_case("%s sphere weighting %s" % (tag, mode), "sphere", SPHERE,
                            SPHERE_START, SPHERE_BOUNDS, 101, weighting=mode))
+    return cases + review_cases()
+
+
+Q_DIRTY = np.logspace(-2.3, -0.5, 150)
+# Background-subtracted-looking sphere data: no background, a noise floor that dominates the
+# last third of the curve, so that noise alone makes about a dozen intensities negative.
+DIRTY_TRUTH = {"scale": 0.02, "background": 0.0, "sld": 1.0, "sld_solvent": 6.0, "radius": 50.0}
+DIRTY = {"sigmaZero": [0, 1, 40, 77], "sigmaNegative": [55], "iZero": [128, 141],
+         "nonPositive": (10, 16)}
+HMSA_TRUTH = {"scale": 1.0, "background": 0.001, "sld": 1.0, "sld_solvent": 6.0, "radius": 30.0,
+              "volfraction": 0.1, "charge": 12.0, "temperature": 298.0, "concentration_salt": 0.02,
+              "dielectconst": 78.0, "radius_effective": 30.0, "radius_effective_mode": 1,
+              "structure_factor_mode": 0}
+
+
+def review_cases():
+    """Cases 10-13, appended after the M2 review (see the module docstring)."""
+    cases = []
+    for tag, mode in (("10a", "sigma"), ("10b", "sqrtI"), ("10c", "absI"), ("10d", "none")):
+        cases.append(_case("%s dirty sphere weighting %s" % (tag, mode), "sphere", DIRTY_TRUTH,
+                           {"scale": 0.024, "radius": 54.0, "background": 0.0005}, SPHERE_BOUNDS, DIRTY_SEED,
+                           weighting=mode, floor=DIRTY_FLOOR, q=Q_DIRTY, dirty=DIRTY))
+    cases.append(_case("11 sphere restricted q range", "sphere", SPHERE, SPHERE_START, SPHERE_BOUNDS,
+                       111, q_range=(0.012, 0.15)))
+    # Thickness held on an upper bound below the truth (10) while radius and scale, both free,
+    # are nonlinear and correlated with it: the bound case the first twelve do not have.
+    cases.append(_case("12 nonlinear bound: core_shell_sphere thickness", "core_shell_sphere",
+                       {"scale": 0.05, "background": 0.001, "radius": 60.0, "thickness": 10.0,
+                        "sld_core": 1.0, "sld_shell": 2.0, "sld_solvent": 3.0},
+                       {"radius": 66.0, "thickness": 8.0, "scale": 0.06},
+                       {"radius": (1.0, 1000.0), "thickness": (1.0, 9.0), "scale": (0.0, INF)}, 112,
+                       at_bound={"thickness": "upper"},
+                       alt_start={"radius": 55.0, "thickness": 6.0, "scale": 0.04}))
+    # A benign regime of hayter_msa (2*q*R >= 0.3 on this grid, design spec 16).
+    cases.append(_case("13 sphere@hayter_msa", "sphere", HMSA_TRUTH,
+                       {"radius": 33.0, "charge": 8.0, "volfraction": 0.13},
+                       {"radius": (5.0, 200.0), "charge": (1.0, 100.0), "volfraction": (0.001, 0.5)},
+                       113, structure="hayter_msa"))
     return cases
 
 
@@ -265,20 +324,46 @@ def _site_mask(q, I, w):
 
 
 def _make_data(case):
+    q = case["q"]
     kern = get_model(_model_string(case))
-    blank = Data1D(x=Q_FIT, y=np.zeros_like(Q_FIT), dy=np.ones_like(Q_FIT))
+    blank = Data1D(x=q, y=np.zeros_like(q), dy=np.ones_like(q))
     theory = np.asarray(DirectModel(blank, kern, cutoff=CUTOFF)(**_sas_kwargs(case, case["truth"])))
     sigma = 0.03 * np.abs(theory) + case["floor"]
     I = theory + np.random.default_rng(case["seed"]).normal(size=theory.size) * sigma
+    if case["dirty"]:
+        I, sigma = _make_dirty(case, I, sigma)
     return kern, I, sigma
+
+
+def _make_dirty(case, I, sigma):
+    """The points real files have and a fit must leave out: sigma = 0, sigma < 0, I = 0."""
+    dirty = case["dirty"]
+    I, sigma = I.copy(), sigma.copy()
+    sigma[dirty["sigmaZero"]] = 0.0
+    sigma[dirty["sigmaNegative"]] *= -1.0
+    I[dirty["iZero"]] = 0.0
+    low, high = dirty["nonPositive"]
+    count = int(np.sum(I <= 0))
+    if not low <= count <= high:
+        raise RuntimeError("%s: %d points with I <= 0, wanted %d..%d" % (case["label"], count, low, high))
+    return I, sigma
+
+
+def _keep(case, I, w):
+    """The points that take part: the site's mask, and inside the case's range (inclusive)."""
+    q = case["q"]
+    keep = _site_mask(q, I, w)
+    if case["range"]:
+        keep &= (q >= case["range"][0]) & (q <= case["range"][1])
+    if not (case["dirty"] or case["range"]) and not keep.all():
+        raise RuntimeError("%s: %d point(s) masked; the fixture expects none"
+                           % (case["label"], int((~keep).sum())))
+    return keep
 
 
 def _make_problem(case, kern, I, w, start):
     """FitProblem and the flat names of its parameters, in problem.labels() order."""
-    keep = _site_mask(Q_FIT, I, w)
-    if not keep.all():
-        raise RuntimeError("%s: %d point(s) masked; the fixture expects none"
-                           % (case["label"], int((~keep).sum())))
+    keep = _keep(case, I, w)
     pars = dict(case["truth"])
     pars.update(start)
     model = Model(kern, **_sas_kwargs(case, pars))
@@ -287,7 +372,8 @@ def _make_problem(case, kern, I, w, start):
         sas_name = _sas_name(flat_name, case["lowQ"])
         getattr(model, sas_name).range(lo, hi)
         back[sas_name] = flat_name
-    problem = FitProblem(Experiment(Data1D(x=Q_FIT, y=I, dy=w), model, cutoff=CUTOFF))
+    data = Data1D(x=case["q"][keep], y=I[keep], dy=w[keep])
+    problem = FitProblem(Experiment(data, model, cutoff=CUTOFF))
     return problem, [back[label] for label in problem.labels()]
 
 
@@ -400,7 +486,7 @@ def _solve_case(case):
         diag["altStartSigma"] = _check_alt_start(case, kern, I, w, names, x, stderr)
     return {"names": names, "x": x, "x_raw": x_raw, "dx_raw": dx_raw, "sumsq_raw": sumsq_raw,
             "nit": int(res.nit), "J": J, "C": C, "stderr": stderr, "r": r, "dof": int(dof),
-            "I": I, "sigma": sigma_data, "diag": diag}
+            "I": I, "sigma": sigma_data, "diag": diag, "nUsed": int(_keep(case, I, w).sum())}
 
 
 def _check_case(case, sol):
@@ -426,6 +512,18 @@ def _entry(case, sol):
     start = dict(case["truth"])
     start.update(case["start"])
     sumsq = float(np.sum(sol["r"] ** 2))
+    entry = _base_entry(case, sol, names, start, sumsq)
+    if case["dirty"] or case["range"]:
+        # Only the appended cases: the site must select exactly these points from the full data.
+        if sol["nUsed"] != sol["r"].size:
+            raise RuntimeError("%s: nUsed %d != %d residuals" % (case["label"], sol["nUsed"], sol["r"].size))
+        entry["nUsed"] = sol["nUsed"]
+        if case["range"]:
+            entry["range"] = {"qMin": case["range"][0], "qMax": case["range"][1]}
+    return entry
+
+
+def _base_entry(case, sol, names, start, sumsq):
     return {
         "label": case["label"],
         "modelSpec": {"model": case["model"], "structure": case["structure"], "lowQPowerLaw": case["lowQ"]},
@@ -435,7 +533,7 @@ def _entry(case, sol):
         "bounds": {name: list(case["bounds"][name]) for name in names},
         "weighting": case["weighting"],
         "seed": case["seed"],
-        "data": {"q": Q_FIT, "I": sol["I"], "sigma": sol["sigma"]},
+        "data": {"q": case["q"], "I": sol["I"], "sigma": sol["sigma"]},
         "names": names,
         "ref": {"values": dict(zip(names, sol["x"].tolist())),
                 "stderr": dict(zip(names, sol["stderr"].tolist())),

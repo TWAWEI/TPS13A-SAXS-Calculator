@@ -16,6 +16,16 @@
  *                            typed arrays, the case's own `range` when it has one, else the full q range
  *   fitMessage(c, jobId, extra)   the same as the 'fit' message of SasFitWorkerCore
  *   directKernels(names)     Promise<{ name: wasm exports }> straight from the .wasm files
+ *   loadKernels()            the same for every C model of SasFitMeta, instantiated once per test file
+ *   usedPoints(c)            how many points of a fit.json case take part: its `nUsed`, else all
+ *   buildProblem(c, kernels) the SasFitFitter problem of a fit.json case: residuals(p) = (I - I_model)/w on
+ *                            the points SasFitWeighting.select keeps (asserted to be usedPoints(c) points)
+ *   refVector(c, key)        c[key].values in the order of c.names (key: 'ref' | 'bumpsRaw')
+ *   covarianceError(C, refRows)   largest |dC_ij|/sqrt(C_ii*C_jj) against reference rows
+ *   G4                       the thresholds of gate G4 (design spec 11); never loosen
+ *   g4Ratios(c, values, errors, chi2r, ref?)   { dp, de, dchi } of a result against c.ref (or `ref`):
+ *                            worst parameter difference in sigma, worst relative error difference,
+ *                            relative chi2r difference; values and errors are keyed by name
  *   settle()                 Promise resolved in a later macrotask (setImmediate)
  *   makeCore(overrides)      { core, posts, loads, ofType(type) }: a SasFitWorkerCore with a counting
  *                            loadWasm, collected posts and an immediate yieldTask
@@ -31,7 +41,9 @@
  *   outcome(promise)         'pending' | 'resolved' | 'rejected' after a macrotask, without waiting further
  */
 const assert = require('node:assert/strict');
-const { SasFitKernel, SasFitWorkerCore, SasFitWorkerClient } = require('./load.js');
+const {
+    SasFitMeta, SasFitKernel, SasFitEvaluate, SasFitWeighting, SasFitWorkerCore, SasFitWorkerClient,
+} = require('./load.js');
 const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
 
 const FIT_RESULT_FIELDS = Object.freeze(['params', 'names', 'errors', 'errorsScaled', 'displayErrorsScaled',
@@ -70,6 +82,63 @@ const fitMessage = (c, jobId, extra) => Object.assign({ type: 'fit', jobId }, fi
 async function directKernels(names) {
     const list = await Promise.all(names.map((name) => SasFitKernel.instantiate(loadWasm(name))));
     return Object.fromEntries(names.map((name, i) => [name, list[i]]));
+}
+
+let kernelsPromise = null;
+function loadKernels() {
+    if (kernelsPromise === null) {
+        const names = SasFitMeta.order.filter((name) => SasFitMeta.models[name].kind === 'c');
+        kernelsPromise = directKernels(names).then(Object.freeze);
+    }
+    return kernelsPromise;
+}
+
+const usedPoints = (c) => (c.nUsed === undefined ? c.data.q.length : c.nUsed);
+
+function buildProblem(c, kernels) {
+    const job = fitJob(c);
+    const sel = SasFitWeighting.select(job.data, c.weighting, job.range);
+    assert.equal(sel.q.length, usedPoints(c), c.label + ': the points that take part');
+    const opts = { cutoff: fitFixture().cutoff };
+    const residuals = (p) => {
+        const params = { ...c.params, ...Object.fromEntries(c.names.map((name, j) => [name, p[j]])) };
+        const { I } = SasFitEvaluate.evaluate(c.modelSpec, params, sel.q, opts, kernels);
+        return Float64Array.from(I, (model, i) => (sel.I[i] - model) / sel.w[i]);
+    };
+    return {
+        names: c.names,
+        start: c.names.map((name) => c.params[name]),
+        lower: c.names.map((name) => job.bounds[name][0]),
+        upper: c.names.map((name) => job.bounds[name][1]),
+        residuals,
+    };
+}
+
+const refVector = (c, key) => c.names.map((name) => c[key].values[name]);
+
+function covarianceError(C, refRows) {
+    const n = refRows.length;
+    let worst = 0;
+    for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+            const got = Array.isArray(C[i]) ? C[i][j] : C[i * n + j];
+            worst = Math.max(worst, Math.abs(got - refRows[i][j]) / Math.sqrt(refRows[i][i] * refRows[j][j]));
+        }
+    }
+    return worst;
+}
+
+const G4 = Object.freeze({ PARAM_SIGMA: 0.01, STDERR_REL: 0.02, CHI2R_REL: 1e-3 });
+
+function g4Ratios(c, values, errors, chi2r, ref) {
+    const want = ref || { values: c.ref.values, stderr: c.ref.stderr, chi2r: c.ref.chi2r };
+    let dp = 0;
+    let de = 0;
+    for (const name of c.names) {
+        dp = Math.max(dp, Math.abs(values[name] - want.values[name]) / want.stderr[name]);
+        de = Math.max(de, Math.abs(errors[name] - want.stderr[name]) / want.stderr[name]);
+    }
+    return { dp, de, dchi: Math.abs(chi2r - want.chi2r) / want.chi2r };
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -175,5 +244,6 @@ function recordCalls(residuals) {
 module.exports = {
     pseudoGaussian, decayProblem, expDecay, recordCalls,
     FIT_RESULT_FIELDS, fitFixture, caseOf, fitJob, fitMessage, directKernels, settle, makeCore,
+    loadKernels, usedPoints, buildProblem, refVector, covarianceError, G4, g4Ratios,
     CLIENT_VERSION, EVAL_Q, evalRequest, fakeWorkers, rejection, outcome,
 };
