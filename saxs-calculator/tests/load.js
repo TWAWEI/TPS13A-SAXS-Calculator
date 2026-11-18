@@ -52,6 +52,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-linalg.js',           // IIFE，只掛 globalThis.SasFitLinalg；Jacobi SVD 與共變異，無相依
     'sasfit-fitter.js',           // IIFE，只掛 globalThis.SasFitFitter；載入時讀 SasFitLinalg，與模型無關
     'sasfit-worker-core.js',      // IIFE，只掛 globalThis.SasFitWorkerCore；wasm 載入、post、yieldTask 皆由呼叫端注入
+    'sasfit-worker-client.js',    // IIFE，只掛 globalThis.SasFitWorkerClient；頂層只在有 document 時讀 currentScript，呼叫時才建 Worker
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -90,4 +91,5 @@ module.exports = {
     SasFitLinalg: globalThis.SasFitLinalg,
     SasFitFitter: globalThis.SasFitFitter,
     SasFitWorkerCore: globalThis.SasFitWorkerCore,
+    SasFitWorkerClient: globalThis.SasFitWorkerClient,
 };

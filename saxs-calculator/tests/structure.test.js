@@ -34,6 +34,17 @@ const SPLIT_GROUPS = Object.freeze({
     'dndc-calculations.js': Object.freeze(['dndc-theory-calculations.js', 'dndc-signal-calculations.js', 'dndc-alignment-calculations.js']),
 });
 
+// 只在 Web Worker 內執行的入口檔：由 sasfit-worker-client.js 以 new Worker(...) 載入，
+// 不得出現在 index.html，也不進 tests/load.js（設計規格 2026-11-17-sasfit-a-design.md §3.3）。
+const WORKER_ONLY = Object.freeze(['sasfit-worker.js']);
+
+// sasfit-worker.js 以 importScripts 載入的純計算模組，順序即載入順序（規格 §3.3）。
+const WORKER_IMPORTS = Object.freeze([
+    'sasfit-meta.js', 'sasfit-validate.js', 'sasfit-weights.js', 'sasfit-kernel.js', 'sasfit-product.js',
+    'sasfit-py-models.js', 'sasfit-evaluate.js', 'sasfit-weighting.js', 'sasfit-linalg.js', 'sasfit-fitter.js',
+    'sasfit-worker-core.js',
+]);
+
 const listFiles = (dir, ext) =>
     fs.readdirSync(dir).filter(f => f.endsWith(ext)).sort();
 
@@ -61,6 +72,13 @@ const LINK_REFS = LINK_ENTRIES.map(e => e.path);
 
 /** 側欄 footer 的版本號（例如 "4.15"），是 ?v= 的唯一來源。 */
 const PAGE_VERSION = (INDEX_HTML.match(/Version\s+(\d+\.\d+)/) || [])[1] || null;
+
+/** 去掉註解後的原始碼（區塊註解與整行／行尾的 // 註解），給「程式裡不得出現某字樣」的檢查用。 */
+function stripComments(source) {
+    return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+}
+
+const readJs = file => fs.readFileSync(path.join(JS_DIR, file), 'utf8');
 
 /**
  * 抓一個檔案的頂層宣告識別字。
@@ -115,10 +133,66 @@ test('[structure] 同一檔內也沒有重複的頂層識別字', () => {
 });
 
 // ---------------------------------------------------------------- (c) index.html 引用
-test('[structure] index.html 引用了每一個 js/*.js，且沒有重複', () => {
-    assert.deepEqual([...SCRIPT_REFS].sort(), JS_FILES.map(f => `js/${f}`),
+test('[structure] index.html 引用了每一個 js/*.js（Worker 專用檔除外），且沒有重複', () => {
+    const pageFiles = JS_FILES.filter(f => !WORKER_ONLY.includes(f));
+    assert.deepEqual([...SCRIPT_REFS].sort(), pageFiles.map(f => `js/${f}`),
         '有檔案沒被引用（靜默失效）或引用了不存在的檔');
     assert.equal(new Set(SCRIPT_REFS).size, SCRIPT_REFS.length, '有重複的 <script>');
+});
+
+test('[structure] Worker 專用檔存在，但不出現在 index.html 與 tests/load.js', () => {
+    const { LOAD_ORDER } = require('./load.js');
+    for (const file of WORKER_ONLY) {
+        assert.ok(JS_FILES.includes(file), `js/${file} 不存在（WORKER_ONLY 名單過期？）`);
+        assert.ok(!INDEX_HTML.includes(file), `${file} 只能由 Worker 載入，不得出現在 index.html`);
+        assert.ok(!LOAD_ORDER.includes(file), `${file} 頂層需要 Worker 的 self／importScripts，不得進 LOAD_ORDER`);
+    }
+});
+
+test('[structure] sasfit-worker.js 的 importScripts 清單＝純計算模組，檔案都在，順序與 index.html 一致', () => {
+    const code = stripComments(readJs('sasfit-worker.js'));
+    const imported = [...code.matchAll(/['"`]([\w-]+\.js)['"`]/g)].map(m => m[1]);
+    assert.deepEqual(imported, [...WORKER_IMPORTS], 'importScripts 清單與規格 §3.3 不符');
+    assert.equal(new Set(imported).size, imported.length, '有重複的 importScripts');
+    for (const file of imported) {
+        assert.ok(JS_FILES.includes(file), `importScripts 的 js/${file} 不存在`);
+        assert.ok(!WORKER_ONLY.includes(file), `${file} 不能 import 自己`);
+    }
+    // 期望順序由 index.html 推得：頁面上這些檔的出現順序必須就是 importScripts 的順序
+    const pageOrder = SCRIPT_REFS.map(ref => ref.replace(/^js\//, '')).filter(file => imported.includes(file));
+    assert.deepEqual(pageOrder, imported, 'importScripts 的相對順序必須與 index.html 一致，且每個檔都要在 index.html');
+    assert.equal((code.match(/\bimportScripts\(/g) || []).length, 1, 'importScripts 只能呼叫一次（整份清單一次載入）');
+    assert.match(code, /^\(function \(\) \{/m, 'Worker 入口必須包在 IIFE 內');
+});
+
+test('[structure] Worker 版本機制：不寫死版本；client 讀 document.currentScript，worker 讀 self.location.search', () => {
+    const worker = stripComments(readJs('sasfit-worker.js'));
+    const client = stripComments(readJs('sasfit-worker-client.js'));
+    for (const [file, code] of [['sasfit-worker.js', worker], ['sasfit-worker-client.js', client]]) {
+        assert.ok(!/[?&]v=\s*['"`]?\s*\d/.test(code), `${file} 寫死了 ?v= 版本`);
+        assert.ok(!/['"`]\d+(?:\.\d+)+['"`]/.test(code), `${file} 有寫死的版本字串`);
+        assert.ok(PAGE_VERSION && !code.includes(PAGE_VERSION), `${file} 出現了目前的版本號 ${PAGE_VERSION}`);
+    }
+    // client：載入時由 document.currentScript 取版本，建立 Worker 的網址一律帶 ?v=
+    assert.match(client, /document\.currentScript/, 'worker-client 必須以 document.currentScript 取版本');
+    assert.match(client, /typeof document\b/, 'worker-client 頂層必須先確認 document 存在（Node 與 tests/load.js 沒有）');
+    assert.match(client, /['"`]js\/sasfit-worker\.js['"`]/, 'worker-client 必須載入 js/sasfit-worker.js');
+    const workerUrls = [...client.matchAll(/createWorker\(([^)]*)\)/g)].map(m => m[1]);
+    assert.ok(workerUrls.length >= 1, 'worker-client 沒有建立 Worker 的呼叫');
+    for (const arg of workerUrls) {
+        assert.match(arg, /^workerUrl\(/, `建立 Worker 的網址必須經過 workerUrl()（帶 ?v=）：createWorker(${arg})`);
+    }
+    assert.match(client, /function workerUrl\([^)]*\) \{\s*return WORKER_PATH \+ ['"`]\?v=['"`] \+ /,
+        'workerUrl() 必須回傳 WORKER_PATH + "?v=" + 版本');
+    assert.equal((client.match(/new Worker\(/g) || []).length, 1, 'new Worker 只能出現在預設的 createWorker 裡');
+
+    // worker：版本取自 self.location.search，importScripts 與 wasm fetch 的網址都經過同一個 versioned()
+    assert.match(worker, /self\.location\.search/, 'sasfit-worker.js 必須以 self.location.search 取版本');
+    assert.match(worker, /importScripts\(\.\.\.\w+\.map\(versioned\)\)/, '每個 importScripts 網址都要經過 versioned()');
+    const fetches = [...worker.matchAll(/\bfetch\(([^\n]*)/g)].map(m => m[1]);
+    assert.equal(fetches.length, 1, 'sasfit-worker.js 只能有一個 fetch（wasm）');
+    assert.match(fetches[0], /^versioned\(/, 'wasm 的 fetch 網址必須經過 versioned()');
+    assert.match(worker, /SasFitMeta\.models/, '組 wasm 網址前必須以 SasFitMeta.models 白名單檢查模型名稱');
 });
 
 test('[structure] app.js 是最後一個載入的腳本（DOMContentLoaded 啟動點）', () => {
