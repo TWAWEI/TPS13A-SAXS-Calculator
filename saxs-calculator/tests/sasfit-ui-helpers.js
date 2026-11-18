@@ -81,6 +81,7 @@ function makeElement(id, tagName = 'div') {
         getAttribute: (name) => (Object.hasOwn(attrs, name) ? attrs[name] : null),
         hasAttribute: (name) => Object.hasOwn(attrs, name),
         focus() { node.focusCount += 1; node.ownerDocument && (node.ownerDocument.activeElement = node); },
+        scrollIntoView() {},
         contains(other) {
             for (let at = other; at; at = at.parent) if (at === node) return true;
             return false;

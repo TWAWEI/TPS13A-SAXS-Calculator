@@ -166,7 +166,8 @@
         store.set({ seq, slowTimer: ctx.deps.timers.setTimeout(() => onSlow(ui, seq), SLOW_MS) });
         try {
             ctx.client.evaluate({ modelSpec: request.modelSpec, params: request.params, q: request.q, opts: request.opts })
-                .then((result) => onCurve(ui, seq, request, result), (err) => onError(ui, seq, err));
+                .then((result) => onCurve(ui, seq, request, result), (err) => onError(ui, seq, err))
+                .catch((err) => console.error(LOG + ' 處理預覽結果時發生未預期的錯誤', err));
         } catch (err) {
             onError(ui, seq, err);                                // the client could not be created
         }

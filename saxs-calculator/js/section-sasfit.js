@@ -100,7 +100,7 @@
         'sfStructureMode', 'sfRadiusMode', 'sfLowQ', 'sfModelHints', 'sfParamWrapper', 'sfParamHead', 'sfParamBody', 'sfSldPanel',
         // fit segment
         'sfQMin', 'sfQMinError', 'sfQMax', 'sfQMaxError', 'sfRangeFull', 'sfRangeDefault', 'sfRangeInfo', 'sfWeighting',
-        'sfMaxSteps', 'sfPreFitHints', 'sfFitStart', 'sfFitStop', 'sfFitRevert', 'sfFitAlert', 'sfFitProgress', 'sfFitLive',
+        'sfMaxSteps', 'sfMaxStepsError', 'sfPreFitHints', 'sfFitStart', 'sfFitStop', 'sfFitRevert', 'sfFitAlert', 'sfFitProgress', 'sfFitLive',
         'sfFitResults', 'sfFitHints',
         // charts
         'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
