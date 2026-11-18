@@ -10,26 +10,38 @@
  *              residuals may return non-finite values (hayter_msa does, design
  *              spec 16): such a point counts as chi2 = infinity.
  *     options  { method: 'lm', maxSteps: 200, ftol: 1e-10, xtol: 1e-10,
- *                onProgress({ iteration, chi2 }), shouldStop() }  -- all optional
- *     result   { names, values, errors, illConditioned, chi2, dof, chi2r,
- *                iterations, status, atBound, covariance }
+ *                onProgress({ iteration, chi2 }), shouldStop(), svdMaxSweeps }
+ *              all optional; svdMaxSweeps caps the Jacobi sweeps of the final
+ *              covariance (SasFitLinalg, default 60) and exists for tests.
+ *     result   { names, values, errors, illConditioned, jacobianNonFinite,
+ *                blockedByNonFinite, chi2, dof, chi2r, iterations, status,
+ *                atBound, covariance }
  *              chi2 = sum(r^2); dof = m - n (<= 0 is an Error); errors =
  *              sqrt(diag(C)), NOT multiplied by sqrt(chi2r); covariance is n
  *              rows of n; atBound[name] is 'lower' | 'upper' for a value that is
  *              exactly equal to its bound. status: 'converged' | 'maxiter' |
- *              'stopped' | 'failed'. 'failed' means there was nothing to work
- *              with: the start point is not finite (values are the start, chi2
- *              is Infinity, errors and covariance NaN), or at some point no row
- *              of the Jacobian was finite (values are the best point so far).
- *   SasFitFitter.jacobian(residuals, p, lower, upper) -> { J, m, n }
+ *              'stopped' | 'failed' (see "Non-finite regions" below).
+ *              illConditioned: a singular value of the final Jacobian was
+ *              replaced by the 1e-8 floor (or, never seen, its SVD did not
+ *              converge within the sweep cap). It never stands for "not finite".
+ *              jacobianNonFinite: a column of the final Jacobian could not be
+ *              computed with any of the four steps; that parameter's error and
+ *              covariance row/column are NaN, the others are those of the fit
+ *              with that parameter held (so they are a lower estimate).
+ *   SasFitFitter.jacobian(residuals, p, lower, upper) -> { J, m, n, nonFiniteColumns }
  *     Forward difference exactly as bumps (lsqerror.py:99-110): h = 1e-4*|p|,
- *     h = 1e-4 where that is 0, and h = -h where p + h > upper (strictly). The
- *     lower bound is not looked at. J is row-major, m rows of n.
- *   SasFitFitter.covariance(J, m, n) -> { C, illConditioned }
+ *     h = 1e-4 where that is 0, and h = -h where p + h > upper (strictly); the
+ *     lower bound is not looked at for this first step. J is row-major, m rows
+ *     of n. Only when that column is not finite, the steps -h, +h/2, -h/2 are
+ *     tried in this order, skipping any that would leave [lower, upper]; the
+ *     first finite column is used. A column that no step can compute is NaN
+ *     and listed in nonFiniteColumns. When no retry is needed the result is
+ *     bit for bit what bumps' rule gives.
+ *   SasFitFitter.covariance(J, m, n) -> { C, illConditioned, converged, nonFinite }
  *     C = V*diag(1/s^2)*V' from the SVD of J, singular values <= 1e-8 replaced
- *     by 1e-8 (lsqerror.py:283-285); illConditioned says that happened (or
- *     that J is not finite, in which case C is NaN). Needs m >= n.
- *   SasFitFitter.svd(A, m, n) -> { s, V }
+ *     by 1e-8 (lsqerror.py:283-285); illConditioned says that happened. Needs
+ *     m >= n. See sasfit-linalg.js.
+ *   SasFitFitter.svd(A, m, n) -> { s, V, converged }
  *     One-sided Jacobi; s descending, V row-major n x n. Needs m >= n.
  *
  * The LM iteration: Marquardt scaling (columns of J scaled to unit norm), the
@@ -39,9 +51,7 @@
  * point onto the bounds, which is what makes a value on a bound exactly equal
  * to it. A parameter on a bound still gets its covariance row as if it were
  * free, like bumps. The Jacobian of the iteration and of the covariance is the
- * same forward difference; in the iteration, rows that are not finite (a NaN
- * of the model at p + h) are left out of that one step, and if no row is left
- * the fit ends as 'failed'.
+ * same function.
  *
  * Termination follows bumps' lm, i.e. MPFit (mpfit.py), tested after every
  * trial step, accepted or not:
@@ -53,10 +63,56 @@
  *        fitter has a damping factor instead of a radius, so it tests the scaled
  *        length of the trial step, |D dp| <= xtol*|D p|. A rejected step raises
  *        the damping tenfold, which shortens the next one.
+ *   damping               the damping factor passed 1e30: no shorter step exists
  *   gtol (mpfit.py:1182)  the cosine between r and every free column of J is
  *        <= 1e-10; bumps leaves MPFit's default in force (fitters.py:716)
  *   steps (mpfit.py:1327) accepted steps >= maxSteps -> 'maxiter'
  * A step is accepted when chi2 falls and ratio >= 1e-4 (mpfit.py:1307).
+ *
+ * Non-finite regions (hayter_msa returns NaN for the whole curve in parts of
+ * parameter space, design spec 16). A point with any non-finite residual has
+ * chi2 = infinity: as a trial step it is rejected and the damping rises; it is
+ * never an Error. What must not happen is that the shrinking steps in front
+ * of such a region satisfy ftol, xtol or the damping limit and the fit reports
+ * 'converged' at the edge of the region. The exact rule:
+ *   0. Only trial steps for which the linear model predicted a relative gain
+ *      above ftol count below ("meaningful steps"). A non-finite step with a
+ *      predicted gain <= ftol hides nothing: had it been computable, the ftol
+ *      test could have ended the fit right there. This keeps an isolated NaN
+ *      next to a real minimum (hayter_msa has those) from turning a finished
+ *      fit into 'failed'.
+ *   1. A "wall" opens at a meaningful non-finite step, or at an iteration in
+ *      which a Jacobian column had to be held (below). The smallest damping at
+ *      which that happened is remembered. A later meaningful step of the same
+ *      iteration that is finite and still rejected takes the wall of this
+ *      iteration back: a shorter, computable step was refused on its merits,
+ *      so the non-finite region is not what stops the fit. The wall closes
+ *      when a step is accepted at a damping no larger than the remembered one,
+ *      in an iteration without held columns: the optimiser is back to steps as
+ *      long as the ones that ran into the region.
+ *   2. ftol / xtol / damping fire after rejected steps only, and the last
+ *      meaningful one of them was non-finite, or a column was held
+ *      -> 'failed', blockedByNonFinite.
+ *   3. They fire in any other way while a wall is open -> one probe: the
+ *      Jacobian at the final point and one step at the remembered damping. A
+ *      held column or a non-finite probe step -> 'failed', blockedByNonFinite.
+ *      A finite step that is acceptable is taken and the fit goes on with the
+ *      wall closed; a finite step that is not leaves the status 'converged'.
+ *   4. gtol (a stationary point of every parameter) and "every parameter is
+ *      held on a bound" end the fit as 'converged' whatever happened before,
+ *      unless a column was held because it could not be computed -> 'failed',
+ *      blockedByNonFinite.
+ *   5. A start point that is not finite is 'failed', blockedByNonFinite and
+ *      jacobianNonFinite: values are the start, chi2 is Infinity, errors NaN.
+ *   6. 'maxiter' and 'stopped' are reported as such; blockedByNonFinite is
+ *      true only together with 'failed'. With finite trial steps only, none of
+ *      this applies and the terminal status is the one of the tests above.
+ * 'failed' therefore always means "the model cannot be computed around here";
+ * values are the best point found, chi2 is reported, errors are computed where
+ * the final Jacobian allows.
+ * In the iteration, a Jacobian column that none of the four steps can compute
+ * is held for that iteration: the parameter is left out of the step like one
+ * on an active bound, and the others move.
  *
  * shouldStop is asked once before every iteration. Inside a Web Worker the
  * loop is synchronous and no message can arrive, so there the real "stop" is
@@ -103,19 +159,42 @@
         return pj + h > upperJ ? -h : h;
     }
 
-    /** Forward-difference Jacobian at p, given r0 = residuals(p). */
-    function forwardJacobian(residuals, p, r0, upper) {
+    /** Column j of the Jacobian with the step h: (r(p + h*e_j) - r0)/h; null unless every entry is finite. */
+    function differenceColumn(residuals, p, r0, j, h) {
+        const shifted = Float64Array.from(p);
+        shifted[j] = p[j] + h;
+        const r1 = callResiduals(residuals, shifted, r0.length);
+        const column = new Float64Array(r0.length);
+        for (let i = 0; i < r0.length; i++) column[i] = (r1[i] - r0[i]) / h;
+        return allFinite(column) ? column : null;
+    }
+
+    /** After the bumps step h failed: the first finite column of -h, +h/2, -h/2 (steps inside the bounds only), or null. */
+    function retryColumn(residuals, p, r0, j, h, bounds) {
+        const steps = [-h, h / 2, -h / 2].filter((step) => p[j] + step >= bounds.lower[j] && p[j] + step <= bounds.upper[j]);
+        for (const step of steps) {
+            const column = differenceColumn(residuals, p, r0, j, step);
+            if (column !== null) return column;
+        }
+        return null;
+    }
+
+    /**
+     * Forward-difference Jacobian at p, given r0 = residuals(p): { J, failed }.
+     * `failed` lists the columns no step could compute; they are NaN in J.
+     */
+    function differentiate(residuals, p, r0, bounds) {
         const m = r0.length;
         const n = p.length;
         const J = new Float64Array(m * n);
+        const failed = [];
         for (let j = 0; j < n; j++) {
-            const h = stepOf(p[j], upper[j]);
-            const shifted = Float64Array.from(p);
-            shifted[j] = p[j] + h;
-            const r1 = callResiduals(residuals, shifted, m);
-            for (let i = 0; i < m; i++) J[i * n + j] = (r1[i] - r0[i]) / h;
+            const h = stepOf(p[j], bounds.upper[j]);
+            const column = differenceColumn(residuals, p, r0, j, h) || retryColumn(residuals, p, r0, j, h, bounds);
+            if (column === null) failed.push(j);
+            for (let i = 0; i < m; i++) J[i * n + j] = column === null ? NaN : column[i];
         }
-        return J;
+        return { J, failed };
     }
 
     function readVector(v, n, what) {
@@ -130,10 +209,10 @@
     function jacobian(residuals, p, lower, upper) {
         if (typeof residuals !== 'function') throw new Error('jacobian needs a residuals function');
         const point = readVector(p, null, 'p');
-        readVector(lower, point.length, 'lower');
-        const hi = readVector(upper, point.length, 'upper');
+        const bounds = { lower: readVector(lower, point.length, 'lower'), upper: readVector(upper, point.length, 'upper') };
         const r0 = callResiduals(residuals, point, null);
-        return { J: forwardJacobian(residuals, point, r0, hi), m: r0.length, n: point.length };
+        const { J, failed } = differentiate(residuals, point, r0, bounds);
+        return { J, m: r0.length, n: point.length, nonFiniteColumns: failed };
     }
 
     // ------------------------------------------------------------- LM parts
@@ -144,20 +223,11 @@
         return sum;
     }
 
-    /** J with every row that holds a non-finite entry set to zero (a copy), and how many rows were kept. */
-    function finiteRows(J, m, n) {
-        if (allFinite(J)) return { J, kept: m };
+    /** A copy of J (n columns) with the listed columns set to zero. */
+    function zeroColumns(J, n, columns) {
         const out = Float64Array.from(J);
-        let kept = m;
-        for (let i = 0; i < m; i++) {
-            let ok = true;
-            for (let j = 0; j < n; j++) ok = ok && Number.isFinite(J[i * n + j]);
-            if (!ok) {
-                out.fill(0, i * n, (i + 1) * n);
-                kept--;
-            }
-        }
-        return { J: out, kept };
+        for (let i = 0; i < out.length; i += n) columns.forEach((j) => { out[i + j] = 0; });
+        return out;
     }
 
     /** Per column of J: its norm (1 for a zero column) and its product with r. */
@@ -184,15 +254,17 @@
     }
 
     /**
-     * The linear model at the current point: J (finite rows, and how many), the free
-     * set, the SVD of the scaled free columns, W'r, and the gradient cosine (gtol test).
+     * The linear model at the current point: J (columns that could not be computed
+     * set to zero, and how many: `held`), the free set (not on an active bound, not
+     * held), the SVD of the scaled free columns, W'r, and the gradient cosine (gtol test).
      */
     function linearise(prob, state) {
         const { n } = prob;
         const m = state.r.length;
-        const { J, kept } = finiteRows(forwardJacobian(prob.residuals, state.p, state.r, prob.upper), m, n);
+        const raw = differentiate(prob.residuals, state.p, state.r, prob);
+        const J = raw.failed.length === 0 ? raw.J : zeroColumns(raw.J, n, raw.failed);
         const { norms, g } = columnStats(J, state.r, n);
-        const free = freeIndices(state.p, g, prob.lower, prob.upper);
+        const free = freeIndices(state.p, g, prob.lower, prob.upper).filter((j) => raw.failed.indexOf(j) < 0);
         const k = free.length;
         const scaled = new Float64Array(m * k);
         for (let i = 0; i < m; i++) {
@@ -205,7 +277,7 @@
         }
         const rnorm = Math.sqrt(state.chi2);
         const gnorm = rnorm === 0 ? 0 : free.reduce((max, j) => Math.max(max, Math.abs(g[j]) / (norms[j] * rnorm)), 0);
-        return { J, kept, norms, free, s, V, wr, gnorm };
+        return { J, held: raw.failed.length, norms, free, s, V, wr, gnorm };
     }
 
     /** Damped step for all n parameters (0 for held ones): -(J'J + lambda*D)^-1 J'r. */
@@ -242,26 +314,30 @@
         return 1 - sum / chi2;
     }
 
-    /** One trial step at the given damping; evaluates the residuals unless the projected step is null. */
+    /**
+     * One trial step at the given damping; evaluates the residuals unless the projected
+     * step is null. `finite` is false when the residuals at the trial point are not.
+     */
     function trialStep(prob, state, sys, lambda) {
         const delta = dampedStep(sys, lambda, prob.n);
         const p = Float64Array.from(state.p, (v, j) => Math.min(Math.max(v + delta[j], prob.lower[j]), prob.upper[j]));
         const step = Float64Array.from(p, (v, j) => v - state.p[j]);
-        const rejected = { accepted: false, actred: -1, prered: 0, ratio: 0 };
+        const rejected = { accepted: false, finite: true, actred: -1, prered: 0, ratio: 0 };
         if (step.every((v) => v === 0)) {
             return { ...rejected, pnorm: scaledNorm(delta, sys.norms), xnorm: scaledNorm(state.p, sys.norms) };
         }
         const r = callResiduals(prob.residuals, p, state.r.length);
         const chi2 = sumsq(r);
         // mpfit.py:1269-1271: a point more than 10 times worse in norm counts as actred = -1.
-        const comparable = Number.isFinite(chi2) && 0.1 * Math.sqrt(chi2) < Math.sqrt(state.chi2);
+        // A non-finite chi2 fails this comparison too (NaN and Infinity are never smaller).
+        const comparable = 0.1 * Math.sqrt(chi2) < Math.sqrt(state.chi2);
         const actred = comparable ? 1 - chi2 / state.chi2 : -1;
         const prered = predictedReduction(sys.J, state.r, step, state.chi2);
         const ratio = prered !== 0 ? actred / prered : 0;
         const accepted = comparable && chi2 < state.chi2 && ratio >= ACCEPT_RATIO;
         const pnorm = scaledNorm(step, sys.norms);
         const xnorm = scaledNorm(accepted ? p : state.p, sys.norms);
-        return { accepted, actred, prered, ratio, pnorm, xnorm, p, r, chi2 };
+        return { accepted, finite: Number.isFinite(chi2), actred, prered, ratio, pnorm, xnorm, p, r, chi2 };
     }
 
     function nextLambda(lambda, trial) {
@@ -278,29 +354,82 @@
         return lambda > LAMBDA_MAX ? 'converged' : null;
     }
 
+    // In a state, `wall` is null or the damping remembered when a non-finite region was
+    // met ("Non-finite regions" in the file header), and `blocked` says the fit ended there.
+
+    const blockedAt = (state) => ({ ...state, status: 'failed', blocked: true });
+
+    /**
+     * A non-finite trial step for which the linear model predicted a gain above ftol. Below
+     * ftol it hides nothing: a finite value there could have ended the fit by the ftol test.
+     */
+    const hidesGain = (cfg, trial) => !trial.finite && trial.prered > cfg.ftol;
+
+    /** The state after an accepted trial step. */
+    function acceptedState(state, trial, lambda, wall, status) {
+        return { p: trial.p, r: trial.r, chi2: trial.chi2, lambda, iterations: state.iterations + 1, wall, blocked: false, status };
+    }
+
     /** One iteration: linearise, then trial steps with rising damping until one is accepted or a test ends the fit. */
     function iterateOnce(prob, cfg, state) {
         const sys = linearise(prob, state);
-        if (sys.kept === 0) return { ...state, status: 'failed' };      // nothing to differentiate
-        if (sys.free.length === 0 || sys.gnorm <= GTOL) return { ...state, status: 'converged' };
+        if (sys.free.length === 0 || sys.gnorm <= GTOL) {
+            return sys.held > 0 ? blockedAt(state) : { ...state, wall: null, status: 'converged' };
+        }
         let lambda = state.lambda;
+        const inherited = sys.held > 0 && state.wall === null ? lambda : state.wall;
+        let wall = inherited;
+        let hidden = false;             // the last rejected step with a predicted gain above ftol was non-finite
         for (;;) {
-            const trial = trialStep(prob, state, sys, lambda);
-            lambda = nextLambda(lambda, trial);
+            const used = lambda;
+            const trial = trialStep(prob, state, sys, used);
+            if (!trial.accepted && trial.prered > cfg.ftol) {
+                hidden = !trial.finite;
+                wall = hidden ? Math.min(used, wall === null ? used : wall) : inherited;
+            }
+            lambda = nextLambda(used, trial);
             const iterations = state.iterations + (trial.accepted ? 1 : 0);
             if (trial.accepted) cfg.onProgress(Object.freeze({ iteration: iterations, chi2: trial.chi2 }));
             const status = statusAfter(cfg, trial, iterations, lambda);
-            if (trial.accepted) return { p: trial.p, r: trial.r, chi2: trial.chi2, lambda, iterations, status };
-            if (status !== null) return { ...state, lambda, status };
+            if (trial.accepted) {
+                const closed = wall !== null && sys.held === 0 && used <= wall;
+                return acceptedState(state, trial, lambda, closed ? null : wall, status);
+            }
+            if (status !== null) {
+                return hidden || sys.held > 0 ? blockedAt({ ...state, lambda }) : { ...state, lambda, wall, status };
+            }
         }
+    }
+
+    /**
+     * A fit about to end as 'converged' while a wall is open: the Jacobian here and one
+     * trial step at the damping from before the wall decide (rule 3 of the file header).
+     */
+    function probeWall(prob, cfg, state) {
+        const sys = linearise(prob, state);
+        if (sys.held > 0) return blockedAt(state);
+        const settled = { ...state, wall: null, status: 'converged' };
+        if (sys.free.length === 0 || sys.gnorm <= GTOL) return settled;
+        const trial = trialStep(prob, state, sys, state.wall);
+        if (hidesGain(cfg, trial)) return blockedAt(state);
+        if (!trial.accepted) return settled;
+        const iterations = state.iterations + 1;
+        cfg.onProgress(Object.freeze({ iteration: iterations, chi2: trial.chi2 }));
+        const status = iterations >= cfg.maxSteps ? 'maxiter' : null;
+        return acceptedState(state, trial, nextLambda(state.wall, trial), null, status);
     }
 
     function iterate(prob, cfg, first) {
         let state = first;
-        while (state.status === null) {
-            state = cfg.shouldStop() ? { ...state, status: 'stopped' } : iterateOnce(prob, cfg, state);
+        for (;;) {
+            if (state.status === null) {
+                state = cfg.shouldStop() ? { ...state, status: 'stopped' } : iterateOnce(prob, cfg, state);
+            } else if (state.status === 'converged' && state.wall !== null) {
+                state = probeWall(prob, cfg, state);
+            } else {
+                return state;
+            }
         }
-        return state;
     }
 
     // ---------------------------------------------------------- fit: in/out
@@ -315,6 +444,7 @@
             xtol: o.xtol === undefined ? DEFAULTS.xtol : o.xtol,
             onProgress: o.onProgress === undefined ? NOOP : o.onProgress,
             shouldStop: o.shouldStop === undefined ? NEVER : o.shouldStop,
+            svd: o.svdMaxSweeps === undefined ? undefined : { maxSweeps: o.svdMaxSweeps },
         };
         if (cfg.method !== 'lm') throw new Error("Unknown fit method " + String(cfg.method) + " (only 'lm')");
         if (!Number.isInteger(cfg.maxSteps) || cfg.maxSteps < 1) {
@@ -325,6 +455,9 @@
                 throw new Error(key + ' must be a positive number, got ' + String(cfg[key]));
             }
         });
+        if (o.svdMaxSweeps !== undefined && (!Number.isInteger(o.svdMaxSweeps) || o.svdMaxSweeps < 1)) {
+            throw new Error('svdMaxSweeps must be a positive integer, got ' + String(o.svdMaxSweeps));
+        }
         if (typeof cfg.onProgress !== 'function' || typeof cfg.shouldStop !== 'function') {
             throw new Error('onProgress and shouldStop must be functions');
         }
@@ -362,23 +495,47 @@
         return Object.freeze(atBound);
     }
 
-    /** Covariance at p from the bumps Jacobian; all NaN when there is no finite point to use. */
-    function errorsAt(prob, state) {
-        const { n } = prob;
-        if (!Number.isFinite(state.chi2)) return { C: new Float64Array(n * n).fill(NaN), illConditioned: false };
-        const J = forwardJacobian(prob.residuals, state.p, state.r, prob.upper);
-        return covariance(J, state.r.length, n);
+    /** C (row-major k x k, over the parameters `kept`) spread into n x n, NaN in every other row and column. */
+    function spread(C, kept, n) {
+        const out = new Float64Array(n * n).fill(NaN);
+        kept.forEach((a, i) => kept.forEach((b, j) => { out[a * n + b] = C[i * kept.length + j]; }));
+        return out;
     }
 
-    function buildResult(prob, state, dof) {
+    /** The covariance of the parameters whose Jacobian column exists, the others held (their rows are NaN). */
+    function partialCovariance(J, m, n, failed, svdOptions) {
+        const kept = Array.from({ length: n }, (_, j) => j).filter((j) => failed.indexOf(j) < 0);
+        const k = kept.length;
+        const reduced = new Float64Array(m * k);
+        for (let i = 0; i < m; i++) kept.forEach((j, c) => { reduced[i * k + c] = J[i * n + j]; });
+        const { C, illConditioned, converged } = covariance(reduced, m, k, svdOptions);
+        return { C: spread(C, kept, n), illConditioned: illConditioned || !converged, jacobianNonFinite: true };
+    }
+
+    /** Covariance at p from the bumps Jacobian (with its retries); all NaN when the point itself is not finite. */
+    function errorsAt(prob, cfg, state) {
         const { n } = prob;
-        const { C, illConditioned } = errorsAt(prob, state);
+        const m = state.r.length;
+        if (!Number.isFinite(state.chi2)) {
+            return { C: new Float64Array(n * n).fill(NaN), illConditioned: false, jacobianNonFinite: true };
+        }
+        const { J, failed } = differentiate(prob.residuals, state.p, state.r, prob);
+        if (failed.length > 0) return partialCovariance(J, m, n, failed, cfg.svd);
+        const { C, illConditioned, converged } = covariance(J, m, n, cfg.svd);
+        return { C, illConditioned: illConditioned || !converged, jacobianNonFinite: false };
+    }
+
+    function buildResult(prob, cfg, state, dof) {
+        const { n } = prob;
+        const { C, illConditioned, jacobianNonFinite } = errorsAt(prob, cfg, state);
         const rows = Array.from({ length: n }, (_, i) => Object.freeze(Array.from(C.subarray(i * n, (i + 1) * n))));
         return Object.freeze({
             names: prob.names,
             values: Object.freeze(Array.from(state.p)),
             errors: Object.freeze(rows.map((row, i) => Math.sqrt(row[i]))),
             illConditioned,
+            jacobianNonFinite,
+            blockedByNonFinite: state.blocked,
             chi2: state.chi2,
             dof,
             chi2r: state.chi2 / dof,
@@ -400,10 +557,10 @@
         const sum = sumsq(r);
         const finite = Number.isFinite(sum);
         const first = {
-            p: prob.p, r, chi2: finite ? sum : Infinity, lambda: LAMBDA_START, iterations: 0,
-            status: finite ? null : 'failed',
+            p: prob.p, r, chi2: finite ? sum : Infinity, lambda: LAMBDA_START, iterations: 0, wall: null,
+            blocked: !finite, status: finite ? null : 'failed',
         };
-        return buildResult(prob, iterate(prob, cfg, first), dof);
+        return buildResult(prob, cfg, iterate(prob, cfg, first), dof);
     }
 
     globalThis.SasFitFitter = Object.freeze({ fit, jacobian, covariance, svd, DEFAULTS });

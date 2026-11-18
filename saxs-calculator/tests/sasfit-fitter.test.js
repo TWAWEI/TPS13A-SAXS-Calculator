@@ -16,6 +16,7 @@ const {
     SasFitMeta, SasFitKernel, SasFitEvaluate, SasFitWeighting, SasFitLinalg, SasFitFitter,
 } = require('./load.js');
 const { loadFixture, num, loadWasm } = require('./sasfit-helpers.js');
+const { decayProblem } = require('./sasfit-fit-helpers.js');
 
 const svdFix = loadFixture('svd');
 const fitFix = loadFixture('fit');
@@ -176,10 +177,11 @@ test('covariance: the 1e-8 floor is inclusive, and a hand-made case', () => {
     assert.ok(at(1.1e-8).C[3] < 1e16);
 });
 
-test('covariance: a non-finite Jacobian gives NaN and illConditioned; m < n is refused', () => {
-    const { C, illConditioned } = SasFitLinalg.covariance(Float64Array.of(1, 0, NaN, 1, 0, 0), 3, 2);
-    assert.equal(illConditioned, true);
+test('covariance: a non-finite Jacobian gives NaN and nonFinite, not illConditioned; m < n is refused', () => {
+    const { C, illConditioned, nonFinite, converged } = SasFitLinalg.covariance(Float64Array.of(1, 0, NaN, 1, 0, 0), 3, 2);
+    assert.deepEqual([illConditioned, nonFinite, converged], [false, true, true]);
     assert.ok(Array.from(C).every(Number.isNaN));
+    assert.equal(SasFitLinalg.covariance(Float64Array.of(1, 0, 0, 1, 0, 0), 3, 2).nonFinite, false);
     assert.throws(() => SasFitLinalg.covariance(Float64Array.of(1, 2), 1, 2), /m >= n/);
 });
 
@@ -199,6 +201,29 @@ test('covariance of the bumps Jacobian of every fit case reproduces bumps covari
         });
     }
     console.log('covariance from bumps Jacobians: worst scaled error = ' + worst.toExponential(2));
+});
+
+test('svd / covariance: `converged` is false when the sweep cap is reached, true otherwise; the fitter reports it as illConditioned', () => {
+    const big = svdFix.cases.find((c) => c.label === '50x12');
+    const A = flat(big.A);
+    assert.equal(SasFitLinalg.svd(A, big.m, big.n).converged, true);
+    assert.equal(SasFitLinalg.svd(A, big.m, big.n, { maxSweeps: 1 }).converged, false);
+    assert.equal(SasFitLinalg.svd(A, big.m, big.n, { maxSweeps: 60 }).converged, true);
+    assert.equal(SasFitLinalg.svd([3, 4], 2, 1, { maxSweeps: 1 }).converged, true, 'nothing to rotate');
+    const capped = SasFitLinalg.covariance(A, big.m, big.n, { maxSweeps: 1 });
+    assert.deepEqual([capped.converged, capped.illConditioned, capped.nonFinite], [false, false, false]);
+    assert.equal(SasFitLinalg.covariance(A, big.m, big.n).converged, true);
+    for (const c of svdFix.cases) assert.equal(SasFitLinalg.covariance(flat(c.A), c.m, c.n).converged, true, c.label);
+    for (const bad of [0, 1.5, -1, '3']) {
+        assert.throws(() => SasFitLinalg.svd(A, big.m, big.n, { maxSweeps: bad }), /maxSweeps/);
+        assert.throws(() => SasFitFitter.fit(decayProblem(), { svdMaxSweeps: bad }), /svdMaxSweeps/);
+    }
+    const plain = SasFitFitter.fit(decayProblem());
+    const cut = SasFitFitter.fit(decayProblem(), { svdMaxSweeps: 1 });
+    assert.equal(plain.illConditioned, false);
+    assert.equal(cut.illConditioned, true, 'the covariance SVD did not converge');
+    assert.deepEqual(cut.values, plain.values, 'the iteration is not affected');
+    assert.deepEqual([cut.status, cut.jacobianNonFinite, cut.blockedByNonFinite], ['converged', false, false]);
 });
 
 // ----------------------------------------------------------------- Jacobian
@@ -265,6 +290,41 @@ test('jacobian: the bumps step rule (h = 1e-4|p|, 1e-4 at 0, backward only when 
     assert.deepEqual(p, [2, 10, 0, 5]);
 });
 
+/** The Jacobian rule as it was before the retries existed: one step per column, nothing else. */
+function plainForwardJacobian(residuals, p, upper) {
+    const r0 = residuals(Float64Array.from(p));
+    const n = p.length;
+    const J = new Float64Array(r0.length * n);
+    for (let j = 0; j < n; j++) {
+        const size = Math.abs(p[j]) * 1e-4 || 1e-4;
+        const h = p[j] + size > upper[j] ? -size : size;
+        const shifted = Float64Array.from(p);
+        shifted[j] = p[j] + h;
+        const r1 = residuals(shifted);
+        for (let i = 0; i < r0.length; i++) J[i * n + j] = (r1[i] - r0[i]) / h;
+    }
+    return J;
+}
+
+test('jacobian: without a non-finite neighbour it is bit-identical to the single-step rule and costs n + 1 evaluations', async () => {
+    const kernels = await loadKernels();
+    let compared = 0;
+    for (const c of fitFix.cases) {
+        const problem = buildProblem(c, kernels);
+        for (const p of [problem.start, refVector(c, 'ref'), refVector(c, 'bumpsRaw')]) {
+            let evaluations = 0;
+            const counted = (x) => { evaluations++; return problem.residuals(x); };
+            const { J, nonFiniteColumns } = SasFitFitter.jacobian(counted, p, problem.lower, problem.upper);
+            assert.equal(evaluations, p.length + 1, c.label + ': no retry');
+            assert.deepEqual(nonFiniteColumns, [], c.label);
+            const want = plainForwardJacobian(problem.residuals, p, problem.upper);
+            assert.equal(Buffer.from(J.buffer).toString('hex'), Buffer.from(want.buffer).toString('hex'), c.label + ': bit-identical');
+            compared += J.length;
+        }
+    }
+    console.log('jacobian default path: ' + compared + ' entries bit-identical to the single-step rule');
+});
+
 // ------------------------------------------------------------------ G4 (LM)
 
 /** The three G4 ratios of a result against a reference { values, stderr } and chi2r. */
@@ -309,21 +369,11 @@ test('G4: LM from the same start against the polished bumps reference', async ()
 
 // ---------------------------------------------------------------- behaviour
 
-/** y = a*exp(-b*x) + c with a fixed pseudo-noise; cheap, smooth, three parameters. */
-function decayProblem(overrides) {
-    const x = Array.from({ length: 40 }, (_, i) => 0.1 * i);
-    const y = x.map((xi, i) => 5 * Math.exp(-1.3 * xi) + 0.5 + 0.02 * Math.sin(12.9898 * (i + 1)));
-    const residuals = (p) => x.map((xi, i) => (y[i] - (p[0] * Math.exp(-p[1] * xi) + p[2])) / 0.02);
-    return {
-        names: ['a', 'b', 'c'], start: [3, 0.7, 0.2],
-        lower: [0, 0, -Infinity], upper: [Infinity, 10, Infinity], residuals, ...overrides,
-    };
-}
-
 test('fit: result shape, frozen, plain data', () => {
     const result = SasFitFitter.fit(decayProblem());
-    assert.deepEqual(Object.keys(result).sort(), ['atBound', 'chi2', 'chi2r', 'covariance', 'dof', 'errors',
-        'illConditioned', 'iterations', 'names', 'status', 'values'].sort());
+    assert.deepEqual(Object.keys(result).sort(), ['atBound', 'blockedByNonFinite', 'chi2', 'chi2r', 'covariance', 'dof',
+        'errors', 'illConditioned', 'iterations', 'jacobianNonFinite', 'names', 'status', 'values'].sort());
+    assert.deepEqual([result.blockedByNonFinite, result.jacobianNonFinite, result.illConditioned], [false, false, false]);
     assert.equal(result.status, 'converged');
     assert.equal(result.dof, 37);
     assert.equal(result.chi2r, result.chi2 / 37);
@@ -392,7 +442,7 @@ test('fit: non-finite residuals reject the step, never throw, and the fit ends a
     }
 });
 
-test('fit: a NaN in the Jacobian evaluation only drops that row from the step', () => {
+test('fit: a NaN in the Jacobian evaluation is stepped around (the other steps of that column are tried)', () => {
     const base = decayProblem();
     const plain = SasFitFitter.fit(base);
     let poisoned = 0;
@@ -403,7 +453,7 @@ test('fit: a NaN in the Jacobian evaluation only drops that row from the step', 
         return r;
     };
     const result = SasFitFitter.fit({ ...base, residuals });
-    assert.ok(poisoned > 0);
+    assert.equal(poisoned, 2, '+h and -h of b at the start; +h/2 is used');
     assert.equal(result.status, 'converged');
     assert.ok(Math.abs(result.chi2 - plain.chi2) <= 1e-9 * plain.chi2);
 });
@@ -420,39 +470,11 @@ test('fit: a non-finite start point -> failed, reporting the start', () => {
         assert.equal(result.dof, 37);
         assert.ok(result.errors.every(Number.isNaN));
         assert.ok(result.covariance.flat().every(Number.isNaN));
+        assert.deepEqual([result.blockedByNonFinite, result.jacobianNonFinite, result.illConditioned], [true, true, false]);
         assert.ok(Object.isFrozen(result));
     }
     const nanStart = SasFitFitter.fit(decayProblem({ start: [3, NaN, 0.2] }));
     assert.equal(nanStart.status, 'failed');
-});
-
-test('fit: no finite row in the Jacobian -> failed at the best point so far, not a false convergence', () => {
-    const base = decayProblem();
-    // Only the start point itself can be computed.
-    const residuals = (p) => (p[0] === 3 && p[1] === 0.7 && p[2] === 0.2 ? base.residuals(p) : base.residuals(p).map(() => NaN));
-    const result = SasFitFitter.fit({ ...base, residuals });
-    assert.equal(result.status, 'failed');
-    assert.equal(result.iterations, 0);
-    assert.deepEqual(result.values, [3, 0.7, 0.2]);
-    assert.ok(Number.isFinite(result.chi2) && result.chi2 > 0);
-    assert.ok(result.errors.every(Number.isNaN));
-    assert.equal(result.illConditioned, true);
-});
-
-test('fit: the final Jacobian not finite -> errors NaN and illConditioned, values kept', () => {
-    const base = decayProblem();
-    const plain = SasFitFitter.fit(base);
-    // Poison only the forward-difference point of b taken at the final solution.
-    const hb = Math.abs(plain.values[1]) * 1e-4;
-    const residuals = (p) => {
-        const r = base.residuals(p);
-        if (p[0] === plain.values[0] && p[1] === plain.values[1] + hb) r[0] = NaN;
-        return r;
-    };
-    const result = SasFitFitter.fit({ ...base, residuals });
-    assert.deepEqual(result.values, plain.values);
-    assert.equal(result.illConditioned, true);
-    assert.ok(result.errors.every(Number.isNaN));
 });
 
 test('fit: start outside the bounds is clipped; a value on a bound is exactly the bound, with a finite error', () => {
