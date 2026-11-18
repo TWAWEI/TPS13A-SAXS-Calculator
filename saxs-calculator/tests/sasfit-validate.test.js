@@ -7,10 +7,14 @@ const { SasFitMeta, SasFitValidate: V } = require('./load.js');
 
 test('SasFitValidate is frozen and exports the shared helpers', () => {
     assert.ok(Object.isFrozen(V));
-    for (const name of ['has', 'isObject', 'assertObject', 'readNumber', 'checkQ', 'readCutoff',
-        'isPolydisperse', 'pdNames', 'knownNames', 'assertNoUnusedPars']) {
+    for (const name of ['has', 'isObject', 'assertObject', 'readNumber', 'readFinite', 'readPdCount',
+        'checkQ', 'readCutoff', 'isPolydisperse', 'pdNames', 'knownNames', 'assertNoUnusedPars',
+        'assertEvalPoints']) {
         assert.equal(typeof V[name], 'function', name);
     }
+    assert.equal(V.MAX_PD_POINTS, 1000);
+    assert.equal(V.MAX_EVAL_POINTS, 1e6);
+    assert.equal(V.MAX_Q_POINTS, 1e6);
     assert.deepEqual(V.PD_SUFFIXES, ['_pd', '_pd_n', '_pd_nsigma', '_pd_type']);
 });
 
@@ -35,6 +39,58 @@ test('readNumber: own numeric value, fallback, or an Error naming the parameter'
     assert.throws(() => V.readNumber({ radius: '40' }, 'radius', 50), /Parameter radius must be a number, got string/);
     assert.throws(() => V.readNumber({ radius: null }, 'radius', 50), /Parameter radius must be a number, got object/);
     assert.ok(Number.isNaN(V.readNumber({ radius: NaN }, 'radius', 50)), 'NaN is a number; the model output shows it');
+});
+
+test('readFinite rejects NaN and infinities by name', () => {
+    assert.equal(V.readFinite({ radius_pd: 0.2 }, 'radius_pd', 0), 0.2);
+    assert.equal(V.readFinite({}, 'radius_pd', 0), 0);
+    [NaN, Infinity, -Infinity].forEach((v) => {
+        assert.throws(() => V.readFinite({ radius_pd: v }, 'radius_pd', 0),
+            new RegExp('Parameter radius_pd must be a finite number, got ' + v));
+    });
+    assert.throws(() => V.readFinite({ radius_pd: '0.2' }, 'radius_pd', 0), /radius_pd must be a number/);
+});
+
+test('readPdCount: any finite number up to MAX_PD_POINTS after truncation, returned as given', () => {
+    assert.equal(V.readPdCount({}, 'radius_pd_n', 0), 0);
+    // int() happens in SasFitWeights, as in sasmodels; 0.5 is not "== 0" there (direct_model.py:143)
+    [0, 0.5, 3.7, 35, 1000, 1000.9, -5].forEach((n) => {
+        assert.equal(V.readPdCount({ radius_pd_n: n }, 'radius_pd_n', 0), n);
+    });
+    [1001, 1e9, 1e300].forEach((n) => {
+        assert.throws(() => V.readPdCount({ radius_pd_n: n }, 'radius_pd_n', 0),
+            (err) => err.message === 'Parameter radius_pd_n must be a finite number of points, at most 1000, got ' + n);
+    });
+    [NaN, Infinity, -Infinity].forEach((n) => {
+        assert.throws(() => V.readPdCount({ radius_pd_n: n }, 'radius_pd_n', 0),
+            /Parameter radius_pd_n must be a finite number of points, at most 1000, got /);
+    });
+    assert.throws(() => V.readPdCount({ radius_pd_n: '35' }, 'radius_pd_n', 0), /radius_pd_n must be a number/);
+});
+
+test('checkQ: a Float64Array of 1..MAX_Q_POINTS points, checked without scanning it', () => {
+    V.checkQ(new Float64Array(1));
+    V.checkQ(Float64Array.from([0.01, NaN]));   // values are not inspected (hot path)
+    assert.throws(() => V.checkQ([0.01, 0.02]), /q must be a Float64Array, got Array/);
+    assert.throws(() => V.checkQ('q'), /q must be a Float64Array, got string/);
+    assert.throws(() => V.checkQ(null), /q must be a Float64Array, got null/);
+    assert.throws(() => V.checkQ(new Float32Array(3)), /q must be a Float64Array, got Float32Array/);
+    assert.throws(() => V.checkQ(new Float64Array(0)), /q must have 1\.\.1000000 points, got 0/);
+    // one 8 MB zero-filled buffer, shared with the at-the-limit view below
+    const big = new Float64Array(V.MAX_Q_POINTS + 1);
+    assert.throws(() => V.checkQ(big), /q must have 1\.\.1000000 points, got 1000001/);
+    V.checkQ(big.subarray(1));
+});
+
+test('assertEvalPoints: the product of the mesh lengths as a double, at most MAX_EVAL_POINTS', () => {
+    V.assertEvalPoints('cylinder', ['radius', 'length'], [1000, 1000]);
+    V.assertEvalPoints('sphere', ['sld', 'radius'], [1, 80]);
+    assert.throws(() => V.assertEvalPoints('cylinder', ['sld', 'radius', 'length'], [1, 1000, 1001]),
+        (err) => err.message === 'Polydispersity mesh of cylinder has 1001000 points '
+            + '(radius 1000 x length 1001), the limit is 1000000');
+    // far beyond int32: the product must not wrap
+    assert.throws(() => V.assertEvalPoints('m', ['a', 'b', 'c', 'd', 'e'], [1000, 1000, 1000, 1000, 1000]),
+        /has 1000000000000000 points \(a 1000 x b 1000 x c 1000 x d 1000 x e 1000\), the limit is 1000000/);
 });
 
 test('readCutoff: required without a fallback, defaulted with one', () => {

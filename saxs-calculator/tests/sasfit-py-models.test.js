@@ -101,7 +101,8 @@ test('guinier_porod switches branch at q1 = sqrt(n*ms)/rg and is continuous ther
     const porodExp = 4;
     const q1 = Math.sqrt((3 - s) * 0.5 * (porodExp - s)) / rg;
     const pars = { rg, s, porod_exp: porodExp, scale: 1, background: 0 };
-    const got = SasFitPyModels.models.guinier_porod.Iq([q1 * (1 - 1e-12), q1, q1 * (1 + 1e-12)], pars);
+    const got = SasFitPyModels.models.guinier_porod.Iq(
+        Float64Array.from([q1 * (1 - 1e-12), q1, q1 * (1 + 1e-12)]), pars);
     const guinier = Math.pow(q1, -s) * Math.exp(-((q1 * rg) ** 2) / (3 - s));
     assertClose([got[0], got[1], got[2]], [guinier, guinier, guinier], 'continuity at q1');
 });
@@ -125,7 +126,7 @@ test('defaults come from the model meta', () => {
     assert.deepEqual(Array.from(pl.Iq(q, {})), Array.from(pl.Iq(q, { scale: 1, background: 0.001, power: 4 })));
 });
 
-test('q and pars are not modified; plain arrays are accepted', () => {
+test('q and pars are not modified', () => {
     const q = Float64Array.from(g2.qZero);
     const qCopy = Float64Array.from(q);
     const pars = Object.freeze({ scale: 2, background: 0.5, rg: 25, s: 0.5, porod_exp: 3.5 });
@@ -134,8 +135,6 @@ test('q and pars are not modified; plain arrays are accepted', () => {
     assert.deepEqual(q, qCopy);
     assert.equal(JSON.stringify(pars), parsCopy);
     assert.notEqual(got, q);
-    const plain = SasFitPyModels.models.guinier_porod.Iq(Array.from(q), pars);
-    assert.deepEqual(Array.from(plain), Array.from(got));
     const frozenPl = Object.freeze({ power: 2 });
     SasFitPyModels.models.power_law.Iq(q, frozenPl);
     assert.deepEqual(q, qCopy);
@@ -156,8 +155,9 @@ test('unknown parameter names throw an Error naming them', () => {
 test('invalid inputs fail fast', () => {
     const q = Float64Array.from(g2.q);
     const pl = SasFitPyModels.models.power_law;
-    assert.throws(() => pl.Iq('q', {}), /q must be/);
-    assert.throws(() => pl.Iq([0.1, '0.2'], {}), /q must be/);
+    assert.throws(() => pl.Iq('q', {}), /q must be a Float64Array, got string/);
+    assert.throws(() => pl.Iq([0.1, 0.2], {}), /q must be a Float64Array, got Array/);
+    assert.throws(() => pl.Iq(new Float64Array(0), {}), /q must have 1\.\.1000000 points, got 0/);
     assert.throws(() => pl.Iq(q, null), /pars must be an object/);
     assert.throws(() => pl.Iq(q), /pars must be an object/);
     assert.throws(() => pl.Iq(q, { power: '4' }), /power/);

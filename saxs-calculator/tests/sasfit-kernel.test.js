@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SasFitMeta, SasFitKernel } = require('./load.js');
+const { SasFitMeta, SasFitKernel, SasFitValidate } = require('./load.js');
 const { loadFixture, assertClose, loadWasm } = require('./sasfit-helpers.js');
 
 const fq = loadFixture('fq');
@@ -226,8 +226,6 @@ test('q and pars are not modified', async () => {
     kernel.Fq(q, pars, { cutoff: 1e-5, radiusEffectiveMode: 1 });
     assert.deepEqual(q, qCopy);
     assert.equal(JSON.stringify(pars), parsCopy);
-    const plain = kernel.Iq(Array.from(q), pars, { cutoff: 1e-5 });
-    assert.deepEqual(Array.from(plain), Array.from(kernel.Iq(q, pars, { cutoff: 1e-5 })));
 });
 
 test('Iq applies scale and background outside the kernel', async () => {
@@ -260,12 +258,102 @@ test('invalid inputs fail fast', async () => {
     assert.throws(() => kernel.Iq(q, {}, { cutoff: Infinity }), /cutoff/);
     assert.throws(() => kernel.Fq(q, {}, { radiusEffectiveMode: 1 }), /cutoff is required/);
     assert.throws(() => kernel.Iq(q, { radius: '50' }, { cutoff: 0 }), /radius/);
-    assert.throws(() => kernel.Iq('q', {}, { cutoff: 0 }), /q/);
+    assert.throws(() => kernel.Iq('q', {}, { cutoff: 0 }), /q must be a Float64Array, got string/);
+    assert.throws(() => kernel.Iq(Array.from(q), {}, { cutoff: 0 }), /q must be a Float64Array, got Array/);
+    assert.throws(() => kernel.Fq(Array.from(q), {}, { cutoff: 0, radiusEffectiveMode: 1 }),
+        /q must be a Float64Array, got Array/);
+    assert.throws(() => kernel.Iq(new Float64Array(0), {}, { cutoff: 0 }), /q must have 1\.\.1000000 points, got 0/);
     assert.throws(() => kernel.Iq(q, { radius_pd: 0.1, radius_pd_n: 35, radius_pd_type: 'nope' }, { cutoff: 0 }),
         /nope/);
     assert.throws(() => SasFitKernel.create(SasFitMeta.models.power_law, {}), /power_law/);
     assert.throws(() => SasFitKernel.create(SasFitMeta.models.sphere, {}), /sphere_Iq/);
     await assert.rejects(SasFitKernel.instantiate('not bytes'), /bytes/);
+});
+
+test('*_pd_n keeps the sasmodels semantics: int() truncation, < 2 points = the centre', () => {
+    const meta = SasFitMeta.models.sphere;
+    const args = (n) => SasFitKernel.makeKernelArgs(meta,
+        { radius_pd: 0.2, radius_pd_n: n, radius_pd_nsigma: 3, radius_pd_type: 'gaussian' });
+    assert.deepEqual(args(3.7), args(3));
+    assert.equal(args(3.7).numEval, 3);
+    const mono = SasFitKernel.makeKernelArgs(meta, {});
+    // 0.5 is not "== 0" (direct_model.py:143) but int(0.5) = 0 points gives the centre (weights.py:66)
+    [0, 0.5, 1, -1, -5.5].forEach((n) => assert.deepEqual(args(n), mono, 'radius_pd_n ' + n));
+    assert.equal(args(1000).numEval, 1000);
+});
+
+test('polydispersity inputs out of bounds throw an Error naming the parameter', () => {
+    const meta = SasFitMeta.models.cylinder;
+    const run = (pars) => () => SasFitKernel.makeKernelArgs(meta, pars);
+    assert.throws(run({ radius_pd: 0.1, radius_pd_n: 1e9 }),
+        /Parameter radius_pd_n must be a finite number of points, at most 1000, got 1000000000/);
+    assert.throws(run({ length_pd: 0.1, length_pd_n: 1001 }), /length_pd_n must be .* at most 1000, got 1001/);
+    // also when the width is 0 and the count would not be used
+    assert.throws(run({ radius_pd_n: 1e9 }), /radius_pd_n must be .* at most 1000/);
+    assert.throws(run({ radius_pd: 0.1, radius_pd_n: NaN }), /radius_pd_n must be a finite number of points/);
+    assert.throws(run({ radius_pd: 0.1, radius_pd_n: Infinity }), /radius_pd_n must be a finite number of points/);
+    assert.throws(run({ radius_pd: NaN, radius_pd_n: 35 }), /Parameter radius_pd must be a finite number, got NaN/);
+    assert.throws(run({ radius_pd: Infinity }), /Parameter radius_pd must be a finite number, got Infinity/);
+    assert.throws(run({ radius_pd: 0.1, radius_pd_n: 35, radius_pd_nsigma: NaN }),
+        /Parameter radius_pd_nsigma must be a finite number, got NaN/);
+    assert.throws(run({ theta_pd_nsigma: -Infinity }), /Parameter theta_pd_nsigma must be a finite number/);
+    for (const err of [RangeError, TypeError]) {
+        assert.throws(run({ radius_pd: 0.1, radius_pd_n: 1e10 }), (e) => !(e instanceof err));
+    }
+});
+
+test('the mesh size is bounded by MAX_EVAL_POINTS before any buffer is built', () => {
+    const meta = SasFitMeta.models.core_shell_cylinder;
+    const pd = (name, n) => ({ [name + '_pd']: 0.1, [name + '_pd_n']: n, [name + '_pd_nsigma']: 3,
+        [name + '_pd_type']: 'gaussian' });
+    const within = Object.assign({}, pd('radius', 100), pd('thickness', 100), pd('length', 100));
+    assert.equal(SasFitKernel.makeKernelArgs(meta, within).numEval, SasFitValidate.MAX_EVAL_POINTS);
+    const over = Object.assign({}, pd('radius', 101), pd('thickness', 100), pd('length', 100));
+    assert.throws(() => SasFitKernel.makeKernelArgs(meta, over),
+        (err) => err.message === 'Polydispersity mesh of core_shell_cylinder has 1010000 points '
+            + '(radius 101 x thickness 100 x length 100), the limit is 1000000');
+    // three parameters at the per-parameter limit: 1e9 points, never allocated
+    const huge = Object.assign({}, pd('radius', 1000), pd('thickness', 1000), pd('length', 1000));
+    assert.throws(() => SasFitKernel.makeKernelArgs(meta, huge), /has 1000000000 points .* the limit is 1000000/);
+});
+
+test('a wasm trap or allocation failure becomes an Error naming the kernel; buffers are freed', async () => {
+    const ex = await wasmExports('sphere');
+    const q = Float64Array.from(g1.q);
+    const probe = ex.malloc(64);
+    ex.free(probe);
+    const failures = [
+        ['sphere_Iq', () => { throw new WebAssembly.RuntimeError('unreachable'); }, WebAssembly.RuntimeError],
+        ['sphere_Iq', () => { throw new RangeError('offset is out of bounds'); }, RangeError],
+        ['malloc', () => { throw new WebAssembly.RuntimeError('memory access out of bounds'); },
+            WebAssembly.RuntimeError],
+    ];
+    for (const [name, fn, type] of failures) {
+        const kernel = SasFitKernel.create(SasFitMeta.models.sphere, Object.assign({}, ex, { [name]: fn }));
+        assert.throws(() => kernel.Iq(q, {}, { cutoff: 0 }), (err) => {
+            assert.equal(err.constructor, Error);
+            assert.match(err.message, /^wasm kernel sphere failed: /);
+            assert.ok(err.message.includes(err.cause.message));
+            assert.ok(err.cause instanceof type);
+            return true;
+        });
+        const again = ex.malloc(64);
+        ex.free(again);
+        assert.equal(again, probe, name + ': nothing leaked');
+    }
+    const noMemory = SasFitKernel.create(SasFitMeta.models.sphere, Object.assign({}, ex, { malloc: () => 0 }));
+    assert.throws(() => noMemory.Iq(q, {}, { cutoff: 0 }), /wasm malloc failed for \d+ bytes \(sphere\)/);
+});
+
+test('instantiate refuses a module that is not a build_wasm.py kernel', async () => {
+    const emptyModule = Uint8Array.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+    await assert.rejects(SasFitKernel.instantiate(emptyModule),
+        /wasm module lacks _initialize, malloc, free, memory, <model>_Iq; rebuild with tools\/sasfit\/build_wasm\.py/);
+    const ex = await wasmExports('sphere');
+    const without = Object.fromEntries(Object.entries(ex).filter(([name]) => name !== 'free'));
+    assert.throws(() => SasFitKernel.create(SasFitMeta.models.sphere, without),
+        /wasm exports must provide sphere_Iq, malloc, free and memory; rebuild with tools\/sasfit\/build_wasm\.py/);
+    assert.throws(() => SasFitKernel.create(SasFitMeta.models.cylinder, ex), /cylinder_Iq/);
 });
 
 test('too many polydisperse parameters is rejected like make_details', () => {

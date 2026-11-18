@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SasFitMeta, SasFitKernel, SasFitProduct, SasFitEvaluate } = require('./load.js');
+const { SasFitMeta, SasFitKernel, SasFitProduct, SasFitEvaluate, SasFitValidate } = require('./load.js');
 const { loadFixture, assertClose, assertCloseRel, loadWasm } = require('./sasfit-helpers.js');
 
 const g1 = loadFixture('g1');
@@ -205,7 +205,7 @@ test('errors: malformed modelSpec and params', async () => {
     assert.throws(run({ model: 'sphere', structure: 3, lowQPowerLaw: false }, {}), /modelSpec.structure/);
     assert.throws(run({ model: 'sphere', structure: null, lowQPowerLaw: 'yes' }, {}), /lowQPowerLaw/);
     assert.throws(run(SPHERE, null), /params must be an object/);
-    assert.throws(() => SasFitEvaluate.evaluate(SPHERE, {}, 'q', CUT, kernels), /q must be/);
+    assert.throws(() => SasFitEvaluate.evaluate(SPHERE, {}, 'q', CUT, kernels), /q must be a Float64Array/);
     // structure and lowQPowerLaw may be left out
     const short = SasFitEvaluate.evaluate({ model: 'sphere' }, {}, q, CUT, kernels);
     assert.deepEqual(short.I, SasFitEvaluate.evaluate(SPHERE, {}, q, CUT, kernels).I);
@@ -240,8 +240,73 @@ test('inputs are not modified; the result is new on every call', async () => {
     assert.notEqual(second.I, first.I);
     assert.deepEqual(second.I, first.I);
     assert.deepEqual(second.extras.S, first.extras.S);
-    // a plain array of numbers works as q too
-    assert.deepEqual(SasFitEvaluate.evaluate(spec, pars, Array.from(q), opts, kernels).I, first.I);
+});
+
+test('q must be a Float64Array of 1..MAX_Q_POINTS points for every kind of model', async () => {
+    const kernels = await loadKernels();
+    const specs = [SPHERE, SPHERE_LOWQ, SPHERE_HS, { model: 'power_law' },
+        { model: 'guinier_porod', lowQPowerLaw: true }];
+    const tooLong = new Float64Array(SasFitValidate.MAX_Q_POINTS + 1);
+    specs.forEach((spec) => {
+        const run = (qIn) => () => SasFitEvaluate.evaluate(spec, {}, qIn, CUT, kernels);
+        assert.throws(run(Array.from(q)), /q must be a Float64Array, got Array/, spec.model);
+        assert.throws(run(new Float32Array(4)), /q must be a Float64Array, got Float32Array/, spec.model);
+        assert.throws(run(undefined), /q must be a Float64Array, got undefined/, spec.model);
+        assert.throws(run(new Float64Array(0)), /q must have 1\.\.1000000 points, got 0/, spec.model);
+        assert.throws(run(tooLong), /q must have 1\.\.1000000 points, got 1000001/, spec.model);
+        assert.equal(run(Float64Array.of(0.01))().I.length, 1);
+    });
+});
+
+test('polydispersity bounds reach the caller as Errors naming the parameter', async () => {
+    const kernels = await loadKernels();
+    const run = (spec, pars) => () => SasFitEvaluate.evaluate(spec, pars, q, CUT, kernels);
+    for (const spec of [SPHERE, SPHERE_LOWQ, SPHERE_HS]) {
+        assert.throws(run(spec, { radius_pd: 0.1, radius_pd_n: 1e9 }),
+            /Parameter radius_pd_n must be a finite number of points, at most 1000, got 1000000000/);
+        assert.throws(run(spec, { radius_pd: 0.1, radius_pd_n: NaN }), /radius_pd_n must be a finite number/);
+        assert.throws(run(spec, { radius_pd: NaN, radius_pd_n: 35 }), /radius_pd must be a finite number, got NaN/);
+        assert.throws(run(spec, { radius_pd: 0.1, radius_pd_n: 35, radius_pd_nsigma: Infinity }),
+            /radius_pd_nsigma must be a finite number, got Infinity/);
+        // int() as in sasmodels
+        const base = { radius_pd: 0.2, radius_pd_nsigma: 3, radius_pd_type: 'schulz' };
+        assert.deepEqual(run(spec, Object.assign({ radius_pd_n: 20.9 }, base))().I,
+            run(spec, Object.assign({ radius_pd_n: 20 }, base))().I);
+    }
+    const csc = { model: 'core_shell_cylinder', structure: 'hayter_msa' };
+    const pd = (name, n) => ({ [name + '_pd']: 0.1, [name + '_pd_n']: n });
+    assert.throws(run(csc, Object.assign({}, pd('radius', 101), pd('thickness', 100), pd('length', 100))),
+        /Polydispersity mesh of core_shell_cylinder has 1010000 points .* the limit is 1000000/);
+    assert.throws(run({ model: 'sphere', structure: 'hayter_msa' },
+        Object.assign({ radius_effective_mode: 0 }, pd('radius_effective', 1001))),
+        /radius_effective_pd_n must be .* at most 1000, got 1001/);
+});
+
+test('own __proto__ and constructor keys are unknown parameters, with or without lowQPowerLaw', async () => {
+    const kernels = await loadKernels();
+    const specs = [];
+    for (const lowQPowerLaw of [false, true]) {
+        specs.push({ model: 'sphere', structure: null, lowQPowerLaw });
+        specs.push({ model: 'sphere', structure: 'hardsphere', lowQPowerLaw });
+        specs.push({ model: 'vesicle', structure: 'hayter_msa', lowQPowerLaw });
+        specs.push({ model: 'power_law', structure: null, lowQPowerLaw });
+    }
+    const texts = ['{"__proto__":{}}', '{"__proto__":{"radius":10}}', '{"__proto__":null}',
+        '{"radius":40,"__proto__":{"lowq_scale":1}}', '{"constructor":1}', '{"constructor":{"prototype":{}}}'];
+    for (const spec of specs) {
+        for (const text of texts) {
+            const key = text.includes('__proto__') ? '__proto__' : 'constructor';
+            const tag = JSON.stringify(spec) + ' ' + text;
+            const pars = JSON.parse(text);
+            assert.ok(Object.keys(pars).includes(key), tag);
+            assert.throws(() => SasFitEvaluate.evaluate(spec, pars, q, CUT, kernels),
+                (err) => err.constructor === Error
+                    && err.message.startsWith('Unused parameters in call to ')
+                    && err.message.split(': ')[1].split(', ').includes(key), tag);
+        }
+    }
+    assert.equal(Object.prototype.radius, undefined);
+    assert.equal(Object.prototype.lowq_scale, undefined);
 });
 
 test('a kernels map with a replaced wasm instance uses the new instance', async () => {

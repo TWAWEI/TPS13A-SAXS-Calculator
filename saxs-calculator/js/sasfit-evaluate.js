@@ -11,12 +11,14 @@
  *              with lowQPowerLaw also lowq_scale and lowq_power. Anything left
  *              out takes the sasmodels default (so *_pd_n 0 = monodisperse; the
  *              UI defaults are the caller's business). Unknown names are an Error.
- *   q          Float64Array or array of numbers
+ *   q          Float64Array of 1..SasFitValidate.MAX_Q_POINTS points (plain
+ *              arrays are converted by the caller, once, not on every call)
  *   opts       { cutoff = 1e-5 }: dispersity-weight cutoff. This is the only
  *              place with a cutoff default; the kernels require it.
  *   kernels    { [modelName]: wasmExports } from SasFitKernel.instantiate, for
  *              every C model the spec names. The two JS models need none.
- *   I          Float64Array, scale and background included
+ *   I          Float64Array, scale and background included. It is a new array
+ *              owned by the caller and it is mutable: typed arrays cannot be frozen.
  *   extras     P@S: { radiusEffective, volumeRatio, S } as P returned them
  *              (radiusEffective is 0 in radius_effective_mode 0, where S uses
  *              the radius_effective parameter); otherwise {}
@@ -50,7 +52,7 @@
     const LOWQ_DEFAULTS = Object.freeze({ [LOWQ_SCALE_ID]: 0, [LOWQ_POWER_ID]: 4 });   // design spec 4.5
     const NO_EXTRAS = Object.freeze({});
 
-    const { has, isObject, assertObject, readNumber, readCutoff } = globalThis.SasFitValidate;
+    const { has, isObject, assertObject, readNumber, checkQ, readCutoff } = globalThis.SasFitValidate;
 
     function metaOf(name) {
         const models = globalThis.SasFitMeta.models;
@@ -80,10 +82,11 @@
     function splitParams(params, lowQPowerLaw) {
         assertObject(params, 'params');
         if (!lowQPowerLaw) return { modelPars: params, lowQ: null };
-        const modelPars = {};
-        Object.keys(params).forEach((key) => {
-            if (key !== LOWQ_SCALE_ID && key !== LOWQ_POWER_ID) modelPars[key] = params[key];
-        });
+        // Object.fromEntries defines own properties: an own "__proto__" key (JSON.parse makes
+        // one) stays an own key and is rejected by the model as an unknown parameter, whereas
+        // `modelPars[key] = value` would set the prototype and let it through.
+        const modelPars = Object.fromEntries(Object.entries(params)
+            .filter(([key]) => key !== LOWQ_SCALE_ID && key !== LOWQ_POWER_ID));
         const lowQ = { scale: readLowQ(params, LOWQ_SCALE_ID), power: readLowQ(params, LOWQ_POWER_ID) };
         return { modelPars, lowQ };
     }
@@ -133,6 +136,7 @@
         const meta = metaOf(spec.model);
         const sMeta = spec.structure === null ? null : metaOf(spec.structure);
         const cutoff = readCutoff(opts, DEFAULT_CUTOFF);
+        checkQ(q);
         const { modelPars, lowQ } = splitParams(params, spec.lowQPowerLaw);
         const base = sMeta === null
             ? evaluatePlain(meta, modelPars, q, cutoff, kernels)

@@ -7,6 +7,10 @@
  * see wasm/LICENSE-sasmodels.txt
  *
  * Pure computation: no DOM, no inputs mutated.
+ *
+ * Deliberate deviation: npts above SasFitValidate.MAX_PD_POINTS and non-finite
+ * npts / width / nsigmas are an Error (sasmodels raises ValueError for int(nan)
+ * and otherwise returns NaN weights or tries to allocate).
  */
 
 (function () {
@@ -125,6 +129,15 @@
         const n = npts == null ? d.npts : Math.trunc(npts);
         const ns = nsigmas == null ? d.nsigmas : nsigmas;
         const w0 = width == null ? d.width : width;
+        const maxPoints = globalThis.SasFitValidate.MAX_PD_POINTS;
+        if (!Number.isFinite(n) || n > maxPoints) {
+            throw new Error('Polydispersity npts must be a finite number, at most ' + maxPoints + ', got ' + npts);
+        }
+        if (!Number.isFinite(w0)) throw new Error('Polydispersity width must be a finite number, got ' + w0);
+        // uniform has no nsigmas (class default null)
+        if (ns !== null && !Number.isFinite(ns)) {
+            throw new Error('Polydispersity nsigmas must be a finite number, got ' + ns);
+        }
         const { x, px } = rawWeights(WEIGHTS[type], center, w0, n, ns, lower, upper, relative);
         const total = px.reduce((s, v) => s + v, 0);
         return { x: Float64Array.from(x), w: Float64Array.from(px, (v) => v / total) };

@@ -22,6 +22,7 @@
  *
  * Deliberate deviations from the sasmodels source:
  *   - Parameter values must be numbers (sasmodels applies float()).
+ *   - q must be a Float64Array of 1..MAX_Q_POINTS points (SasFitValidate.checkQ).
  *   - There is no cutoff option: with no dispersity mesh it has no effect.
  */
 
