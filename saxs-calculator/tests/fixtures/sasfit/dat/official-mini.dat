@@ -1,0 +1,39 @@
+ Multi                   	Data Collection Mode ("Multi" or "Super")
+ SYNTH_mini_10           	Output filename (less than 21 characters)
+ 100                     	Total Frame Numbers
+ 15.0000                 	Photon Energy (keV)
+ 1.0000                  	Scaling Factor
+ 0.5000                  	Sample Transmission coefficient
+ 0.8000                  	Empty Cell Transmission coefficient
+ 1.0000                  	Sample thickness (mm)
+ 512.0   512.0           	Beam Center (circular or line-cut integration center:q=0)
+ 3000.00                 	Sample-to-Detector Distance (mm)
+ synth_sample.tif        	Sample filename
+ 1.0E+10                 	Sample information (beam flux)
+ synth_empty.tif         	Empty Cell filename
+ 1.0E+10                 	Empty Cell information (beam flux)
+ synth_sens.tif          	Detector Sensitivity file
+ synth_noise.tif         	Electronic Nosie file for the Detector
+ NON                     	REJECT or Count ROI ("NON", "REJECT", "COUNT", OR "LINECUT")
+ 0 0 0 0                 	ROI- data Region Of Interest
+ 0 0                     	LineCut Starting Point (x1,y1)
+ 0 0                     	LineCut End Point (x2,y2)
+ 0                       	LineCut Half Width (with 0 for signle pixel)
+ 0.0050                  	Starting Q-value for data binning
+ 1                       	Data binning dQ-interval ("1" for suggested binnng based on data q-resolution)
+ 0.5   0.5               	Pinhole1 Size & Mask opening (mm)
+ 0                       	Output data resol. dQ & binding pts N (Yes=1, No=0)
+ Single Frame Time:   2.000000      sec
+     Q                   I                     ERROR
+     0.30000E-02         -0.19020E-02              0.00000E+00
+     0.35000E-02         -0.12000E-02              0.00000E+00
+     0.40000E-02         -0.50000E-03              0.00000E+00
+     0.45000E-02         -0.10000E-03              0.00000E+00
+             000                  000                      000
+     0.48000E-02          0.15000E+03              0.40000E+01
+     0.50000E-02          0.14500E+03              0.38000E+01
+     0.60000E-02          0.12000E+03              0.30000E+01
+     0.72000E-02          0.90000E+02              0.25000E+01
+     0.85000E-02          0.60000E+02              0.20000E+01
+     0.10000E-01          0.35000E+02              0.15000E+01
+     0.12000E-01          0.18000E+02              0.10000E+01
