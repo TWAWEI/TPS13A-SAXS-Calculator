@@ -26,6 +26,8 @@ Usage (first lines of a generator, before any sasmodels import)::
     ...
     sas_env.verify()            # after import: the settings took effect
     sas_env.verify_cache(dlls)  # after generation: the DLLs came from our cache
+
+Both checks raise RuntimeError.
 """
 import os
 import sys
@@ -49,21 +51,33 @@ def configure():
 
 
 def verify():
-    """Assert that sasmodels picked the settings up; return the compile command."""
+    """Check that sasmodels picked the settings up; return the compile command.
+
+    Raises RuntimeError (not AssertionError: these checks guard the validity of
+    the reference numbers and must survive ``python -O``).
+    """
     from sasmodels import kerneldll
 
     command = kerneldll.compile_command("model.c", "model.so")
-    assert NO_FMA_FLAG in command, "compile command lacks %s: %r" % (NO_FMA_FLAG, command)
-    assert os.path.samefile(kerneldll.SAS_DLL_PATH, DLL_DIR), kerneldll.SAS_DLL_PATH
+    if NO_FMA_FLAG not in command:
+        raise RuntimeError("compile command lacks %s: %r" % (NO_FMA_FLAG, command))
+    if not os.path.samefile(kerneldll.SAS_DLL_PATH, DLL_DIR):
+        raise RuntimeError("sasmodels DLL cache is %s, expected %s"
+                           % (kerneldll.SAS_DLL_PATH, DLL_DIR))
     return command
 
 
 def verify_cache(dll_paths):
-    """Assert every loaded DLL lives in the dedicated cache, which is non-empty."""
+    """Check every loaded DLL lives in the dedicated cache, which is non-empty.
+
+    Raises RuntimeError, for the same reason as verify().
+    """
     built = [f for f in os.listdir(DLL_DIR) if f.endswith(DLL_SUFFIX)]
-    assert built, "no DLL was built in %s" % DLL_DIR
+    if not built:
+        raise RuntimeError("no DLL was built in %s" % DLL_DIR)
     for path in dll_paths:
-        assert os.path.samefile(os.path.dirname(path), DLL_DIR), \
-            "DLL loaded from outside the no-FMA cache: %s" % path
-        assert os.path.exists(path), path
+        if not os.path.exists(path):
+            raise RuntimeError("loaded DLL no longer exists: %s" % path)
+        if not os.path.samefile(os.path.dirname(path), DLL_DIR):
+            raise RuntimeError("DLL loaded from outside the no-FMA cache: %s" % path)
     return len(built)

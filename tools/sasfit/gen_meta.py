@@ -10,6 +10,7 @@ import json
 import math
 import os
 import sys
+import tempfile
 
 os.environ.setdefault("SAS_OPENCL", "none")
 
@@ -144,8 +145,26 @@ def build():
     return "\n".join(out) + "\n"
 
 
+def write_atomic(path, text):
+    """Write *text* next to *path* and rename it into place.
+
+    A failure part-way leaves the previous file untouched instead of a
+    truncated sasfit-meta.js (which the page would load).
+    """
+    directory = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".sasfit-meta-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 if __name__ == "__main__":
     text = build()
-    with open(OUT, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    write_atomic(OUT, text)
     print(f"wrote {OUT} ({text.count(chr(10))} lines)", file=sys.stderr)
