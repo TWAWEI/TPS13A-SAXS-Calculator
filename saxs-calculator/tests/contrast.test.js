@@ -122,7 +122,7 @@ for (const [themeName, theme] of Object.entries(THEMES)) {
 // ---------------------------------------------------------------- 圖表色（js/chart-theme.js，規格 §6.1）
 const { ChartTheme } = require('./load.js');
 
-const CHART_LINE_ROLES = Object.freeze(['primary', 'reference', 'model', 'residual', 'fit', 'marker']);
+const CHART_LINE_ROLES = Object.freeze(['primary', 'reference', 'model', 'residual', 'fit', 'modelCurve', 'marker']);
 
 for (const [themeName, p] of Object.entries(ChartTheme.PALETTES)) {
     test(`[contrast] 圖表 ${themeName}：text ≥ 4.5，線與標記 ≥ 3（疊在卡片上）`, () => {

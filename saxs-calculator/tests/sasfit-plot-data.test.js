@@ -38,7 +38,7 @@ function colourKeys(config) {
     walk(config, [], (path, key) => { if (COLOUR_KEYS.includes(key)) found.push(path.concat(key).join('.')); });
     return found;
 }
-const kinds = (config) => config.data.datasets.map((d) => d.sfKind + ':' + d.tpsSeries + ':' + d.sfId);
+const kinds = (config) => config.data.datasets.map((d) => d.sfKind + ':' + (d.tpsRole === undefined ? d.tpsSeries : d.tpsRole) + ':' + d.sfId);
 
 // ------------------------------------------------------------------ module shape
 
@@ -249,7 +249,7 @@ test('mainConfig: axis types and titles follow the mode; intensity carries cm^-1
     assert.throws(() => P.mainConfig(view({ mode: 'x' })), /Unknown plot mode/);
 });
 
-test('mainConfig: a points-only dataset per file in its series colour, a line in the same series for its curve', () => {
+test('mainConfig: a hollow points-only dataset per file in its series colour; the active curve has its own role, the others their series', () => {
     const fit1 = { q: f64([0.01, 0.02, 0.03, 0.04]), I: f64([90, 45, 30, 22]) };
     const preview = { q: f64([0.01, 0.04]), I: f64([95, 20]) };
     const config = P.mainConfig(view({ series: [
@@ -258,14 +258,20 @@ test('mainConfig: a points-only dataset per file in its series colour, a line in
         serie(5),
     ], preview }));
     assert.equal(config.type, 'scatter');
-    assert.deepEqual(kinds(config), ['data:0:d1', 'curve:0:d1', 'data:2:d3', 'curve:2:d3', 'data:5:d6']);
+    assert.deepEqual(kinds(config), ['data:0:d1', 'curve:0:d1', 'data:2:d3', 'curve:modelCurve:d3', 'data:5:d6']);
     const [d0, c0, d2, c2, d5] = config.data.datasets;
     [d0, d2, d5].forEach((d) => {
         assert.equal(d.showLine, false);
         assert.equal(d.pointStyle, 'circle');
         assert.ok(d.pointRadius > 0);
+        assert.equal(d.tpsHollow, true, 'hollow points: the curve shows through them');
+        assert.equal(d.borderWidth, 1);
         assert.equal(d.data.length, 4);
     });
+    assert.deepEqual([d2.pointRadius, d0.pointRadius], [2, 1.5]);
+    assert.deepEqual([c2.borderWidth, c0.borderWidth], [2, 1.5]);
+    assert.deepEqual([c2.tpsRole, c2.tpsSeries, c2.label, c2.sfLegend], ['modelCurve', undefined, '模型', true]);
+    assert.deepEqual([c0.tpsRole, c0.tpsSeries, c0.sfLegend], [undefined, 0, undefined]);
     [c0, c2].forEach((c) => {
         assert.equal(c.showLine, true);
         assert.equal(c.pointRadius, 0);
@@ -283,14 +289,14 @@ test('mainConfig: a points-only dataset per file in its series colour, a line in
     assert.ok(d2.data.every((p) => 'yMin' in p && 'yMax' in p), 'the error bar plugin reads yMin and yMax');
 });
 
-test('mainConfig: the active file falls back to its own fit; a preview without files is one line of series 0', () => {
+test('mainConfig: the active file falls back to its own fit; a preview without files is one model curve', () => {
     const fit = { q: f64([0.01, 0.02]), I: f64([9, 8]) };
     const own = P.mainConfig(view({ series: [serie(3, { active: true, fitCurve: fit })] }));
-    assert.deepEqual(kinds(own), ['data:3:d4', 'curve:3:d4']);
+    assert.deepEqual(kinds(own), ['data:3:d4', 'curve:modelCurve:d4']);
     assert.deepEqual(own.data.datasets[1].data.map((p) => p.y), [9, 8]);
     const alone = P.mainConfig(view({ preview: { q: f64([0.001, 0.01]), I: f64([5, 4]) } }));
     assert.equal(alone.data.datasets.length, 1);
-    assert.deepEqual([alone.data.datasets[0].tpsSeries, alone.data.datasets[0].showLine, alone.data.datasets[0].sfKind], [0, true, 'curve']);
+    assert.deepEqual([alone.data.datasets[0].tpsRole, alone.data.datasets[0].showLine, alone.data.datasets[0].sfKind], ['modelCurve', true, 'curve']);
     assert.deepEqual(P.mainConfig(view()).data.datasets, []);
     const noActive = P.mainConfig(view({ series: [serie(0)], preview: fit }));
     assert.deepEqual(kinds(noActive), ['data:0:d1'], 'the preview belongs to the active file');
@@ -320,23 +326,82 @@ test('mainConfig: staggering multiplies dataset k of the display order and its c
     near(g.data.datasets[4].data[0].y, Math.log(100) + 2 * Math.LN10);
 });
 
-test('mainConfig: options of the site (no parsing, no animation, zoom as the dn/dc charts) and one fixed y axis width', () => {
+test('mainConfig: options of the site (no parsing, no animation), zoom gestures that leave the plain wheel to the page, one fixed y axis width', () => {
     const o = P.mainConfig(view({ series: [serie(0, { active: true })] })).options;
     assert.equal(o.parsing, false);
     assert.equal(o.animation, false);
     assert.equal(o.responsive, true);
     assert.equal(o.maintainAspectRatio, false);
-    assert.deepEqual(o.plugins.zoom, { pan: { enabled: true, mode: 'xy' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'xy' } });
+    assert.deepEqual(o.plugins.zoom, {
+        pan: { enabled: true, mode: 'xy', modifierKey: 'shift' },
+        zoom: { wheel: { enabled: true, modifierKey: 'ctrl' }, pinch: { enabled: true }, drag: { enabled: true, borderWidth: 1 }, mode: 'xy' },
+    });
     const scale = { width: 114 };
     o.scales.y.afterFit(scale);
     assert.equal(scale.width, P.Y_AXIS_WIDTH);
     assert.deepEqual(o.plugins.annotation.annotations, {});
     const ranged = P.mainConfig(view({ mode: 'guinier', series: [serie(0, { active: true })], range: { qMin: 0.1, qMax: 0.2 } }));
-    assert.deepEqual(ranged.options.plugins.annotation.annotations, P.rangeBoxes('guinier', { qMin: 0.1, qMax: 0.2 }));
-    // the legend lists files, not their curves
-    const config = P.mainConfig(view({ series: [serie(0, { active: true, fitCurve: { q: f64([0.01]), I: f64([1]) } })] }));
+    assert.deepEqual(ranged.options.plugins.annotation.annotations,
+        { ...P.rangeBoxes('guinier', { qMin: 0.1, qMax: 0.2 }), ...P.rangeLines('guinier', { qMin: 0.1, qMax: 0.2 }) });
+    // the legend lists the files and the model curve of the active one, not the curves of the other files
+    const fit = { q: f64([0.01]), I: f64([1]) };
+    const config = P.mainConfig(view({ series: [serie(0, { active: true, fitCurve: fit }), serie(1, { fitCurve: fit })] }));
     const filter = config.options.plugins.legend.labels.filter;
-    assert.deepEqual(config.data.datasets.map((d, i) => filter({ datasetIndex: i }, config.data)), [true, false]);
+    assert.deepEqual(config.data.datasets.map((d, i) => filter({ datasetIndex: i }, config.data)), [true, true, true, false]);
+    assert.equal(config.options.plugins.legend.display, true);
+});
+
+test('rangeLines: a dashed line of the reference role on each end of the fit range, in the x of the mode', () => {
+    assert.deepEqual(P.rangeLines('loglog', null), {});
+    const lines = P.rangeLines('guinier', { qMin: 0.1, qMax: 0.2 });
+    assert.deepEqual(Object.keys(lines), ['sfRangeLowLine', 'sfRangeHighLine']);
+    near(lines.sfRangeLowLine.xMin, 0.01);
+    near(lines.sfRangeHighLine.xMax, 0.04);
+    Object.values(lines).forEach((line) => {
+        assert.deepEqual([line.type, line.tpsRole, line.borderWidth, line.drawTime], ['line', 'reference', 1, 'beforeDatasetsDraw']);
+        assert.equal(line.xMin, line.xMax);
+        assert.ok(line.borderDash.length === 2);
+    });
+    assert.deepEqual(Object.keys(P.rangeLines('kratky', { qMin: NaN, qMax: 0.2 })), ['sfRangeHighLine']);
+    assert.throws(() => P.rangeLines('nope', { qMin: 1, qMax: 2 }), /Unknown plot mode/);
+});
+
+test('mainConfig: the legend is hidden above LEGEND_MAX_SERIES files (the file list carries the colour samples)', () => {
+    const many = (n) => P.mainConfig(view({ series: Array.from({ length: n }, (_, i) => serie(i, { active: i === 0 })) }));
+    assert.equal(P.LEGEND_MAX_SERIES, 6);
+    assert.equal(many(6).options.plugins.legend.display, true);
+    assert.equal(many(7).options.plugins.legend.display, false);
+    assert.equal(many(1).options.plugins.legend.labels.usePointStyle, true);
+});
+
+test('mainConfig: the x axis starts on the data range (a wider preview grid does not stretch it); nothing is fixed without data', () => {
+    const wide = { q: f64([0.0001, 0.5, 5]), I: f64([9, 8, 7]) };
+    const log = P.mainConfig(view({ series: [serie(0, { active: true })], preview: wide })).options.scales;
+    const qs = Array.from(serie(0).data.q).filter((q) => q > 0);
+    assert.ok(log.x.min < Math.min(...qs) && log.x.min > Math.min(...qs) / 1.2);
+    assert.ok(log.x.max > Math.max(...qs) && log.x.max < Math.max(...qs) * 1.2);
+    assert.equal('min' in log.y, false);
+    const kratky = P.mainConfig(view({ mode: 'kratky', series: [serie(0, { active: true })] })).options.scales;
+    assert.deepEqual([kratky.x.min, kratky.x.max], [0, Math.max(...qs)]);
+    const alone = P.mainConfig(view({ preview: wide })).options.scales;
+    assert.equal('min' in alone.x, false);
+    assert.equal('max' in alone.x, false);
+});
+
+test('mainConfig: Guinier starts on a low-q window (to a tenth of the low-q level, not beyond the fit range) with y around those points', () => {
+    const q = Float64Array.from({ length: 100 }, (_, i) => 0.005 * (i + 1));
+    const rg = 30;
+    const data = { kind: 'official', q, I: q.map((x) => 1000 * Math.exp(-x * x * rg * rg / 3)), sigma: null };
+    const s = (range) => P.mainConfig(view({ mode: 'guinier', series: [serie(0, { active: true, data })], range })).options.scales;
+    const free = s(null);
+    const end = Math.sqrt(free.x.max);
+    assert.equal(free.x.min, 0);
+    const atEnd = 1000 * Math.exp(-end * end * 300);
+    assert.ok(atEnd < 100 && atEnd > 60, 'I(end) is just below a tenth of I(0): ' + atEnd);
+    assert.ok(free.y.max > Math.log(1000) - 0.2 && free.y.max < Math.log(1000) + 0.4);
+    assert.ok(free.y.min < Math.log(100) && free.y.min > Math.log(100) - 0.8);
+    near(s({ qMin: 0.005, qMax: 0.03 }).x.max, 0.0009);
+    assert.ok(s({ qMin: 0.005, qMax: 0.45 }).x.max < 0.02, 'a fit range beyond the window does not widen it');
 });
 
 test('mainConfig: display decimation above 5000 points per dataset, the data and the fit keep every point', () => {
@@ -444,11 +509,18 @@ test('ChartTheme.colorize gives palette colours to points, curves, the residuals
     ['light', 'dark'].forEach((theme) => {
         const p = ChartTheme.PALETTES[theme];
         const main = ChartTheme.colorize(P.mainConfig(fullView('loglog')), theme);
-        const expected = [0, 0, 3, 3, 9, 9].map((i) => p.series[i % 8]);
+        const expected = [p.series[0], p.series[0], p.series[3], p.modelCurve, p.series[1], p.series[1]];
         assert.deepEqual(main.data.datasets.map((d) => d.borderColor), expected, theme);
-        assert.deepEqual(main.data.datasets.map((d) => d.backgroundColor), expected, theme);
-        assert.equal(main.data.datasets[0].borderColor, main.data.datasets[1].borderColor, 'a curve has the colour of its data');
-        assert.deepEqual(main.data.datasets.map((d) => d.borderDash), [[], [], [], [], [6, 4], [6, 4]], 'a reused colour is dashed');
+        const fills = main.data.datasets.map((d) => d.backgroundColor);
+        [0, 2, 4].forEach((i) => assert.match(fills[i], /^rgba\(0, 0, 0, 0\)$/, 'data points are hollow'));
+        assert.deepEqual([fills[1], fills[3], fills[5]], [p.series[0], p.modelCurve, p.series[1]]);
+        assert.equal(main.data.datasets[0].borderColor, main.data.datasets[1].borderColor, 'the curve of a file that is not active has the colour of its data');
+        assert.notEqual(main.data.datasets[2].borderColor, main.data.datasets[3].borderColor, 'the active curve does not: it must show through its own points');
+        p.series.forEach((colour) => assert.notEqual(p.modelCurve, colour, theme));
+        assert.equal(main.options.plugins.zoom.zoom.drag.backgroundColor, p.outOfRange, 'the drag box follows the theme');
+        const lines = main.options.plugins.annotation.annotations;
+        assert.equal(lines.sfRangeLowLine.borderColor, p.reference);
+        assert.deepEqual(main.data.datasets.map((d) => d.borderDash), [[], [], [], undefined, [6, 4], [6, 4]], 'a reused colour is dashed; the model curve is solid');
         const boxes = main.options.plugins.annotation.annotations;
         assert.equal(typeof p.outOfRange, 'string');
         assert.equal(boxes.sfRangeLow.backgroundColor, p.outOfRange);
@@ -462,7 +534,8 @@ test('ChartTheme.colorize gives palette colours to points, curves, the residuals
         assert.equal(residual.options.plugins.annotation.annotations.sfZero.borderColor, p.reference);
         const assignments = ChartTheme.colorAssignments(P.mainConfig(fullView('guinier')), p);
         const at = (path) => assignments.find((a) => a.path.join('.') === path).value;
-        assert.equal(at('data.datasets.2.borderColor'), at('data.datasets.3.borderColor'));
+        assert.equal(at('data.datasets.0.borderColor'), at('data.datasets.1.borderColor'));
+        assert.equal(at('data.datasets.3.borderColor'), p.modelCurve);
         assert.equal(at('options.plugins.annotation.annotations.sfRangeLow.backgroundColor'), p.outOfRange);
     });
     assert.notEqual(ChartTheme.PALETTES.light.outOfRange, ChartTheme.PALETTES.dark.outOfRange);

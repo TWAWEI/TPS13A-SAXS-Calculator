@@ -10,10 +10,12 @@
  *       axis titles are written into the existing instances, so a zoom is
  *       kept. null when Chart.js is not there (CDN not loaded or blocked) or
  *       the canvases are missing; nothing is thrown.
- *   SasFitPlots.resetZoom()        both charts
+ *   SasFitPlots.resetZoom()        both charts, back to the default limits of the view drawn last
+ *   SasFitPlots.isZoomed()         the main chart is zoomed or panned
+ *   SasFitPlots.setZoomListener(fn)  fn(zoomed) after every zoom, pan and reset
  *   SasFitPlots.getChart(canvasId) -> the instance | null
  *   SasFitPlots.destroy()
- *   SasFitPlots.ERROR_BARS         the Chart.js plugin { id: 'sfErrorBars', afterDatasetsDraw }
+ *   SasFitPlots.ERROR_BARS         the Chart.js plugin { id: 'sfErrorBars', beforeDatasetsDraw }
  *
  * Colours: none here. A chart is created with ChartTheme.colorize, and every
  * later change ends with ChartTheme.applyTo(chart): it colours the new
@@ -42,7 +44,7 @@
     const ERROR_BARS_ID = 'sfErrorBars';
     const ERROR_BAR_WIDTH = 1;
     const NO_ANIMATION = 'none';
-    const NO_CHARTS = Object.freeze({ main: null, residual: null, mode: null });
+    const NO_CHARTS = Object.freeze({ main: null, residual: null, mode: null, listener: null, view: null });
 
     const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const isObject = (v) => v !== null && typeof v === 'object';
@@ -62,6 +64,13 @@
         return [Math.max(top, area.top), Math.min(bottom, area.bottom)];
     }
 
+    /** The opacity of the bars, from the theme's palette (1 when the theme does not say). */
+    function barAlpha() {
+        const theme = host().ChartTheme;
+        const alpha = isObject(theme) && typeof theme.palette === 'function' ? theme.palette().errorBarAlpha : NaN;
+        return isNumber(alpha) && alpha > 0 && alpha <= 1 ? alpha : 1;
+    }
+
     function drawBars(chart, dataset, elements) {
         const { ctx, chartArea: area } = chart;
         ctx.save();
@@ -75,14 +84,16 @@
             ctx.lineTo(x, ends[1]);
         });
         ctx.strokeStyle = dataset.borderColor;        // already resolved by ChartTheme: follows the theme
+        ctx.globalAlpha = barAlpha();                 // fainter than the points drawn over them
         ctx.lineWidth = ERROR_BAR_WIDTH;
         ctx.stroke();
         ctx.restore();
     }
 
+    /** Drawn BEFORE the datasets, so that the points and the model curve lie on top of the bars. */
     const ERROR_BARS = Object.freeze({
         id: ERROR_BARS_ID,
-        afterDatasetsDraw(chart) {
+        beforeDatasetsDraw(chart) {
             if (!isObject(chart.chartArea) || !isObject(chart.scales) || !isObject(chart.scales.y)) return;
             chart.data.datasets.forEach((dataset, i) => {
                 if (dataset.sfErrorBars !== true || !chart.isDatasetVisible(i)) return;
@@ -106,8 +117,8 @@
                     ...config.options.plugins,
                     zoom: {
                         ...zoom,
-                        pan: { ...zoom.pan, onPanComplete: syncResidualX },
-                        zoom: { ...zoom.zoom, onZoomComplete: syncResidualX },
+                        pan: { ...zoom.pan, onPanComplete: onViewChanged },
+                        zoom: { ...zoom.zoom, onZoomComplete: onViewChanged },
                     },
                 },
             },
@@ -142,19 +153,44 @@
         const { scales, plugins } = config.options;
         target.data.datasets = config.data.datasets;
         target.options.plugins.annotation.annotations = plugins.annotation.annotations;
-        ['x', 'y'].forEach((axis) => { target.options.scales[axis].title.text = scales[axis].title.text; });
-        if (isNumber(scales.x.min) && isNumber(scales.x.max)) {
-            target.options.scales.x.min = scales.x.min;
-            target.options.scales.x.max = scales.x.max;
+        if (isObject(plugins.legend) && isObject(target.options.plugins.legend) && typeof plugins.legend.display === 'boolean') {
+            target.options.plugins.legend.display = plugins.legend.display;
         }
+        const keepView = zoomedChart(chart);              // the user's zoom outlives new data; "reset" returns to the new limits
+        ['x', 'y'].forEach((axis) => {
+            target.options.scales[axis].title.text = scales[axis].title.text;
+            if (!keepView) writeLimits(target.options.scales[axis], scales[axis]);
+        });
         host().ChartTheme.applyTo(chart);
         return chart;
     }
 
+    /** min / max of `from` into the scale options `to`; a limit the config does not give is taken away. */
+    function writeLimits(to, from) {
+        ['min', 'max'].forEach((key) => {
+            if (isNumber(from[key])) to[key] = from[key]; else delete to[key];
+        });
+    }
+
+    const zoomedChart = (chart) => chart !== null && typeof chart.isZoomedOrPanned === 'function' && chart.isZoomedOrPanned() === true;
+
     function destroy() {
         [charts.main, charts.residual].filter((chart) => chart !== null).forEach((chart) => chart.destroy());
-        charts = NO_CHARTS;
+        charts = Object.freeze({ ...NO_CHARTS, listener: charts.listener, view: charts.view });
     }
+
+    /** After a zoom or a pan of the main chart: the residual chart follows, and the page is told. */
+    function onViewChanged() {
+        syncResidualX();
+        if (typeof charts.listener === 'function') charts.listener(isZoomed());
+    }
+
+    /** fn(zoomed: boolean) is called after every zoom, pan and reset of the main chart; null removes it. */
+    function setZoomListener(fn) {
+        charts = Object.freeze({ ...charts, listener: typeof fn === 'function' ? fn : null });
+    }
+
+    const isZoomed = () => zoomedChart(charts.main);
 
     /** Copy the main chart's x range into the residual chart (after a zoom, a pan or a reset). */
     function syncResidualX() {
@@ -180,14 +216,16 @@
         charts = Object.freeze({ ...charts, main, mode: view.mode });
         const residualConfig = residualConfigOf(view, main);
         const residual = keep ? updateChart(charts.residual, residualConfig) : createChart(residualCanvas, residualConfig);
-        charts = Object.freeze({ ...charts, residual });
+        charts = Object.freeze({ ...charts, residual, view });
         return main;
     }
 
+    /** Back to the default limits of the view drawn last (the data may have changed since the zoom began). */
     function resetZoom() {
         if (charts.main === null) return;
         if (typeof charts.main.resetZoom === 'function') charts.main.resetZoom(NO_ANIMATION);
-        syncResidualX();
+        if (isObject(charts.view)) render(charts.view);
+        onViewChanged();
     }
 
     function getChart(canvasId) {
@@ -195,5 +233,5 @@
         return canvasId === RESIDUAL_ID ? charts.residual : null;
     }
 
-    globalThis.SasFitPlots = Object.freeze({ ERROR_BARS, render, resetZoom, getChart, destroy });
+    globalThis.SasFitPlots = Object.freeze({ ERROR_BARS, render, resetZoom, isZoomed, setZoomListener, getChart, destroy });
 })();

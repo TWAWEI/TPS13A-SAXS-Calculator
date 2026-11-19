@@ -17,6 +17,7 @@
  *       line. Points whose q cannot be on the axis are left out. nonFinite counts the non-finite values of
  *       the whole I (hayter_msa: expected input, design spec 16).
  *   rangeBoxes(mode, range)             annotation boxes outside the fit range, role 'outOfRange'; {} without one
+ *   rangeLines(mode, range)             dashed lines on the two ends of the fit range, role 'reference'
  *   logTickLabel(value)                 ticks.callback of the logarithmic axes (called with the scale as `this`)
  *   mainConfig(view), residualConfig(view)   Chart.js configs
  *   viewStats(view) -> { hidden, displayStride, nonFinite, points } for the status line (SasFitHints.plotStatus)
@@ -29,7 +30,12 @@
  *
  * Colours: none here. Datasets, scales and annotations only carry tpsRole or
  * tpsSeries; js/chart-theme.js turns them into colours (and dashes the lines
- * of a reused series colour). A curve has the tpsSeries of its data. The
+ * of a reused series colour). Data points are hollow (tpsHollow). The curve
+ * of the ACTIVE file has the role 'modelCurve' (its own colour, a legend entry
+ * "模型"): in the series colour it could not be told from its own points (UI
+ * review 2026-11-19, design spec 15). The other curves have the tpsSeries of
+ * their data. The main chart starts on the data's x range (Guinier: on a low-q
+ * window); zoom: Ctrl + wheel, pinch, a dragged box; pan: Shift + drag. The
  * scales carry the neutral role 'grid', which is the colour an untagged axis
  * line gets anyway. Datasets also carry sfKind ('data' | 'curve' |
  * 'residual'), sfId and, on the active data, sfErrorBars: true.
@@ -47,8 +53,17 @@
     const DISPLAY_MAX_POINTS = 5000;
     const Y_AXIS_WIDTH = 72;
     const POINT_STYLES = Object.freeze(['circle', 'rect', 'triangle', 'rectRot']);
-    const POINT_RADIUS = Object.freeze({ active: 3, other: 2 });
-    const LINE_WIDTH = Object.freeze({ active: 2.5, other: 1.5 });
+    const POINT_RADIUS = Object.freeze({ active: 2, other: 1.5 });
+    const LINE_WIDTH = Object.freeze({ active: 2, other: 1.5 });
+    const ACTIVE_CURVE_ROLE = 'modelCurve';      // its own colour: a line in the series colour is lost among its points
+    const LEGEND_MAX_SERIES = 6;                 // above it the legend is hidden: the file list carries the colour samples
+    const LEGEND_BOX = 7;
+    const RANGE_LINE_DASH = Object.freeze([4, 4]);
+    const REFERENCE_ROLE = 'reference';
+    const AXIS_PAD = 1.08;                       // logarithmic x axis: a little room outside the first and last q
+    const GUINIER_DROP = 0.1;                    // default Guinier window: up to where I falls to a tenth of its low-q level
+    const GUINIER_HEAD = 5;                      // points that give the low-q level
+    const GUINIER_PAD = 0.3;                     // room above and below, in ln I
     // a smaller order is drawn on top: curves above points, the active file above the others
     const ORDER = Object.freeze({ activeCurve: 0, curve: 1, activeData: 2, data: 3 });
     const RESIDUAL_RADIUS = 2;
@@ -61,6 +76,9 @@
     const RESIDUAL_TITLE = '(I − I模型)/w';      // the residual of design spec 4.8, w = the weight of the point
     const MODEL_LABEL = '模型';
     const CURVE_SUFFIX = '（模型）';
+    const ZOOM_MODE = 'xy';
+    const ZOOM_WHEEL_KEY = 'ctrl';
+    const PAN_KEY = 'shift';
     const LAYOUT_PADDING = Object.freeze({ top: 6, right: 12 });      // room for a point on the edge; the same in both charts
     const LOG_TICK_MANTISSAS = Object.freeze([1, 2, 5]);
     const LOG_TICK_SPARSE = Object.freeze([1]);
@@ -180,6 +198,18 @@
         return boxes;
     }
 
+    /** Dashed lines on the two ends of the fit range: the shading alone is too faint to rely on (1.25:1). */
+    function rangeLines(mode, range) {
+        assertMode(mode);
+        if (!isObject(range)) return {};
+        const line = (q) => ({ type: 'line', tpsRole: REFERENCE_ROLE, xMin: xOf(mode, q), xMax: xOf(mode, q),
+            borderWidth: 1, borderDash: [...RANGE_LINE_DASH], drawTime: 'beforeDatasetsDraw' });
+        const lines = {};
+        if (Number.isFinite(range.qMin)) lines.sfRangeLowLine = line(range.qMin);
+        if (Number.isFinite(range.qMax)) lines.sfRangeHighLine = line(range.qMax);
+        return lines;
+    }
+
     // ------------------------------------------------------------- shared options
 
     /** scales.y.afterFit of both charts: one width, so that the two plot areas line up. Chart.js calls it with its scale. */
@@ -187,9 +217,10 @@
         scale.width = Y_AXIS_WIDTH;
     }
 
-    /** The legend lists the files; a curve is in the colour of its file. */
+    /** The legend lists the files and the model curve of the active one; the other curves are in the colour of their file. */
     function legendFilter(item, data) {
-        return data.datasets[item.datasetIndex].sfKind !== 'curve';
+        const dataset = data.datasets[item.datasetIndex];
+        return dataset.sfKind !== 'curve' || dataset.sfLegend === true;
     }
 
     const plainNumber = (value) => String(Number(value.toPrecision(LOG_TICK_DIGITS)));
@@ -232,6 +263,20 @@
         };
     }
 
+    /**
+     * Zoom of the main chart: the wheel only with Ctrl (a plain wheel scrolls the page: the plot is sticky and
+     * large), pinch, a dragged box; pan with Shift + drag. The residual chart has none of it.
+     */
+    function zoomOptions(zoomOn) {
+        return {
+            pan: { enabled: zoomOn, mode: ZOOM_MODE, modifierKey: PAN_KEY },
+            zoom: {
+                wheel: { enabled: zoomOn, modifierKey: ZOOM_WHEEL_KEY }, pinch: { enabled: zoomOn },
+                drag: { enabled: zoomOn, borderWidth: 1 }, mode: ZOOM_MODE,
+            },
+        };
+    }
+
     function baseOptions(zoomOn) {
         const theme = host().ChartTheme;
         return {
@@ -239,9 +284,10 @@
             // Chart.js pads a chart by the radius of its largest point; the two charts would then differ by a few pixels
             layout: { autoPadding: false, padding: { ...LAYOUT_PADDING } },
             plugins: {
-                legend: { labels: { font: { family: theme.FONT, size: 12 }, usePointStyle: true, filter: legendFilter } },
+                legend: { align: 'start', labels: { font: { family: theme.FONT, size: 11 }, usePointStyle: true,
+                    boxWidth: LEGEND_BOX, boxHeight: LEGEND_BOX, padding: 8, filter: legendFilter } },
                 tooltip: { cornerRadius: 8, padding: 10, titleFont: { family: theme.FONT, size: 12 }, bodyFont: { family: theme.MONO, size: 11 } },
-                zoom: { pan: { enabled: zoomOn, mode: 'xy' }, zoom: { wheel: { enabled: zoomOn }, pinch: { enabled: zoomOn }, mode: 'xy' } },
+                zoom: zoomOptions(zoomOn),
             },
         };
     }
@@ -258,7 +304,7 @@
         const t = transform(mode, s.data, factor, displayStride(s.data.q.length));
         const active = s.active === true;
         const dataset = {
-            label: s.label, data: t.points, tpsSeries: s.index, showLine: false,
+            label: s.label, data: t.points, tpsSeries: s.index, tpsHollow: true, showLine: false,
             pointStyle: POINT_STYLES[Math.floor(s.index / colours) % POINT_STYLES.length],
             pointRadius: active ? POINT_RADIUS.active : POINT_RADIUS.other,
             pointHoverRadius: (active ? POINT_RADIUS.active : POINT_RADIUS.other) + 1,
@@ -269,8 +315,10 @@
 
     function curveDataset(mode, source, factor, spec) {
         const c = curve(mode, source.q, source.I, factor, displayStride(source.q.length));
+        // the active file's curve has its own colour and a legend entry; the others keep the colour of their file
+        const colour = spec.active ? { tpsRole: ACTIVE_CURVE_ROLE, sfLegend: true, pointStyle: 'line' } : { tpsSeries: spec.index };
         const dataset = {
-            label: spec.label, data: c.points, tpsSeries: spec.index, showLine: true, spanGaps: false,
+            label: spec.active ? MODEL_LABEL : spec.label, data: c.points, ...colour, showLine: true, spanGaps: false,
             pointRadius: 0, pointHoverRadius: 0, pointHitRadius: 0,
             borderWidth: spec.active ? LINE_WIDTH.active : LINE_WIDTH.other,
             order: spec.active ? ORDER.activeCurve : ORDER.curve, sfKind: 'curve', sfId: spec.id,
@@ -312,20 +360,75 @@
         return (absolute ? Y_TITLES_ABSOLUTE : Y_TITLES)[view.mode] + (staggered ? STAGGER_NOTE : '');
     }
 
+    // ------------------------------------------------------------- default axis limits
+
+    const dataPoints = (datasets) => datasets.filter((d) => d.sfKind === 'data').flatMap((d) => d.data);
+
+    function extent(values) {
+        let min = Infinity;
+        let max = -Infinity;
+        values.forEach((v) => { if (Number.isFinite(v)) { if (v < min) min = v; if (v > max) max = v; } });
+        return max >= min ? { min, max } : null;
+    }
+
+    /** The largest q of the default Guinier window: where the first shown file falls to GUINIER_DROP of its low-q level. */
+    function guinierEnd(view) {
+        const series = seriesOf(view);
+        const lead = series.find((s) => s.active === true) || series[0];
+        if (lead === undefined) return null;
+        const { q, I } = lead.data;
+        const usable = [];
+        for (let i = 0; i < q.length; i++) if (usableQ(q[i]) && I[i] > 0) usable.push(i);
+        if (usable.length === 0) return null;
+        const level = Math.max(...usable.slice(0, GUINIER_HEAD).map((i) => I[i]));
+        const at = usable.find((i) => I[i] < level * GUINIER_DROP);
+        const end = at === undefined ? q[usable[usable.length - 1]] : q[at];
+        const fitEnd = isObject(view.range) && Number.isFinite(view.range.qMax) && view.range.qMax > 0 ? view.range.qMax : Infinity;
+        return Math.min(end, fitEnd);
+    }
+
+    /** Guinier: x from 0 to the window, y around the points inside it (Chart.js would scale y to every point). */
+    function guinierLimits(view, datasets) {
+        const end = guinierEnd(view);
+        if (end === null) return {};
+        const xMax = end * end;
+        const y = extent(dataPoints(datasets).filter((p) => p.x <= xMax).map((p) => p.y));
+        if (y === null) return {};
+        return { x: { min: 0, max: xMax }, y: { min: y.min - GUINIER_PAD, max: y.max + GUINIER_PAD } };
+    }
+
+    /**
+     * { x?: { min, max }, y?: { min, max } }: the limits the main chart starts with. The x axis is clamped to the
+     * data (a preview drawn on a wider grid would otherwise stretch it); Guinier starts on its low-q window.
+     * Nothing without data.
+     */
+    function defaultLimits(view, datasets) {
+        if (view.mode === 'guinier') return guinierLimits(view, datasets);
+        const x = extent(dataPoints(datasets).map((p) => p.x));
+        if (x === null || !(x.max > x.min)) return {};
+        return isLog(view.mode) ? { x: { min: x.min / AXIS_PAD, max: x.max * AXIS_PAD } } : { x: { min: 0, max: x.max } };
+    }
+
     function mainConfig(view) {
         const { datasets } = buildMain(view);
         const options = baseOptions(true);
         const type = scaleType(view.mode);
+        const limits = defaultLimits(view, datasets);
+        const annotations = { ...rangeBoxes(view.mode, view.range), ...rangeLines(view.mode, view.range) };
         return {
             type: 'scatter',
             data: { datasets },
             options: {
                 ...options,
                 scales: {
-                    x: axis(type, X_TITLES[view.mode], { grid: { display: false } }),
-                    y: axis(type, yTitle(view), { afterFit: fixYAxisWidth }),
+                    x: axis(type, X_TITLES[view.mode], { grid: { display: false }, ...limits.x }),
+                    y: axis(type, yTitle(view), { afterFit: fixYAxisWidth, ...limits.y }),
                 },
-                plugins: { ...options.plugins, annotation: { annotations: rangeBoxes(view.mode, view.range) } },
+                plugins: {
+                    ...options.plugins,
+                    legend: { ...options.plugins.legend, display: seriesOf(view).length <= LEGEND_MAX_SERIES },
+                    annotation: { annotations },
+                },
             },
         };
     }
@@ -372,7 +475,7 @@
     }
 
     globalThis.SasFitPlotData = Object.freeze({
-        MODES, DISPLAY_MAX_POINTS, Y_AXIS_WIDTH, POINT_STYLES,
-        logTickLabel, displayStride, staggerFactor, transform, curve, rangeBoxes, mainConfig, residualConfig, viewStats,
+        MODES, DISPLAY_MAX_POINTS, Y_AXIS_WIDTH, POINT_STYLES, LEGEND_MAX_SERIES,
+        logTickLabel, displayStride, staggerFactor, transform, curve, rangeBoxes, rangeLines, mainConfig, residualConfig, viewStats,
     });
 })();

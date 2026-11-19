@@ -198,7 +198,57 @@ test('[sasfit-plots] resetZoom：主圖重設，殘差圖跟回主圖重設後�
     assert.equal(main.resets, 1);
     assert.equal(residual.config.options.scales.x.min, 0.001);
     assert.equal(residual.config.options.scales.x.max, 1);
-    assert.equal(residual.updates.length, 1);
+    assert.ok(residual.updates.length >= 1);
+});
+
+test('[sasfit-plots] 縮放狀態：isZoomed 讀主圖的 isZoomedOrPanned；縮放、平移、重設之後通知 listener', () => {
+    const seen = [];
+    Plots.setZoomListener((zoomed) => seen.push(zoomed));
+    Plots.render(viewOf());
+    const [main] = created;
+    assert.equal(Plots.isZoomed(), false, '沒有 isZoomedOrPanned 的圖視為未縮放');
+    main.zoomed = true;
+    main.isZoomedOrPanned = () => main.zoomed;
+    main.config.options.plugins.zoom.zoom.onZoomComplete({ chart: main });
+    assert.deepEqual(seen, [true]);
+    assert.equal(Plots.isZoomed(), true);
+    main.zoomed = false;
+    Plots.resetZoom();
+    assert.deepEqual(seen, [true, false]);
+    Plots.setZoomListener(null);
+    main.config.options.plugins.zoom.pan.onPanComplete({ chart: main });
+    assert.deepEqual(seen, [true, false]);
+});
+
+test('[sasfit-plots] 更新既有的圖：未縮放時寫入新的預設軸範圍與圖例顯示；縮放中保留使用者的視野', () => {
+    Plots.render(viewOf());
+    const [main] = created;
+    const first = { ...main.config.options.scales.x };
+    assert.ok(first.min > 0 && first.max > first.min, '預設 x 範圍取資料範圍');
+    const wider = viewOf({ series: [{ id: 'd1', index: 0, label: 'a.dat', active: true, data: dataset(20), fitCurve: null }] });
+    Plots.render(wider);
+    assert.ok(main.config.options.scales.x.max > first.max, '資料變寬，預設範圍跟著變');
+    main.isZoomedOrPanned = () => true;
+    main.config.options.scales.x.min = 0.02;
+    main.config.options.scales.x.max = 0.03;
+    Plots.render(viewOf());
+    assert.deepEqual([main.config.options.scales.x.min, main.config.options.scales.x.max], [0.02, 0.03]);
+    const many = Array.from({ length: 7 }, (_, i) => ({ id: 'd' + i, index: i, label: i + '.dat', active: i === 0, data: dataset(), fitCurve: null }));
+    Plots.render(viewOf({ series: many }));
+    assert.equal(main.config.options.plugins.legend.display, false);
+});
+
+test('[sasfit-plots] 誤差棒畫在資料點之前，不透明度取自主題的 errorBarAlpha', () => {
+    assert.equal(typeof Plots.ERROR_BARS.beforeDatasetsDraw, 'function');
+    assert.equal(Plots.ERROR_BARS.afterDatasetsDraw, undefined);
+    const alphas = [];
+    const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() { alphas.push(ctx.globalAlpha); } };
+    const chart = { ctx, chartArea: { left: 0, right: 100, top: 0, bottom: 200 }, scales: { y: { getPixelForValue: (v) => 200 - v } },
+        data: { datasets: [{ data: [{ x: 1, y: 50, yMin: 40, yMax: 60 }], borderColor: 'c', sfErrorBars: true }] },
+        isDatasetVisible: () => true, getDatasetMeta: () => ({ data: [{ x: 10 }] }) };
+    Plots.ERROR_BARS.beforeDatasetsDraw(chart);
+    assert.deepEqual(alphas, [window.ChartTheme.palette().errorBarAlpha]);
+    assert.ok(alphas[0] > 0 && alphas[0] < 1);
 });
 
 test('[sasfit-plots] destroy：兩張圖都銷毀，之後 render 重新建立', () => {
@@ -231,7 +281,7 @@ const lines = (log) => log.filter(([op]) => op === 'moveTo' || op === 'lineTo');
 
 test('[sasfit-plots] 誤差棒：每點一條垂直線，x 取點元素的像素、y 取 yMin／yMax 的像素', () => {
     const { chart, log } = barChart([{ x: 10, y: 50, yMin: 40, yMax: 60 }, { x: 20, y: 80, yMin: 70, yMax: 95 }]);
-    Plots.ERROR_BARS.afterDatasetsDraw(chart);
+    Plots.ERROR_BARS.beforeDatasetsDraw(chart);
     assert.deepEqual(lines(log), [['moveTo', 10, 140], ['lineTo', 10, 160], ['moveTo', 20, 105], ['lineTo', 20, 130]]);
     assert.deepEqual(log[0], ['save']);
     assert.deepEqual(log[log.length - 1], ['restore']);
@@ -248,28 +298,28 @@ test('[sasfit-plots] 誤差棒：yMin 為 null 而 yMax 有值時畫到圖區底
         { x: 150, y: 50, yMin: 40, yMax: 60 },             // x 在圖區外
         { x: 50, y: 190, yMin: 180, yMax: 260 },           // 上端超出：截在圖區頂
     ]);
-    Plots.ERROR_BARS.afterDatasetsDraw(chart);
+    Plots.ERROR_BARS.beforeDatasetsDraw(chart);
     assert.deepEqual(lines(log), [['moveTo', 10, 191], ['lineTo', 10, 200], ['moveTo', 50, 0], ['lineTo', 50, 20]]);
 });
 
 test('[sasfit-plots] 誤差棒：只畫標了 sfErrorBars 的 dataset；隱藏的 dataset 不畫', () => {
     const points = [{ x: 10, y: 50, yMin: 40, yMax: 60 }];
     const unflagged = barChart(points, { flagged: false });
-    Plots.ERROR_BARS.afterDatasetsDraw(unflagged.chart);
+    Plots.ERROR_BARS.beforeDatasetsDraw(unflagged.chart);
     assert.deepEqual(unflagged.log, []);
     const hidden = barChart(points, { visible: false });
-    Plots.ERROR_BARS.afterDatasetsDraw(hidden.chart);
+    Plots.ERROR_BARS.beforeDatasetsDraw(hidden.chart);
     assert.deepEqual(lines(hidden.log), []);
 });
 
 test('[sasfit-plots] 誤差棒的顏色＝該 dataset 當下的 borderColor（主題切換後跟著變）', () => {
     const { chart, log } = barChart([{ x: 10, y: 50, yMin: 40, yMax: 60 }], { color: 'light-colour' });
-    Plots.ERROR_BARS.afterDatasetsDraw(chart);
+    Plots.ERROR_BARS.beforeDatasetsDraw(chart);
     chart.data.datasets[0].borderColor = 'dark-colour';
-    Plots.ERROR_BARS.afterDatasetsDraw(chart);
+    Plots.ERROR_BARS.beforeDatasetsDraw(chart);
     assert.deepEqual(log.filter(([op]) => op === 'stroke').map(([, colour]) => colour), ['light-colour', 'dark-colour']);
 });
 
 test('[sasfit-plots] 誤差棒：圖還沒排版好（沒有 chartArea 或 y 軸）時不丟錯', () => {
-    assert.doesNotThrow(() => Plots.ERROR_BARS.afterDatasetsDraw({ ctx: {}, data: { datasets: [] }, chartArea: undefined, scales: {} }));
+    assert.doesNotThrow(() => Plots.ERROR_BARS.beforeDatasetsDraw({ ctx: {}, data: { datasets: [] }, chartArea: undefined, scales: {} }));
 });

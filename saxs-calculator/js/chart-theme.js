@@ -2,7 +2,9 @@
  * TPS13A SAXS Calculator - 圖表主題（v5.0）
  *
  * 所有 Chart.js 圖表的顏色都由這裡決定；圖表檔只在 dataset／scale／annotation 上標「用途」：
- *   dataset：tpsRole: 'primary' | 'reference' | 'model' | 'residual' | 'fit' | 'region'
+ *   dataset：tpsRole: 'primary' | 'reference' | 'model' | 'residual' | 'fit' | 'modelCurve' | 'region'
+ *            （modelCurve：SAS 擬合頁作用中資料的模型曲線，墨色）
+ *            tpsHollow: true（配 tpsSeries）→ 資料點只畫外框，填色透明
  *            tpsSeries: 0..n（多通道，依實體編號，不依勾選順序）或 'byIndex'（圓餅圖，每片一色；
  *            tpsOthersIndex 指出「Others」那片，用 reference 灰）
  *   scale：  tpsRole／tpsSeries → 只有軸線（border）上色；刻度與標題一律用 text 色
@@ -31,9 +33,11 @@
         model: '#047857',
         residual: '#B45309',
         fit: '#B91C1C',
+        modelCurve: '#1D1D1F',          // 作用中資料的模型曲線：墨色，不與任何系列色同色相
         region: 'rgba(240, 78, 78, 0.08)',
         regionAlt: 'rgba(180, 83, 9, 0.08)',
         outOfRange: 'rgba(0, 0, 0, 0.10)',
+        errorBarAlpha: 0.5,             // 誤差棒相對於資料點的不透明度（數字，不是顏色）
         marker: '#C27A7A',
         tooltipBg: 'rgba(29, 29, 31, 0.92)',
         tooltipText: '#FFFFFF',
@@ -49,9 +53,11 @@
         model: '#5BD68A',
         residual: '#F5B754',
         fit: '#F58A8A',
+        modelCurve: '#F5F5F7',
         region: 'rgba(232, 88, 88, 0.14)',
         regionAlt: 'rgba(245, 183, 84, 0.12)',
         outOfRange: 'rgba(255, 255, 255, 0.12)',
+        errorBarAlpha: 0.55,
         marker: 'rgba(238, 144, 144, 0.6)',
         tooltipBg: '#2C2C2E',
         tooltipText: '#F5F5F7',
@@ -62,6 +68,8 @@
 
     // 系列色用完（第 9 個以後）重用同色，改用虛線區分（composite encoding，不另生新色）
     const REUSE_DASH = Object.freeze([6, 4]);
+    // tpsHollow 的資料點只畫外框：填色全透明，線才看得穿
+    const HOLLOW_FILL = 'rgba(0, 0, 0, 0)';
 
     /** 生效主題：讀 <html data-theme>，自動時看系統（呼叫時才讀） */
     function resolved() {
@@ -122,7 +130,7 @@
             if (Number.isInteger(ds.tpsSeries)) {
                 const color = seriesColor(p, ds.tpsSeries);
                 put([...base, 'borderColor'], color);
-                put([...base, 'backgroundColor'], color);
+                put([...base, 'backgroundColor'], ds.tpsHollow === true ? HOLLOW_FILL : color);
                 put([...base, 'borderDash'], seriesDash(p, ds.tpsSeries));
                 return;
             }
@@ -150,6 +158,13 @@
                 if (a.type !== 'box') put([...base, 'label', 'backgroundColor'], p.surface);
             }
         });
+
+        // 拖曳框選縮放的方框（chartjs-plugin-zoom）：沒設的話是外掛自己的淺灰，深色主題下看不見
+        const drag = options.plugins && options.plugins.zoom && options.plugins.zoom.zoom && options.plugins.zoom.zoom.drag;
+        if (drag && typeof drag === 'object') {
+            put(['options', 'plugins', 'zoom', 'zoom', 'drag', 'backgroundColor'], p.outOfRange);
+            put(['options', 'plugins', 'zoom', 'zoom', 'drag', 'borderColor'], p.reference);
+        }
 
         return Object.freeze(out);
     }
