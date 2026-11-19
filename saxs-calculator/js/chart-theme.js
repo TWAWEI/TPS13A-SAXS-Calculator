@@ -10,6 +10,12 @@
  *   scale：  tpsRole／tpsSeries → 只有軸線（border）上色；刻度與標題一律用 text 色
  *   annotation：tpsRole: 'region' | 'regionAlt' | 'outOfRange' | 'marker' | 'residual'
  *            （outOfRange：中性的範圍外遮罩，例如 SAS 擬合頁的擬合範圍外）
+ *   3D 結構示意（SAS 擬合頁）：不走 dataset／scale 標記，由 shade3d(role, k, theme?) 直接取色。
+ *            面與粗線的角色 SHAPE_ROLES = shapeSolid（實心）／shapeShell（殼）／shapeCore（核）；
+ *            shapeEdge 是輪廓線與比例尺；shapeAmbient 是各主題的環境光係數（數字，不是顏色）。
+ *            k＝Lambert 亮度 0–1，係數＝shapeAmbient + (1 − shapeAmbient)·k，在線性色彩空間乘上基底色。
+ *            環境光只在這裡，別處不得再加。核（琥珀）與殼（藍）色相相反且亮度有差，
+ *            不能只靠明暗分辨；深色主題的環境光較高，否則乘暗的面在深色卡片上會消失。
  *
  * 載入時機：Chart.js 在 <head> 以 defer 載入，比所有本地 script 晚執行。所以本檔頂層只定義
  * 常數與函式，不碰 Chart、document、matchMedia；用到時才取用（Node 測試也會載入本檔）。
@@ -39,6 +45,11 @@
         outOfRange: 'rgba(0, 0, 0, 0.10)',
         errorBarAlpha: 0.5,             // 誤差棒相對於資料點的不透明度（數字，不是顏色）
         marker: '#C27A7A',
+        shapeSolid: '#1F5FB0',          // 3D 實心與殼：藍；核：琥珀（見檔頭）
+        shapeShell: '#1F5FB0',
+        shapeCore: '#C8791A',
+        shapeEdge: '#636366',           // 輪廓線與比例尺，同 text
+        shapeAmbient: 0.35,             // 數字，不是顏色
         tooltipBg: 'rgba(29, 29, 31, 0.92)',
         tooltipText: '#FFFFFF',
         series: Object.freeze(['#F04E4E', '#2A78D6', '#0F8A6E', '#B45309', '#6250D6', '#C2307A', '#4D7C0F', '#0891B2']),
@@ -59,6 +70,11 @@
         outOfRange: 'rgba(255, 255, 255, 0.12)',
         errorBarAlpha: 0.55,
         marker: 'rgba(238, 144, 144, 0.6)',
+        shapeSolid: '#4A8DDF',
+        shapeShell: '#4A8DDF',
+        shapeCore: '#F5D28E',
+        shapeEdge: '#A1A1A6',
+        shapeAmbient: 0.60,
         tooltipBg: '#2C2C2E',
         tooltipText: '#F5F5F7',
         series: Object.freeze(['#E85858', '#4A8DDF', '#1FA27F', '#C08418', '#9085E9', '#E0629B', '#76A12B', '#1898B4']),
@@ -78,6 +94,32 @@
 
     function palette(name = resolved()) {
         return PALETTES[name] || LIGHT;
+    }
+
+    // 面與粗線的角色；shapeEdge 是線，不在其中
+    const SHAPE_ROLES = Object.freeze(['shapeSolid', 'shapeCore', 'shapeShell']);
+
+    const srgbToLinear = c => {
+        const s = c / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    const linearToSrgb = v => {
+        const s = v <= 0.0031308 ? v * 12.92 : 1.055 * (v ** (1 / 2.4)) - 0.055;
+        return Math.min(255, Math.max(0, Math.round(s * 255)));
+    };
+
+    /**
+     * 3D 面的顏色：角色的基底色在線性色彩空間乘上 shapeAmbient + (1 − shapeAmbient)·k。
+     * k 是 Lambert 亮度（界外截到 0／1，NaN 與非數字當 0）；未知角色丟 Error；回傳 'rgb(r, g, b)'。
+     */
+    function shade3d(role, k, theme = resolved()) {
+        if (!SHAPE_ROLES.includes(role)) throw new Error(`shade3d：未知的 3D 角色「${String(role)}」`);
+        const p = palette(theme);
+        const lit = Number.isFinite(k) ? Math.min(1, Math.max(0, k)) : 0;
+        const factor = p.shapeAmbient + (1 - p.shapeAmbient) * lit;
+        const hex = /^#([0-9a-f]{6})$/i.exec(p[role]);
+        const [r, g, b] = [0, 2, 4].map(i => linearToSrgb(srgbToLinear(parseInt(hex[1].slice(i, i + 2), 16)) * factor));
+        return `rgb(${r}, ${g}, ${b})`;
     }
 
     function seriesColor(p, index) {
@@ -279,6 +321,8 @@
         palette,
         seriesColor,
         seriesDash,
+        SHAPE_ROLES,
+        shade3d,
         colorAssignments,
         colorize,
         applyTo,

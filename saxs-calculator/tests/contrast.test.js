@@ -141,3 +141,51 @@ for (const [themeName, p] of Object.entries(ChartTheme.PALETTES)) {
         assert.deepEqual(failures, []);
     });
 }
+
+// ---------------------------------------------------------------- 3D 結構示意（M4 Task 1）
+// k 是 Lambert 亮度，不是環境光係數：k = 0 是最暗的面，一定要測。
+const SHAPE_KS = Object.freeze([0, 0.5, 1]);
+const SHAPE_FACE_MIN = 3;       // WCAG 1.4.11
+const SHAPE_PAIR_MIN = 1.5;     // 核對殼，相同 k
+const SHAPE_HUE_MIN = 60;       // 核與殼的基底色相角差（度）
+
+function hueOf({ r, g, b }) {
+    const [R, G, B] = [r, g, b].map(c => c / 255);
+    const max = Math.max(R, G, B);
+    const d = max - Math.min(R, G, B);
+    if (d === 0) return 0;
+    const h = max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+    return (h * 60 + 360) % 360;
+}
+
+for (const themeName of ['light', 'dark']) {
+    const p = ChartTheme.PALETTES[themeName];
+    const card = () => parseColor(THEMES[themeName].get('--color-bg-card'));
+    const face = (role, k) => parseColor(ChartTheme.shade3d(role, k, themeName));
+
+    test(`[contrast] 3D ${themeName}：三個面角色對卡片 ≥ ${SHAPE_FACE_MIN}（k = 0、0.5、1）`, () => {
+        const failures = [];
+        for (const role of ChartTheme.SHAPE_ROLES) {
+            for (const k of SHAPE_KS) {
+                const value = contrast(face(role, k), card());
+                if (value < SHAPE_FACE_MIN) failures.push(`${role} k=${k} = ${value.toFixed(2)}`);
+            }
+        }
+        assert.deepEqual(failures, []);
+    });
+
+    test(`[contrast] 3D ${themeName}：核對殼同 k ≥ ${SHAPE_PAIR_MIN}，色相差 ≥ ${SHAPE_HUE_MIN}°`, () => {
+        const failures = SHAPE_KS
+            .map(k => ({ k, value: contrast(face('shapeCore', k), face('shapeShell', k)) }))
+            .filter(c => c.value < SHAPE_PAIR_MIN)
+            .map(c => `k=${c.k} = ${c.value.toFixed(2)}`);
+        assert.deepEqual(failures, []);
+        const raw = Math.abs(hueOf(parseColor(p.shapeCore)) - hueOf(parseColor(p.shapeShell)));
+        const hueDiff = Math.min(raw, 360 - raw);
+        assert.ok(hueDiff >= SHAPE_HUE_MIN, `色相差 ${hueDiff.toFixed(0)}°`);
+    });
+
+    test(`[contrast] 3D ${themeName}：shapeEdge（輪廓線與比例尺）對卡片 ≥ 3`, () => {
+        assert.ok(contrast(parseColor(p.shapeEdge), card()) >= 3);
+    });
+}

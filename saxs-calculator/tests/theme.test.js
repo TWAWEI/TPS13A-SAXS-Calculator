@@ -252,3 +252,89 @@ test('[theme] ThemeToggle.init：舊瀏覽器的 MediaQueryList 只有 addListen
         });
     }
 });
+
+// ---------------------------------------------------------------- 3D 結構示意的角色與 shade3d（M4 Task 1）
+const SHAPE_COLOR_KEYS = Object.freeze(['shapeSolid', 'shapeShell', 'shapeCore', 'shapeEdge']);
+
+/** 'rgb(r, g, b)' → [r, g, b] */
+function rgbOf(text) {
+    const m = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(text);
+    assert.ok(m, `shade3d 應回傳 rgb(r, g, b)：${text}`);
+    return [+m[1], +m[2], +m[3]];
+}
+function hexOf(text) {
+    const m = /^#([0-9a-f]{6})$/i.exec(text);
+    assert.ok(m, `基底色應是 #RRGGBB：${text}`);
+    return [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16));
+}
+function relLuminance([r, g, b]) {
+    const lin = c => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+test('[chart-theme] 3D：兩個主題各有四個顏色鍵與環境光係數，鍵相同、調色盤仍凍結', () => {
+    for (const name of ['light', 'dark']) {
+        const p = ChartTheme.PALETTES[name];
+        assert.ok(Object.isFrozen(p), name);
+        SHAPE_COLOR_KEYS.forEach(key => assert.equal(typeof p[key], 'string', `${name}.${key}`));
+        assert.equal(typeof p.shapeAmbient, 'number');
+        assert.ok(p.shapeAmbient > 0 && p.shapeAmbient < 1, `${name}.shapeAmbient`);
+    }
+    const keys = name => Object.keys(ChartTheme.PALETTES[name]).filter(k => k.startsWith('shape')).sort();
+    assert.deepEqual(keys('light'), keys('dark'));
+    assert.deepEqual(ChartTheme.SHAPE_ROLES, ['shapeSolid', 'shapeCore', 'shapeShell']);
+    assert.ok(Object.isFrozen(ChartTheme.SHAPE_ROLES));
+});
+
+test('[chart-theme] shade3d：非空 rgb 字串，亮度隨 k 單調不減，k=1 等於基底色', () => {
+    for (const theme of ['light', 'dark']) {
+        for (const role of ChartTheme.SHAPE_ROLES) {
+            let previous = -1;
+            for (const k of [0, 0.25, 0.5, 0.75, 1]) {
+                const rgb = rgbOf(ChartTheme.shade3d(role, k, theme));
+                const lum = relLuminance(rgb);
+                assert.ok(lum >= previous, `${theme} ${role} k=${k}`);
+                previous = lum;
+            }
+            assert.deepEqual(rgbOf(ChartTheme.shade3d(role, 1, theme)), hexOf(ChartTheme.PALETTES[theme][role]),
+                `${theme} ${role} k=1`);
+        }
+    }
+});
+
+test('[chart-theme] shade3d：k 界外與 NaN 截斷（<0→0、>1→1、NaN→0）', () => {
+    for (const theme of ['light', 'dark']) {
+        for (const role of ChartTheme.SHAPE_ROLES) {
+            assert.equal(ChartTheme.shade3d(role, -3, theme), ChartTheme.shade3d(role, 0, theme));
+            assert.equal(ChartTheme.shade3d(role, 7, theme), ChartTheme.shade3d(role, 1, theme));
+            assert.equal(ChartTheme.shade3d(role, NaN, theme), ChartTheme.shade3d(role, 0, theme));
+            assert.equal(ChartTheme.shade3d(role, undefined, theme), ChartTheme.shade3d(role, 0, theme));
+        }
+    }
+});
+
+test('[chart-theme] shade3d：k=0 的係數就是 shapeAmbient（線性空間）', () => {
+    const toLin = c => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    for (const theme of ['light', 'dark']) {
+        const p = ChartTheme.PALETTES[theme];
+        const base = hexOf(p.shapeShell).map(toLin);
+        const dark = rgbOf(ChartTheme.shade3d('shapeShell', 0, theme)).map(toLin);
+        dark.forEach((value, i) => assert.ok(Math.abs(value - base[i] * p.shapeAmbient) < 0.004, `${theme}[${i}]`));
+    }
+});
+
+test('[chart-theme] shade3d：未知角色丟 Error；省略 theme 時跟 resolved()', () => {
+    assert.throws(() => ChartTheme.shade3d('shapeEdge', 0.5, 'light'), /shapeEdge/);
+    assert.throws(() => ChartTheme.shade3d('primary', 0.5, 'light'), /primary/);
+    assert.throws(() => ChartTheme.shade3d(undefined, 0.5, 'light'));
+    const dark = withThemeAttr('dark', () => ChartTheme.shade3d('shapeCore', 0.5));
+    assert.equal(dark, ChartTheme.shade3d('shapeCore', 0.5, 'dark'));
+    assert.notEqual(dark, ChartTheme.shade3d('shapeCore', 0.5, 'light'));
+});
+
+test('[chart-theme] shapeAmbient 不是 dataset 會標的顏色：tpsRole 指向它時不產生賦值', () => {
+    const structure = { data: { datasets: [{ tpsRole: 'shapeAmbient', data: [] }] }, options: {} };
+    const assigned = ChartTheme.colorAssignments(structure, ChartTheme.palette('light'))
+        .filter(a => a.path[0] === 'data');
+    assert.deepEqual(assigned, []);
+});
