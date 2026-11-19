@@ -69,6 +69,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-shape3d.js',          // IIFE，只掛 globalThis.SasFitShape3d；3D 的 Canvas 繪製，頂層不碰 document，呼叫時才經 host() 讀 ChartTheme
     'sasfit-sequence.js',         // IIFE，只掛 globalThis.SasFitSequence；序列擬合的排程、起始值規則與執行器（client 由呼叫端注入），呼叫時才讀其他 SasFit 模組
     'sasfit-seq-view.js',         // IIFE，只掛 globalThis.SasFitSeqView；序列表與趨勢圖的資料與 HTML 字串，呼叫時才經 host() 讀 FormUtils／ChartTheme
+    'sasfit-export.js',           // IIFE，只掛 globalThis.SasFitExport；匯出的數字／CSV 儲存格／檔名／擬合曲線 CSV，純函式，呼叫時才讀其他 SasFit 模組
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -124,4 +125,5 @@ module.exports = {
     SasFitShape3d: globalThis.SasFitShape3d,
     SasFitSequence: globalThis.SasFitSequence,
     SasFitSeqView: globalThis.SasFitSeqView,
+    SasFitExport: globalThis.SasFitExport,
 };
