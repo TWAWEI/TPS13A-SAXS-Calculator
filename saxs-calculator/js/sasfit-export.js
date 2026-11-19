@@ -55,6 +55,8 @@
  *       (a FitResult carries no bounds): lower / upper are then null.
  *       unit is the ASCII unit of the meta ('Ang', '1e-6/Ang^2', '' for none);
  *       absolute: true gives the background '1/cm' (official files).
+ *   shownText(fitResult, name) -> { value, error, kind }: the text the page
+ *       shows for that name (see the function).
  *   inFit(dataset, fitResult) -> Uint8Array, 1 where the point took part:
  *       SasFitWeighting.select(dataset, weighting, range).index, the Worker's
  *       own selection. NOT "the residual is finite": a failed fit has NaN
@@ -84,6 +86,7 @@
     const ABSOLUTE_UNIT = '1/cm';
     const NO_UNIT = 'None';
     const STOPPED = 'stopped';
+    const SHOWN_DIGITS = 5;                    // a value without an error on the page (SasFitHtml)
     const STRUCTURE_MODE_ID = 'structure_factor_mode';
     const RADIUS_MODE_ID = 'radius_effective_mode';
     const COMBINATIONS = Object.freeze(['P*S', 'P*(1+beta*(S-1))']);
@@ -302,6 +305,23 @@
         return Object.freeze(rows);
     }
 
+    /**
+     * { value, error, kind } of one name as the page shows it (the rule of the result tiles, SasFitHtml): the value
+     * rounded as it was written back, then SasFitFormat.valueError with the displayed error. kind 'fixed' (the full
+     * number, no error) for a name that was not fitted, 'at-bound' (no error: it means nothing) for one on a bound.
+     */
+    function shownText(fitResult, name) {
+        assertResult(fitResult, 'shownText');
+        const format = globalThis.SasFitFormat;
+        const exact = fitResult.params[name];
+        const lone = (kind, body) => Object.freeze({ value: format.display(body), error: '', kind });
+        if (fitResult.names.indexOf(name) < 0) return lone('fixed', typeof exact === 'number' && Number.isFinite(exact) ? num(exact) : format.MISSING);
+        if (isObject(fitResult.atBound) && has(fitResult.atBound, name)) return lone('at-bound', format.number(exact, SHOWN_DIGITS));
+        const errors = globalThis.SasFitWorkerCore.displayErrors(fitResult);
+        const error = isObject(errors) ? errors[name] : NaN;
+        return format.valueError(format.inputValue(exact, error), error, { illConditioned: fitResult.illConditioned === true });
+    }
+
     function inFit(dataset, fitResult) {
         assertResult(fitResult, 'inFit');
         const { weighting, range } = fitResult.settings;
@@ -392,6 +412,6 @@
     globalThis.SasFitExport = Object.freeze({
         COMMENT, NAME_MAX_BYTES, CSV_HEADER, READ_LINE,
         num, cell, commentLine, safeName, safeLabel, fileName, modelText, combinationText, radiusModeText, software,
-        paramRows, inFit, measureKey, assertExportable, fitCsv, dataUrlBytes,
+        paramRows, shownText, inFit, measureKey, assertExportable, fitCsv, dataUrlBytes,
     });
 })();
