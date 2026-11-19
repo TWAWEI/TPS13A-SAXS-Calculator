@@ -30,7 +30,7 @@ test('[shape3d-ui] 模組匯出 paint 與 create；section-sasfit 把它當第�
     const page = m4.shapePage();
     assert.equal(typeof globalThis.SasFitShape3d.create, 'function');
     assert.deepEqual(page.Section.SEGMENT_MODULES.map((m) => m.key + ':' + m.global),
-        ['data:SasFitDataUi', 'model:SasFitParamsUi', 'fit:SasFitFitUi', 'shape:SasFitShape3d', 'sequence:SasFitSeqUi']);
+        ['data:SasFitDataUi', 'model:SasFitParamsUi', 'fit:SasFitFitUi', 'shape:SasFitShape3d', 'sequence:SasFitSeqUi', 'export:SasFitExportUi']);
     assert.equal(page.observers.length, 1, 'create 只觀察舞台一次');
     assert.equal(page.observers[0].element, page.stage);
 });

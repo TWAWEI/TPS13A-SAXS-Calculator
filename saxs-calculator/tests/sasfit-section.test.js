@@ -263,8 +263,8 @@ test('[sasfit-section] 三個分段模組存在才建立，依序收到同一個
     const { record, Section, $ } = boot({ segments: {} });
     assert.deepEqual(record.created, SEGMENT_GLOBALS);
     // 模組清單：三個分段依序，之後是圖卡的檢視切換與 3D 示意（不是分頁）
-    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.global), SEGMENT_GLOBALS.concat(['SasFitShape3d', 'SasFitSeqUi']));
-    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.key), ['data', 'model', 'fit', 'shape', 'sequence']);
+    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.global), SEGMENT_GLOBALS.concat(['SasFitShape3d', 'SasFitSeqUi', 'SasFitExportUi']));
+    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.key), ['data', 'model', 'fit', 'shape', 'sequence', 'export']);
     const ctx = record.ctx.SasFitDataUi;
     assert.equal(record.ctx.SasFitParamsUi, ctx);
     assert.equal(record.ctx.SasFitFitUi, ctx);

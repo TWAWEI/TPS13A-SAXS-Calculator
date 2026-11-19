@@ -22,6 +22,9 @@
  *         matchMedia(query)     default: window.matchMedia; { matches: false } where there is none
  *         createCanvas()        default: a new <canvas> element (off screen: the PNG of the 3D sketch)
  *         observeResize(element, fn)   default: a ResizeObserver on the element that calls fn()
+ *         download(blob, fileName)     default: SasFitExportUi.download (an object URL on a temporary <a download>)
+ *         now()                 default: Date.now()
+ *         version()             default: SasFitWorkerClient.scriptVersion (the ?v= of the scripts; null without one)
  *   SasFitSection.getState() -> the frozen SasFitState state
  *   SasFitSection.getForm()  -> the frozen SasFitForm form
  *   SasFitSection.ELEMENT_IDS       the static ids of index.html this page needs; init checks all of them
@@ -34,12 +37,14 @@
  *     globalThis.SasFitFitUi    = Object.freeze({ create })     fit segment    (key 'fit')
  *     globalThis.SasFitSeqUi    = Object.freeze({ create })     sequence segment (key 'sequence')
  *     globalThis.SasFitShape3d  = Object.freeze({ create })     plot card: curves | 3D sketch (key 'shape'; not a tab)
+ *     globalThis.SasFitExportUi = Object.freeze({ create })     export buttons (key 'export'; not a tab)
  * init calls create(ctx) of each one that exists, in that order, exactly once.
  * create binds the module's own event listeners and returns
  *     { render() }                                   every segment
  *     { render(), schedulePreview(), cancelPreview(), lastPreview(), previewStatus() }   the model segment
  *     { render(), running(), barText() }             the sequence segment
  *     { render(), forgetRevert(), setBarProgress(text) }   the fit segment
+ *     { render(), exportBlob() }                     the 3D sketch
  * render() draws the segment from ctx.getState() / ctx.getForm(); it must not
  * dispatch, and it must leave alone what did not change: refresh() runs while
  * the user is typing (see setHtml). A module that is not there yet is skipped,
@@ -80,6 +85,8 @@
  *                            and '' while there is no sequence segment
  *     fit                    { forgetRevert(), setBarProgress(text) } -> the fit segment; no-ops
  *                            while there is none
+ *     shape                  { exportBlob() } -> the PNG of the 3D sketch as a Promise<Blob | null>;
+ *                            resolves null while there is no such module
  *
  * The state and the form are never modified: every change replaces the frozen
  * object. Non-SasFit globals are read through host() at call time; nothing
@@ -106,7 +113,8 @@
         Object.freeze({ key: 'model', global: 'SasFitParamsUi' }),
         Object.freeze({ key: 'fit', global: 'SasFitFitUi' }),
         Object.freeze({ key: 'shape', global: 'SasFitShape3d' }),         // not a tab: the 3D sketch and the switch of the plot card
-        Object.freeze({ key: 'sequence', global: 'SasFitSeqUi' }),        // last: it draws from what the others have set
+        Object.freeze({ key: 'sequence', global: 'SasFitSeqUi' }),        // after the others: it draws from what they have set
+        Object.freeze({ key: 'export', global: 'SasFitExportUi' }),       // not a tab; last: its buttons follow what the others drew
     ]);
     const ELEMENT_IDS = Object.freeze([
         'sfAlert', WORKSPACE_ID, TABLIST_ID, 'sfTabData', 'sfTabModel', 'sfTabFit', 'sfTabSeq',
@@ -123,6 +131,8 @@
         'sfQMin', 'sfQMinError', 'sfQMax', 'sfQMaxError', 'sfRangeFull', 'sfRangeDefault', 'sfRangeInfo', 'sfWeighting',
         'sfMaxSteps', 'sfMaxStepsError', 'sfFitRevert', 'sfFitRevertNote', 'sfPreFitHints', 'sfFitAlert',
         'sfFitResults', 'sfFitHints', 'sfFitParams',
+        // exports and the IUCr table
+        'sfExportRow', 'sfExportCsv', 'sfExportTxt', 'sfExportNote', 'sfSendIucr', 'sfSendIucrNote', 'sfMainPng', 'sfResidualPng',
         // sequence segment
         'sfSeqLock', 'sfSeqChain', 'sfSeqSort', 'sfSeqSettings', 'sfSeqHints', 'sfSeqRun', 'sfSeqProgress', 'sfSeqLive',
         'sfSeqTrendBox', 'sfSeqY', 'sfSeqTrend', 'sfSeqTrendNote', 'sfSeqTrendPng', 'sfSeqAll', 'sfSeqNone', 'sfSeqEmpty',
@@ -192,6 +202,9 @@
             matchMedia: g.matchMedia || ((query) => (typeof host().matchMedia === 'function' ? host().matchMedia(query) : NO_MEDIA)),
             createCanvas: g.createCanvas || (() => document.createElement('canvas')),
             observeResize: g.observeResize || observeResize,
+            download: g.download || ((blob, fileName) => globalThis.SasFitExportUi.download(blob, fileName)),
+            now: g.now || (() => Date.now()),
+            version: g.version || (() => globalThis.SasFitWorkerClient.scriptVersion),
         });
     }
 
@@ -235,6 +248,7 @@
             el('sfSeqRun').disabled = true;
         },
         shape() {},                           // the markup starts in the curve view, which needs no module
+        export() {},                          // the markup ships every export button disabled
     });
 
     function renderPlaceholders(state) {
@@ -336,6 +350,10 @@
             const segment = page.segments.fit;
             if (segment !== undefined && typeof segment[method] === 'function') segment[method](arg);
         };
+        const shapeBlob = () => {
+            const segment = page.segments.shape;
+            return segment !== undefined && typeof segment.exportBlob === 'function' ? segment.exportBlob() : Promise.resolve(null);
+        };
         const ctx = {
             el, getState, dispatch, getForm, setForm, refresh, setHtml,
             deps: page.deps,
@@ -347,6 +365,7 @@
             }),
             sequence: Object.freeze({ running: sequence('running', false), barText: sequence('barText', '') }),
             fit: Object.freeze({ forgetRevert: () => fitCall('forgetRevert'), setBarProgress: (text) => fitCall('setBarProgress', text) }),
+            shape: Object.freeze({ exportBlob: shapeBlob }),
         };
         Object.defineProperty(ctx, 'client', { get: getClient, enumerable: true });
         return Object.freeze(ctx);

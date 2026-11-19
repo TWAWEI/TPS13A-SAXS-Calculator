@@ -664,6 +664,16 @@
                             <div class="sf-results" id="sfFitResults"></div>
                             <div id="sfFitHints" aria-live="polite"></div>
                             <div class="sf-results" id="sfFitParams"></div>
+
+                            <div class="sf-export" id="sfExportRow">
+                                <div class="sf-actions sf-export-actions">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfExportCsv" aria-describedby="sfExportNote" disabled>匯出擬合曲線 CSV</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfExportTxt" aria-describedby="sfExportNote" disabled>匯出報告 TXT</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfSendIucr" aria-describedby="sfSendIucrNote" disabled>送進 IUCr 表格</button>
+                                </div>
+                                <p class="stat-sub" id="sfExportNote" role="status"></p>
+                                <p class="stat-sub" id="sfSendIucrNote">「送進 IUCr 表格」尚未啟用</p>
+                            </div>
                         </div>
 
                         <!-- 分段：序列（選檔與結果同一張表；停止用擬合列的「停止」） -->
@@ -690,7 +700,7 @@
                                 <div class="sf-seq-trend-head">
                                     <label class="form-label" for="sfSeqY">趨勢圖的縱軸</label>
                                     <select class="form-select" id="sfSeqY"></select>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfSeqTrendPng" disabled>PNG</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfSeqTrendPng" aria-label="下載趨勢圖 PNG" disabled>PNG</button>
                                 </div>
                                 <div class="chart-container sf-chart--trend">
                                     <canvas id="sfSeqTrend" role="img" aria-label="尚無可畫的結果"></canvas>
@@ -735,7 +745,7 @@
                                 <div class="sf-plot-tools" id="sfShapeTools" hidden>
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfShapeReset">重設視角</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfShapeSpin" aria-pressed="false" disabled>自動旋轉</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapePng" disabled>PNG</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapePng" aria-label="下載結構示意圖 PNG" disabled>PNG</button>
                                 </div>
                             </div>
                             <!-- 曲線檢視：狀態列、主圖、操作說明、殘差 -->
@@ -748,7 +758,11 @@
                                 <div class="chart-container sf-chart--main">
                                     <canvas id="sfMainChart" role="img" aria-label="尚未載入資料"></canvas>
                                 </div>
-                                <p class="stat-sub sf-plot-caption">Ctrl＋滾輪縮放、拖曳框選；Shift＋拖曳平移</p>
+                                <div class="sf-plot-foot">
+                                    <p class="stat-sub sf-plot-caption">Ctrl＋滾輪縮放、拖曳框選；Shift＋拖曳平移</p>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfMainPng" aria-label="下載主圖 PNG">主圖 PNG</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfResidualPng" aria-label="下載殘差圖 PNG" disabled>殘差 PNG</button>
+                                </div>
                                 <h3 class="sf-plot-subtitle">殘差</h3>
                                 <p class="stat-sub sf-residual-empty" id="sfResidualEmpty">尚無擬合結果</p>
                                 <div class="chart-container sf-chart--residual" id="sfResidualBox" hidden>
@@ -2485,6 +2499,7 @@
     <script src="js/sasfit-params-ui.js?v=5.2"></script>
     <script src="js/sasfit-fit-ui.js?v=5.2"></script>
     <script src="js/sasfit-seq-ui.js?v=5.2"></script>
+    <script src="js/sasfit-export-ui.js?v=5.2"></script>
     <script src="js/section-sasfit.js?v=5.2"></script>
     <script src="js/app.js?v=5.2"></script>
 

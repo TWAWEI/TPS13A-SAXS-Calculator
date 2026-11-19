@@ -20,7 +20,7 @@ const JS = path.join(__dirname, '..', 'js');
 const FIXTURES = path.join(__dirname, 'fixtures', 'sasfit', 'dat');
 const MODULE_FILES = Object.freeze({
     SasFitDataUi: 'sasfit-data-ui.js', SasFitParamsUi: 'sasfit-params-ui.js', SasFitFitUi: 'sasfit-fit-ui.js',
-    SasFitSeqUi: 'sasfit-seq-ui.js',
+    SasFitSeqUi: 'sasfit-seq-ui.js', SasFitExportUi: 'sasfit-export-ui.js',
 });
 // 預設載入的三個分段；序列分段（SasFitSeqUi）要在 modules 裡點名才載入，既有測試的頁面因此不變
 const DEFAULT_MODULES = Object.freeze(['SasFitDataUi', 'SasFitParamsUi', 'SasFitFitUi']);

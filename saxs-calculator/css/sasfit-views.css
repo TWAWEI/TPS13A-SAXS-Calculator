@@ -380,3 +380,52 @@
     color: var(--color-text-muted);
     text-align: left;
 }
+
+/* ===== 匯出（擬合分段結果之下）===== */
+.sf-export {
+    margin-top: var(--spacing-md);
+}
+
+.sf-export-actions {
+    margin-bottom: var(--spacing-xs);
+}
+
+.sf-export .stat-sub {
+    margin: 0;
+}
+
+.sf-export .stat-sub:empty {
+    display: none;
+}
+
+/* 圖下的一列：左邊操作說明，右邊兩張圖的 PNG 按鈕。圖欄的高度預算很緊（1024×768 只剩 24px），
+   所以按鈕壓到 1.5rem 高（仍高於 WCAG 2.2 AA 的 24px 下限），這一列只比原來的說明文字高幾個像素 */
+.sf-plot-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+}
+
+/* 14rem：圖卡內寬 420px（1280 視窗）時說明與兩顆按鈕仍在同一列；更窄（手機）時按鈕整組折到下一列，說明不被擠成直條 */
+.sf-plot-foot .sf-plot-caption {
+    flex: 1 1 14rem;
+    min-width: 0;
+    margin: 0;
+    text-align: left;
+}
+
+.sf-plot-foot .btn-sm {
+    flex: 0 0 auto;
+    min-height: 1.5rem;
+    padding: 0.125rem 0.5rem;
+    white-space: nowrap;
+}
+
+/* 單欄版面在「模型」分段把圖釘在頂端：說明列與按鈕一起收起來（sasfit.css 已收起說明文字與殘差） */
+@container sf (max-width: 859px) {
+    .sf-workspace[data-tab="model"] .sf-plot-foot {
+        display: none;
+    }
+}
