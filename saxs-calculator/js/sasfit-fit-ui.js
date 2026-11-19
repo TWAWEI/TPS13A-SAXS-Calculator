@@ -66,6 +66,8 @@
         qOrder: 'Q 下限必須小於 Q 上限',
         steps: (max) => '最大步數必須是 1 到 ' + max + ' 的整數',
         starting: '開始擬合…',
+        waitingPreview: '等待預覽完成…',
+        notApplied: '擬合結果無法寫入參數表，參數表仍是擬合前的數值；下列為擬合結果',
         progress: (step, label, value) => '第 ' + step + ' 步，' + label + '＝' + value,
         stopped: (step) => '已停止（第 ' + step + ' 步），參數未變更',
         finished: (status, label, value, steps) => '擬合結束：' + status + '，' + label + '＝' + value + '，共 ' + steps + ' 步',
@@ -235,6 +237,7 @@
         const results = ctx.el(RESULTS_ID);
         ctx.setHtml(results, html.resultsHtml(result, {
             matches, fileName: file === null ? '' : file.fileName, absolute: file !== null && file.dataset.kind === 'official',
+            notApplied: result !== null && store.get().unapplied === result,
         }));
         results.setAttribute('aria-busy', String(locked));
         // the hints describe the result as fitted; "continue" must not be offered for other values or during a run
@@ -274,7 +277,7 @@
         setProgress(ui, TEXT.progress(iteration, globalThis.SasFitHints.measure(ctx.getState().weighting).label, chi2rText(chi2r)), false);
     }
 
-    /** The fitted values go into the form; a result that cannot be applied is shown without changing it. */
+    /** The fitted values go into the form; a result that cannot be applied is shown without changing it, and said so. */
     function applyToForm(ui, result) {
         const { ctx } = ui;
         try {
@@ -282,6 +285,7 @@
             return true;
         } catch (err) {
             console.warn(LOG + ' 擬合結果無法套用到參數表：' + (err instanceof Error ? err.message : String(err)));
+            ui.store.set({ unapplied: result });
             return false;
         }
     }
@@ -300,8 +304,10 @@
             return;
         }
         const { pending, keepBefore, before } = store.get();
-        if (applyToForm(ui, result)) store.set({ before: keepBefore && before !== null ? before : pending });
+        const applied = applyToForm(ui, result);
+        if (applied) store.set({ before: keepBefore && before !== null ? before : pending });
         clearAlerts(ctx);
+        if (!applied) showAlert(ctx, 'sfFitAlert', FIT_ERROR_ID, TEXT.notApplied);
         settle(ui, result);
         const label = globalThis.SasFitHints.statusLabel(result).text;
         setProgress(ui, TEXT.finished(label, globalThis.SasFitHints.measure(result).label, chi2rText(result.chi2r),
@@ -332,12 +338,14 @@
         const form = ctx.getForm();
         const job = globalThis.SasFitJobs.fitJob(form, activeFile(state).dataset,
             { range: state.range, weighting: state.weighting, maxSteps: state.maxSteps });
-        ctx.preview.cancel();                                      // a preview queued behind the fit would only wait for it
+        // A preview still on its timer is dropped. One already in the Worker cannot be: the fit waits behind it (up
+        // to about 2 s for the heaviest previews) and the progress line says so until the first step arrives.
+        const waiting = ctx.preview.cancel() === true;
         clearAlerts(ctx);
         const run = store.get().run + 1;
-        store.set({ run, pending: form, keepBefore });
+        store.set({ run, pending: form, keepBefore, unapplied: null });
         ctx.dispatch({ type: 'fitStarted' });
-        setProgress(ui, TEXT.starting, true);
+        setProgress(ui, waiting ? TEXT.waitingPreview : TEXT.starting, true);
         let promise;
         try {
             promise = ctx.client.fit(job, { onProgress: (progress) => onProgress(ui, run, progress) });
@@ -403,7 +411,7 @@
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
             rangeSeen: undefined, rangeErrors: NO_ERRORS, stepsError: '', before: null, pending: null, keepBefore: false,
-            run: 0, progress: '', progressFor: null,
+            run: 0, progress: '', progressFor: null, unapplied: null,
         }) });
         bind(ui);
         return Object.freeze({ render: () => render(ui) });

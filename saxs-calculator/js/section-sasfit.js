@@ -109,15 +109,21 @@
     const TEXT = Object.freeze({
         empty: '尚未載入資料。',
         needData: '請先載入資料，才能設定擬合範圍並開始擬合。',
+        renderFailed: '畫面更新時發生錯誤，部分內容可能不是最新的；請重新整理頁面後再試',
     });
     const LOG = '[sasfit]';
+    const SECTION_ID = 'section-sasfit';
+    const DROP_SELECTOR = '#sfDrop';
+    const GUARDED_DRAG_EVENTS = Object.freeze(['dragover', 'drop']);
 
     const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const isObject = (v) => v !== null && typeof v === 'object';
     const el = (id) => document.getElementById(id);
 
     /** Everything the page holds; replaced as a whole (frozen) on every change. */
-    let page = Object.freeze({ initialised: false, state: null, form: null, client: null, deps: null, segments: Object.freeze({}) });
+    let page = Object.freeze({
+        initialised: false, bound: false, context: null, state: null, form: null, client: null, deps: null, segments: Object.freeze({}),
+    });
 
     const update = (changes) => { page = Object.freeze({ ...page, ...changes }); };
 
@@ -183,13 +189,23 @@
         SEGMENT_MODULES.filter(({ key }) => page.segments[key] === undefined).forEach(({ key }) => PLACEHOLDERS[key](state));
     }
 
+    /** One segment's render; a failure is logged and announced, and never stops the other segments. */
+    function renderSegment(key) {
+        try {
+            page.segments[key].render();
+        } catch (err) {
+            console.error(LOG + ' 分段 ' + key + ' 重繪失敗：' + (err instanceof Error ? err.message : String(err)), err);
+            el('sfAlert').textContent = TEXT.renderFailed;
+        }
+    }
+
     /** Draw everything from the current state and form. */
     function refresh() {
         const state = getState();
         renderTabs(state);
         renderPlaceholders(state);
         SEGMENT_MODULES.forEach(({ key }) => {
-            if (page.segments[key] !== undefined) page.segments[key].render();
+            if (page.segments[key] !== undefined) renderSegment(key);
         });
     }
 
@@ -274,18 +290,21 @@
         return Object.freeze(ctx);
     }
 
-    /** create(ctx) of every segment module that exists -> { key: segment }; throws when one breaks the contract. */
+    /**
+     * create(ctx) of every segment module that exists and has no segment yet; throws when one breaks the contract.
+     * Each segment is kept as soon as it exists: create() binds events, so a later init must not create it again.
+     */
     function createSegments(ctx) {
-        return SEGMENT_MODULES.reduce((segments, { key, global }) => {
+        SEGMENT_MODULES.forEach(({ key, global }) => {
             const module = globalThis[global];
-            if (module === undefined) return segments;
+            if (module === undefined || page.segments[key] !== undefined) return;
             if (!isObject(module) || typeof module.create !== 'function') throw new Error(global + '.create is not a function');
             const segment = module.create(ctx);
             if (!isObject(segment) || typeof segment.render !== 'function') {
                 throw new Error(global + '.create(ctx) must return an object with render()');
             }
-            return Object.freeze({ ...segments, [key]: segment });
-        }, Object.freeze({}));
+            update({ segments: Object.freeze({ ...page.segments, [key]: segment }) });
+        });
     }
 
     // ------------------------------------------------------------- segment control
@@ -305,6 +324,33 @@
         el(TABLIST_ID).addEventListener('keydown', onTabKey);
     }
 
+    /** The page section is the one on screen (an element that is not there counts as shown). */
+    function sectionShown() {
+        const section = el(SECTION_ID);
+        return !section || !isObject(section.classList) || section.classList.contains(ACTIVE_CLASS);
+    }
+
+    /**
+     * A file dropped next to the drop zone would make the browser open it and leave the page. While this section
+     * is on screen, drags outside #sfDrop are cancelled; #sfDrop handles its own (SasFitDataUi).
+     */
+    function onStrayDrag(event) {
+        if (!sectionShown()) return;
+        const target = event.target;
+        const inZone = isObject(target) && typeof target.closest === 'function' && target.closest(DROP_SELECTOR) !== null;
+        if (!inZone) event.preventDefault();
+    }
+
+    /** Listeners of the skeleton, bound once however often init runs. */
+    function bindOnce() {
+        if (page.bound) return;
+        bindTabs();
+        if (typeof document.addEventListener === 'function') {
+            GUARDED_DRAG_EVENTS.forEach((type) => document.addEventListener(type, onStrayDrag));
+        }
+        update({ bound: true });
+    }
+
     // ------------------------------------------------------------- start
 
     function missingElements() {
@@ -312,11 +358,15 @@
         return ELEMENT_IDS.filter((id) => !el(id));
     }
 
+    /** May run again after a failure: what already exists (deps, context, segments, listeners) is kept. */
     function start(deps) {
-        update({ deps: resolveDeps(deps), state: globalThis.SasFitState.initial(), form: globalThis.SasFitForm.create(DEFAULT_MODEL) });
-        update({ segments: createSegments(buildContext()) });
+        if (page.deps === null) {
+            update({ deps: resolveDeps(deps), state: globalThis.SasFitState.initial(), form: globalThis.SasFitForm.create(DEFAULT_MODEL) });
+        }
+        if (page.context === null) update({ context: buildContext() });
+        createSegments(page.context);
+        bindOnce();                       // before the first refresh: the tabs work even if a segment fails to draw
         refresh();
-        bindTabs();
         update({ initialised: true });
     }
 

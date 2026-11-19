@@ -8,6 +8,7 @@
  *     lastPreview()    the latest preview curve { q, I } (frozen) | null
  *     previewStatus()  { computing, paused, previewPoints, allNonFinite, error } (frozen) for the status line
  *     schedulePreview() plans a preview of the current form again; cancelPreview() drops the pending
+ *     timer and returns true while an evaluation already sent is still being computed;
  *                      debounce timer (a fit is about to start)
  *
  * The form: model select with a search box, S(Q), its two modes, the low-Q
@@ -163,12 +164,14 @@
         if (isRunning(state) || !globalThis.SasFitForm.validate(form).valid) return;
         const request = globalThis.SasFitJobs.previewRequest(form, activeDataset(state));
         const seq = store.get().seq + 1;
-        store.set({ seq, slowTimer: ctx.deps.timers.setTimeout(() => onSlow(ui, seq), SLOW_MS) });
+        store.set({ seq, inFlight: seq, slowTimer: ctx.deps.timers.setTimeout(() => onSlow(ui, seq), SLOW_MS) });
+        const landed = () => { if (store.get().inFlight === seq) store.set({ inFlight: null }); };
         try {
             ctx.client.evaluate({ modelSpec: request.modelSpec, params: request.params, q: request.q, opts: request.opts })
-                .then((result) => onCurve(ui, seq, request, result), (err) => onError(ui, seq, err))
+                .then((result) => { landed(); onCurve(ui, seq, request, result); }, (err) => { landed(); onError(ui, seq, err); })
                 .catch((err) => console.error(LOG + ' 處理預覽結果時發生未預期的錯誤', err));
         } catch (err) {
+            landed();
             onError(ui, seq, err);                                // the client could not be created
         }
     }
@@ -206,10 +209,17 @@
         decide(ui, form, dataset, result);
     }
 
+    /**
+     * Drops the preview that is still waiting for its timer. One that was already sent cannot be taken back (the
+     * Worker computes it to the end; stopping it would throw away the loaded wasm): returns true in that case, so
+     * that the caller can say a fit started now first waits for it.
+     */
     function cancelPreview(ui) {
-        if (ui.store.get().timer === null) return;
+        const inFlight = ui.store.get().inFlight !== null;
+        if (ui.store.get().timer === null) return inFlight;
         clearTimer(ui, 'timer');
         ui.store.set({ planned: null });                          // not sent: plan again once the fit is over
+        return inFlight;
     }
 
     function schedulePreview(ui) {
@@ -528,7 +538,7 @@
 
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
-            tableKey: null, query: '', sld: null, curve: null, status: NO_STATUS, planned: null, timer: null, slowTimer: null, seq: 0,
+            tableKey: null, query: '', sld: null, curve: null, status: NO_STATUS, planned: null, timer: null, slowTimer: null, seq: 0, inFlight: null,
         }) });
         bindForm(ui);
         bindSld(ui);

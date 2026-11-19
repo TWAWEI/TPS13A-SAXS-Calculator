@@ -224,8 +224,10 @@
     function renderList(ui, state) {
         const { ctx } = ui;
         const rows = rowsOf(state);
-        // the key leaves the condition out: typing one must not rebuild the list under the caret
-        const key = globalThis.SasFitHtml.fileRowsHtml(rows.map((row) => ({ ...row, condition: null })));
+        // What the rows' HTML depends on, without building it. The condition is left out: typing one must not
+        // rebuild the list under the caret. A file's issues never change after loading: their count is enough.
+        const key = JSON.stringify(rows.map((row) => [row.id, row.index, row.fileName, row.hasData, row.shown, row.active,
+            row.statusText, row.statusTone, row.locked, row.issues.length, row.issueOverflow]));
         if (key !== ui.store.get().listKey) {
             ctx.setHtml(ctx.el('sfDataBody'), globalThis.SasFitHtml.fileRowsHtml(rows));
             ui.store.set({ listKey: key });

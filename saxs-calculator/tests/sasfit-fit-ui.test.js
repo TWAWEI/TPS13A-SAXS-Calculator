@@ -538,6 +538,49 @@ test('[sasfit-fit-ui] 結果的值寫不進表單（非有限）：結果照常�
     assert.equal(phase(page), 'idle');
     assert.equal(page.Section.getState().fitResults[page.Section.getState().activeId], result);
     assert.equal(page.$('sfFitRevert').disabled, true, '表單沒變：沒有可回復的');
+    assert.match(page.$('sfFitAlert').innerHTML, /擬合結果無法寫入參數表，參數表仍是擬合前的數值/, '畫面上也說明，不只 console');
+    assert.doesNotMatch(page.$('sfFitResults').innerHTML, /參數已修改/, '參數沒有被修改：不顯示那句話');
+    assert.match(page.$('sfFitResults').innerHTML, /tile--hero/);
+    await fitOnce(page, { values: { radius: 50.2 } });
+    assert.equal(page.$('sfFitAlert').innerHTML, '', '下一次擬合開始時清掉');
+});
+
+test('[sasfit-fit-ui] 開始擬合時還有預覽在 Worker 裡計算：進度列先顯示「等待預覽完成…」，第一個進度到了就換掉', async () => {
+    const page = await ready();
+    const input = field(page, 'radius', 'value');
+    input.value = '51';
+    input.fire('input');
+    const before = page.client.evaluations.length;
+    page.timers.advance(250);
+    assert.equal(page.client.evaluations.length, before + 1, '預覽已送出、尚未回來');
+    page.$('sfFitStart').fire('click');
+    assert.equal(page.client.stops, 0, '不中止 Worker（會丟掉已載入的 wasm）');
+    assert.equal(page.$('sfFitProgress').textContent, '等待預覽完成…');
+    assert.equal(page.$('sfFitLive').textContent, '等待預覽完成…');
+    lastFit(page).options.onProgress({ iteration: 1, chi2r: 3 });
+    assert.equal(page.$('sfFitProgress').textContent, '第 1 步，χ²ᵣ＝3.00');
+    lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.2 } }));
+    await ui.flush();
+    assert.match(page.$('sfFitProgress').textContent, /^擬合結束/);
+});
+
+test('[sasfit-fit-ui] 預覽已經回來（或只是排在計時器裡）：開始擬合顯示「開始擬合…」', async () => {
+    const page = await ready();
+    const input = field(page, 'radius', 'value');
+    input.value = '51';
+    input.fire('input');
+    page.timers.advance(250);
+    const pending = page.client.evaluations[page.client.evaluations.length - 1];
+    pending.resolve({ I: Float64Array.from(pending.request.q, () => 1), extras: {} });
+    await ui.flush();
+    page.$('sfFitStart').fire('click');
+    assert.equal(page.$('sfFitProgress').textContent, '開始擬合…');
+    lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.2 } }));
+    await ui.flush();
+    input.value = '52';
+    input.fire('input');                                        // 只排了計時器，還沒送出
+    page.$('sfFitStart').fire('click');
+    assert.equal(page.$('sfFitProgress').textContent, '開始擬合…');
 });
 
 // ---------------------------------------------------------------- 結果與表單是否相符

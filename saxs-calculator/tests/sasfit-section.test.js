@@ -445,3 +445,86 @@ test('[sasfit-section] 分段模組的 create 沒有回傳帶 render 的物件�
     assert.equal(errors.length, 1);
     assert.match(errors[0], /SasFitDataUi/);
 });
+
+// ---------------------------------------------------------------- 防護（修正批次 A：程式審查 M3 與拖放）
+test('[sasfit-section] 某個分段的 render 丟例外：console.error、sfAlert 顯示訊息，其餘分段照常重繪，之後的 dispatch 仍可用', () => {
+    clearSegments();
+    const record = fakeSegments({ SasFitParamsUi: { render() { throw new Error('boom <b>'); } } });
+    const Section = loadSection();
+    const $ = makeDom(Section);
+    let ok;
+    const errors = captureConsole('error', () => { ok = Section.init({ createClient: () => ({}) }); });
+    assert.equal(ok, true, '一個分段壞掉不擋住整頁');
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /model/);
+    assert.match(errors[0], /boom/);
+    assert.equal($('sfAlert').textContent, '畫面更新時發生錯誤，部分內容可能不是最新的；請重新整理頁面後再試');
+    assert.equal($('sfAlert').innerHTML, '', '訊息以 textContent 寫入');
+    assert.deepEqual([record.renders.SasFitDataUi, record.renders.SasFitFitUi], [1, 1]);
+    const again = captureConsole('error', () => record.ctx.SasFitDataUi.dispatch({ type: 'setPlotMode', mode: 'kratky' }));
+    assert.equal(again.length, 1);
+    assert.equal(Section.getState().plotMode, 'kratky');
+    assert.deepEqual([record.renders.SasFitDataUi, record.renders.SasFitFitUi], [2, 2]);
+    const viaRefresh = captureConsole('error', () => record.ctx.SasFitFitUi.refresh());
+    assert.equal(viaRefresh.length, 1);
+});
+
+test('[sasfit-section] 分頁鈕在第一次重繪之前就綁好（第一次重繪出錯也能切分段）', () => {
+    clearSegments();
+    let seen = null;
+    const Section = loadSection();
+    const $ = makeDom(Section);
+    fakeSegments({ SasFitDataUi: { render() { if (seen === null) seen = $('sfTabModel').listenerCount('click'); } } });
+    assert.equal(Section.init({ createClient: () => ({}) }), true);
+    assert.equal(seen, 1);
+});
+
+test('[sasfit-section] init 中途失敗後再呼叫：已建立的分段不重建、分頁鈕不重複綁定', () => {
+    clearSegments();
+    const record = fakeSegments();
+    globalThis.SasFitFitUi = { create() { throw new Error('fit segment broke'); } };
+    const Section = loadSection();
+    const $ = makeDom(Section);
+    let first;
+    const errors = captureConsole('error', () => { first = Section.init({ createClient: () => ({}) }); });
+    assert.equal(first, false);
+    assert.equal(errors.length, 1);
+    assert.deepEqual(record.created, ['SasFitDataUi', 'SasFitParamsUi']);
+    globalThis.SasFitFitUi = { create(ctx) { record.created.push('SasFitFitUi'); record.ctx.SasFitFitUi = ctx; return { render() {} }; } };
+    assert.equal(Section.init({ createClient: () => ({}) }), true);
+    assert.deepEqual(record.created, ['SasFitDataUi', 'SasFitParamsUi', 'SasFitFitUi'], '前兩個沒有重建（它們的事件不會綁兩次）');
+    for (const { tab } of TABS) assert.equal($(tab).listenerCount('click'), 1, tab);
+    assert.equal($('sfTabs').listenerCount('keydown'), 1);
+    assert.equal(record.ctx.SasFitFitUi, record.ctx.SasFitDataUi, '同一個 ctx');
+    assert.equal(Section.init(), true);
+    assert.equal($('sfTabs').listenerCount('keydown'), 1);
+});
+
+test('[sasfit-section] 把檔案拖到 #sfDrop 以外：本分頁顯示中時取消瀏覽器的預設行為（不會離開頁面）；其他分頁不干涉', () => {
+    clearSegments();
+    const Section = loadSection();
+    const $ = makeDom(Section);
+    const listeners = {};
+    const section = { classList: { contains: (name) => name === 'active' && section.active }, active: true };
+    const base = global.document;
+    global.document = { ...base, getElementById: (id) => (id === 'section-sasfit' ? section : base.getElementById(id)),
+        addEventListener(type, fn) { (listeners[type] ||= []).push(fn); } };
+    assert.equal(Section.init({ createClient: () => ({}) }), true);
+    assert.deepEqual([listeners.dragover.length, listeners.drop.length], [1, 1]);
+    const fire = (type, target) => {
+        const event = { type, target, prevented: false, preventDefault() { event.prevented = true; } };
+        listeners[type].forEach((fn) => fn(event));
+        return event.prevented;
+    };
+    const inside = { closest: (sel) => (sel === '#sfDrop' ? $('sfDrop') : null) };
+    const outside = { closest: () => null };
+    assert.equal(fire('dragover', outside), true);
+    assert.equal(fire('drop', outside), true);
+    assert.equal(fire('drop', inside), false, '#sfDrop 自己處理');
+    assert.equal(fire('drop', {}), true, '沒有 closest 的目標視為區域外');
+    section.active = false;
+    assert.equal(fire('drop', outside), false, '別的分頁顯示中：不干涉');
+    assert.equal(fire('dragover', outside), false);
+    assert.equal(Section.init(), true);
+    assert.equal(listeners.drop.length, 1, '不重複綁定');
+});

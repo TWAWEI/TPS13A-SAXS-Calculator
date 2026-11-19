@@ -191,3 +191,19 @@ test('[markup] sasfit 區段：data-section="sasfit" 全文件恰好一次；區
         assert.ok(!/\sstyle="/.test(region), `第 ${i + 1} 個區段有行內 style`);
     });
 });
+
+test('[markup] sasfit 區段：沒有事件處理屬性、<script>、javascript: 與帶 href 的 <a>（模型文件連結由 JS 建立）', () => {
+    assert.ok(REGIONS.length > 0);
+    REGIONS.forEach((region, i) => {
+        const label = `區段 ${i + 1}`;
+        assert.doesNotMatch(region, /<[^>]*\son[a-z]+\s*=/i, `${label}：不得有 on*= 屬性（CSP；事件一律 addEventListener）`);
+        assert.doesNotMatch(region, /<\s*script\b/i, `${label}：不得有 <script>`);
+        assert.doesNotMatch(region, /javascript\s*:/i, `${label}：不得有 javascript: 網址`);
+        assert.doesNotMatch(region, /<a\b[^>]*\shref\s*=/i, `${label}：不得有帶 href 的 <a>`);
+    });
+    // 規則本身抓得到這四種寫法
+    const bad = ['<button onclick="x()">', '<div ONLOAD = "x">', '<script src="a.js">', '<a href="javascript:alert(1)">', '<a class="x" href="https://e.org">'];
+    const rules = [/<[^>]*\son[a-z]+\s*=/i, /<\s*script\b/i, /javascript\s*:/i, /<a\b[^>]*\shref\s*=/i];
+    bad.forEach((html) => assert.ok(rules.some((rule) => rule.test(html)), html));
+    assert.ok(!rules.some((rule) => rule.test('<a id="sfDocs" role="link">文件</a><p data-on="1">section</p>')));
+});

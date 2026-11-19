@@ -489,7 +489,9 @@
             return '<p class="stat-sub sf-result-note">已停止（第 ' + step + ' 步），參數未變更</p>';
         }
         const context = isObject(ctx) ? ctx : {};
-        const stale = context.matches === true ? '' : '<div class="alert alert--compact alert-warning">' + TEXT.stale + '</div>';
+        // a result that could not be written into the form: the form was not edited, so "parameters changed" would be wrong
+        const stale = context.matches === true || context.notApplied === true
+            ? '' : '<div class="alert alert--compact alert-warning">' + TEXT.stale + '</div>';
         const file = text(context.fileName) === '' ? '' : '<p class="stat-sub sf-result-file">' + esc(context.fileName) + '</p>';
         const tiles = [heroTileHtml(fitResult)]
             .concat(list(fitResult.names).map((name) => paramTileHtml(fitResult, name, context.absolute === true)));
