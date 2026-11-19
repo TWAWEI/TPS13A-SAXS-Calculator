@@ -1,0 +1,151 @@
+/* =============================================
+   TPS13A SAXS Calculator — SAS 模型擬合分頁：圖卡的「曲線｜結構」檢視切換與 3D 結構示意
+   （計畫 M4；css/sasfit.css 已接近行數上限，M4 的樣式寫在這裡）。
+   只用 css/tokens.css 的 token（不寫色碼）；3D 畫布上的顏色由 js/chart-theme.js 決定。
+   排在 sasfit.css、sasfit-params.css 之後載入；選擇器都以 .sf- 開頭或限定在 .sf- 容器內。
+   ============================================= */
+
+/* ===== 圖卡標題列：標題與檢視切換永遠在同一行；工具（曲線的或結構的）放不下時整組換到下一行 ===== */
+.sf-plot-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+}
+
+.sf-plot-heading .card-title {
+    white-space: nowrap;
+}
+
+/* 中文字的預設行高比旁邊的英文模式鈕高 4 px，會把整個標題列撐高：行高寫明，兩組鈕同高 */
+.sf-plot-heading .tab {
+    padding: 0.3125rem 0.625rem;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+/* [hidden] 要蓋過元件自己的 display */
+.sf-plot-tools[hidden],
+.sf-shape-stage[hidden] {
+    display: none;
+}
+
+/* 兩欄但圖卡較窄（視窗 1280、1024：圖卡內寬 420–448 px）：標題、檢視切換、三個模式鈕與「重設縮放」
+   要排在同一行——多一行會讓有擬合結果的曲線檢視在 1024×768 超出欄高。這裡只縮左右留白與間距，字級不變。 */
+@container sf (max-width: 1039px) {
+    .sf-plot-header,
+    .sf-plot-heading,
+    .sf-plot-tools {
+        gap: 0.375rem;
+    }
+
+    .sf-plot-header .tab {
+        padding-left: 0.375rem;
+        padding-right: 0.375rem;
+    }
+
+    .sf-plot-header .btn-sm {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+}
+
+/* ===== 結構檢視：狀態行、3D 畫布（主圖的位置與高度）、操作說明、尺寸與說明（殘差圖的位置） ===== */
+/* 與曲線檢視的狀態列同高：切換檢視時畫布與主圖在同一個位置 */
+.sf-shape-status {
+    display: flex;
+    align-items: center;
+    min-height: 1.875rem;
+    margin: 0 0 var(--spacing-xs);
+    text-align: left;
+}
+
+.sf-shape-stage {
+    height: clamp(300px, 46vh, 460px);
+    border-radius: var(--radius-md);
+    cursor: grab;
+    touch-action: pan-y;               /* 單指上下滑動照常捲頁；左右拖曳改方位角 */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.sf-shape-stage.is-dragging {
+    cursor: grabbing;
+}
+
+.sf-shape-stage:focus-visible,
+.sf-shape-text:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+/* 畫布的尺寸由容器決定，不得反過來撐開容器（否則 ResizeObserver 會形成重畫迴圈） */
+.sf-shape-stage canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* 固定高度＝曲線檢視的「殘差」小標＋殘差圖：圖卡高度不因文字多寡或檢視切換而變；放不下時在自己裡面捲動 */
+.sf-shape-text {
+    height: calc(140px + 1.3125rem);
+    margin-top: var(--spacing-md);
+    overflow-y: auto;
+    border-radius: var(--radius-sm);
+}
+
+.sf-shape-dims {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-md);
+    margin: 0;
+    font-size: 0.8125rem;
+}
+
+.sf-shape-dim {
+    display: flex;
+    align-items: baseline;
+    gap: 0.375rem;
+}
+
+.sf-shape-dim dt {
+    color: var(--color-text-muted);
+}
+
+.sf-shape-dim dd {
+    margin: 0;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+    text-align: left;
+}
+
+/* 每句說明各自一行（JS 以換行分隔）；多行時左右對齊（.stat-sub 在 tokens.css 的 justify 名單內） */
+.sf-shape-extras {
+    margin: var(--spacing-sm) 0 0;
+    white-space: pre-line;
+}
+
+.sf-shape-extras:empty {
+    display: none;
+}
+
+/* 單欄版面（寫在一般規則之後才蓋得過）：畫布與主圖同高；圖固定在頂端時（模型分段）只留畫布 */
+@container sf (max-width: 859px) {
+    .sf-shape-stage {
+        height: clamp(180px, 30vh, 260px);
+    }
+
+    /* 單欄時圖卡在一般的文件流裡（頁面本來就會捲動）：文字不限高度，只保留與殘差圖相同的最小高度 */
+    .sf-shape-text {
+        height: auto;
+        min-height: calc(110px + 1.3125rem);
+        overflow-y: visible;
+    }
+
+    .sf-workspace[data-tab="model"] .sf-shape-status,
+    .sf-workspace[data-tab="model"] .sf-shape-help,
+    .sf-workspace[data-tab="model"] .sf-shape-text {
+        display: none;
+    }
+}

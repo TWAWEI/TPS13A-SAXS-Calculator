@@ -4,7 +4,8 @@
  *
  * It owns the page state (SasFitState), the model form (SasFitForm) and the
  * Worker client, switches the three segments (data / model / fit) and hands one
- * context object to the segment modules. Everything inside a segment -- file
+ * context object to the segment modules (the fourth module, 'shape', is the switch
+ * of the plot card and the 3D sketch -- it has no tab). Everything inside a segment -- file
  * list, parameter table, fit controls, charts -- belongs to those modules.
  *
  *   SasFitSection.init(deps?) -> boolean
@@ -17,6 +18,10 @@
  *         readFile(file)        default: DndcFileParser.readFile(file) -> Promise<string>
  *         timers                default: { setTimeout, clearTimeout } of the platform
  *         plots                 default: globalThis.SasFitPlots, or null while that module does not exist
+ *         raf(fn) / cancelRaf(id)   default: requestAnimationFrame / cancelAnimationFrame of the window
+ *         matchMedia(query)     default: window.matchMedia; { matches: false } where there is none
+ *         createCanvas()        default: a new <canvas> element (off screen: the PNG of the 3D sketch)
+ *         observeResize(element, fn)   default: a ResizeObserver on the element that calls fn()
  *   SasFitSection.getState() -> the frozen SasFitState state
  *   SasFitSection.getForm()  -> the frozen SasFitForm form
  *   SasFitSection.ELEMENT_IDS       the static ids of index.html this page needs; init checks all of them
@@ -27,6 +32,7 @@
  *     globalThis.SasFitDataUi   = Object.freeze({ create })     data segment   (key 'data')
  *     globalThis.SasFitParamsUi = Object.freeze({ create })     model segment  (key 'model')
  *     globalThis.SasFitFitUi    = Object.freeze({ create })     fit segment    (key 'fit')
+ *     globalThis.SasFitShape3d  = Object.freeze({ create })     plot card: curves | 3D sketch (key 'shape'; not a tab)
  * init calls create(ctx) of each one that exists, in that order, exactly once.
  * create binds the module's own event listeners and returns
  *     { render() }                                   every segment
@@ -90,6 +96,7 @@
         Object.freeze({ key: 'data', global: 'SasFitDataUi' }),
         Object.freeze({ key: 'model', global: 'SasFitParamsUi' }),
         Object.freeze({ key: 'fit', global: 'SasFitFitUi' }),
+        Object.freeze({ key: 'shape', global: 'SasFitShape3d' }),         // not a tab: the 3D sketch and the switch of the plot card
     ]);
     const ELEMENT_IDS = Object.freeze([
         'sfAlert', WORKSPACE_ID, TABLIST_ID, 'sfTabData', 'sfTabModel', 'sfTabFit', 'sfPanelData', 'sfPanelModel', 'sfPanelFit',
@@ -108,6 +115,9 @@
         // charts
         'sfPlotTitle', 'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
         'sfMainChart', 'sfResidualEmpty', 'sfResidualBox', 'sfResidualChart',
+        // plot card: the switch between the curves and the 3D sketch, and the sketch
+        'sfViewTabs', 'sfViewCurve', 'sfViewShape', 'sfCurveTools', 'sfCurveView', 'sfShapeTools', 'sfShapeView', 'sfShapeStatus',
+        'sfShapeStage', 'sfShapeCanvas', 'sfShapeHelp', 'sfShapeText', 'sfShapeDims', 'sfShapeExtras', 'sfShapeReset', 'sfShapeSpin', 'sfShapePng',
     ]);
     const TEXT = Object.freeze({
         empty: '尚未載入資料。',
@@ -142,6 +152,15 @@
 
     // ------------------------------------------------------------- deps and client
 
+    const NO_MEDIA = Object.freeze({ matches: false });
+
+    /** Calls fn whenever the element gets another size (nothing happens where the platform cannot tell). */
+    function observeResize(element, fn) {
+        const Observer = host().ResizeObserver;
+        if (typeof Observer !== 'function') return;
+        new Observer(() => fn()).observe(element);
+    }
+
     function resolveDeps(given) {
         const g = isObject(given) ? given : {};
         return Object.freeze({
@@ -152,6 +171,11 @@
                 clearTimeout: (id) => globalThis.clearTimeout(id),
             }),
             plots: g.plots || globalThis.SasFitPlots || null,
+            raf: g.raf || ((fn) => host().requestAnimationFrame(fn)),
+            cancelRaf: g.cancelRaf || ((id) => host().cancelAnimationFrame(id)),
+            matchMedia: g.matchMedia || ((query) => (typeof host().matchMedia === 'function' ? host().matchMedia(query) : NO_MEDIA)),
+            createCanvas: g.createCanvas || (() => document.createElement('canvas')),
+            observeResize: g.observeResize || observeResize,
         });
     }
 
@@ -187,6 +211,7 @@
             el('sfFitStart').disabled = true;
             el('sfFitSummary').textContent = TEXT.needData;
         },
+        shape() {},                           // the markup starts in the curve view, which needs no module
     });
 
     function renderPlaceholders(state) {

@@ -34,8 +34,12 @@
  *                          toFixed of the sketch.
  *   shapeParams(form) -> { name: number } | null    the dimensions SasFitShapeGeom.build needs; null when the
  *                          model has no shape or the form has a field error
- *   describe(form, { pixelsPerAngstrom }?) -> { title, dims: [{ label, text }], extras: [string], alt } | null
- *       plain text (the caller escapes it or writes it with textContent); null as for shapeParams
+ *   describe(form, { pixelsPerAngstrom, scene }?) -> { title, dims: [{ label, text }], extras: [string], alt } | null
+ *       plain text (the caller escapes it or writes it with textContent); null as for shapeParams.
+ *       pixelsPerAngstrom (at the default zoom): dimensions drawn smaller than MIN_PIXELS get a sentence;
+ *       scene: the scene already built for these parameters (else it is built here for its notToScale)
+ *   dimsHtml(dims) -> '<dl class="sf-shape-dims">...</dl>'   the only HTML of the sketch; every text in it goes
+ *                          through FormUtils.escapeHtml
  *
  * The draw order is NOT a sort of all faces by depth -- that is wrong for a shell that is cut open, where the
  * core hides part of a cut face and the cut face hides the core faces behind its plane. Instead:
@@ -61,7 +65,7 @@
  *
  * Nothing given is modified; what is returned is frozen. A scene's face normals are computed once and kept in
  * a WeakMap (scenes are frozen and never change). Pure: no DOM, no timers, no colours. SasFitShapeGeom,
- * SasFitForm, SasFitJobs, SasFitFormat and SasFitLabels are read at call time.
+ * SasFitForm, SasFitJobs, SasFitFormat and SasFitLabels are read at call time, FormUtils through host().
  */
 
 (function () {
@@ -92,6 +96,7 @@
         0: { type: 'reset' }, Home: { type: 'reset' },
     });
 
+    const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
     const isObject = (v) => v !== null && typeof v === 'object';
     const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -291,7 +296,7 @@
     }
 
     /** The indices within `reach` of i along the chain. */
-    function window(i, reach, count) {
+    function nearby(i, reach, count) {
         const near = [];
         for (let j = Math.max(0, i - reach); j <= Math.min(count - 1, i + reach); j++) near.push(j);
         return near;
@@ -299,7 +304,7 @@
 
     /** The mean brightness over each segment's window: neighbouring segments overlap, so their shades must not jump. */
     const smoothed = (segments, reach) => segments.map((_, i) => {
-        const near = window(i, reach, segments.length);
+        const near = nearby(i, reach, segments.length);
         return near.reduce((sum, j) => sum + segments[j].k, 0) / near.length;
     });
 
@@ -325,7 +330,7 @@
         const parts = segments.map((segment, i) => tubeParts(segment, ks[i], width));
         const byDepth = (i, j) => segments[i].depth - segments[j].depth || i - j;
         return segments.map((_, i) => i).sort(byDepth).map((i) => {
-            const near = window(i, reach, segments.length).sort(byDepth);
+            const near = nearby(i, reach, segments.length).sort(byDepth);
             return Object.freeze({
                 kind: 'stroke', points: segments[i].points, width, role: 'shapeSolid', k: ks[i], depth: segments[i].depth,
                 fill: Object.freeze(near.map((j) => parts[j].body).concat(near.map((j) => parts[j].shine))),
@@ -436,18 +441,26 @@
     function describe(form, options) {
         const params = shapeParams(form);
         if (params === null) return null;
-        const scene = globalThis.SasFitShapeGeom.build(form.model, params);
+        const given = isObject(options) ? options : {};
+        const scene = isObject(given.scene) ? given.scene : globalThis.SasFitShapeGeom.build(form.model, params);
         const all = globalThis.SasFitJobs.params(form);
         const title = globalThis.SasFitLabels.MODEL_NAMES[form.model] || form.model;
         const dims = DIMS[form.model].map(([label, value]) => Object.freeze({ label, text: nm(value(params)) + ' nm' }));
-        const ppa = isObject(options) ? options.pixelsPerAngstrom : undefined;
-        const extras = (form.model === 'flexible_cylinder' ? [CHAIN_NOTE] : [])
-            .concat(scene === null ? [] : scene.notToScale, dispersityLines(form, all), structureLine(form, all), smallLines(form, params, ppa));
+        const extras = (form.model === 'flexible_cylinder' ? [CHAIN_NOTE] : []).concat(
+            scene === null ? [] : scene.notToScale, dispersityLines(form, all), structureLine(form, all),
+            smallLines(form, params, given.pixelsPerAngstrom));
         return Object.freeze({ title, dims: Object.freeze(dims), extras: Object.freeze(extras), alt: altText(form, title, dims) });
+    }
+
+    /** The dimension list of describe() as a definition list; labels and values are escaped. */
+    function dimsHtml(dims) {
+        const esc = (text) => host().FormUtils.escapeHtml(text);
+        const items = dims.map((dim) => '<div class="sf-shape-dim"><dt>' + esc(dim.label) + '</dt><dd>' + esc(dim.text) + '</dd></div>');
+        return '<dl class="sf-shape-dims">' + items.join('') + '</dl>';
     }
 
     globalThis.SasFitShapeView = Object.freeze({
         DEFAULT_VIEW, ZOOM_RANGE, KEY_STEP, KEY_ZOOM, PITCH_LIMIT, MARGIN, LIGHT, CHAIN_NOTE,
-        viewDirection, basis, reduce, pixelsPerAngstrom, drawList, scaleBar, nm, shapeParams, describe,
+        viewDirection, basis, reduce, pixelsPerAngstrom, drawList, scaleBar, nm, shapeParams, describe, dimsHtml,
     });
 })();

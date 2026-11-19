@@ -355,3 +355,23 @@ test('[shape-view] describe 的回傳是凍結的純文字，不含 <', () => {
         texts.forEach((text) => { assert.equal(typeof text, 'string'); assert.ok(!text.includes('<'), text); });
     });
 });
+
+test('[shape-view] describe 的 scene 選項：直接用已建好的場景，不再建一次；dimsHtml 是跳脫過的定義清單', () => {
+    const form = formOf('lamellar');
+    const real = globalThis.SasFitShapeGeom;
+    const scene = real.build('lamellar', V.shapeParams(form));
+    let builds = 0;
+    globalThis.SasFitShapeGeom = Object.freeze({ ...real, build(...args) { builds += 1; return real.build(...args); } });
+    try {
+        assert.deepEqual(V.describe(form, { scene }), V.describe(form));
+        assert.equal(builds, 1, '只有沒給 scene 的那一次會建');
+    } finally {
+        globalThis.SasFitShapeGeom = real;
+    }
+    const html = V.dimsHtml(V.describe(formOf('core_shell_sphere')).dims);
+    assert.equal(html, '<dl class="sf-shape-dims"><div class="sf-shape-dim"><dt>核半徑</dt><dd>6.0 nm</dd></div>'
+        + '<div class="sf-shape-dim"><dt>殼厚</dt><dd>1.0 nm</dd></div><div class="sf-shape-dim"><dt>外徑</dt><dd>14.0 nm</dd></div></dl>');
+    assert.equal(V.dimsHtml([{ label: 'a<b', text: '"1" & 2' }]),
+        '<dl class="sf-shape-dims"><div class="sf-shape-dim"><dt>a&lt;b</dt><dd>&quot;1&quot; &amp; 2</dd></div></dl>');
+    assert.equal(V.dimsHtml([]), '<dl class="sf-shape-dims"></dl>');
+});
