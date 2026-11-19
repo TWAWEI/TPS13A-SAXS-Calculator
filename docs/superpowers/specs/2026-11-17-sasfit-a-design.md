@@ -76,11 +76,22 @@
 | `js/sasfit-worker-core.js` | Worker 訊息處理的純邏輯（wasm 載入器以參數注入，Node 可測） | evaluate、fitter |
 | `js/sasfit-worker.js` | **Worker 入口**：`importScripts` 載入純模組、接上 `self.onmessage`。唯一不在 `index.html` 載入的 JS | worker-core |
 | `js/sasfit-worker-client.js` | 主執行緒端：Worker 生命週期、latest-wins、停止＝terminate（下一個請求時才重建）、版本號 | worker-core（`settingsOf`） |
-| `js/sasfit-sequence.js` | 序列擬合排程（主執行緒，逐筆送 Worker；排程邏輯為純函式） | worker-client |
-| `js/sasfit-plots.js` | 主圖、殘差、疊圖、趨勢圖（Chart.js＋`ChartTheme`） | — |
-| `js/sasfit-shape3d.js` | Canvas 2D 3D 繪製器與各模型幾何 | — |
-| `js/sasfit-export.js` | CSV／TXT／PNG、IUCr 資料物件（字串組裝為純函式） | — |
-| `js/section-sasfit.js` | 分頁 UI 串接 | 以上全部 |
+| `js/sasfit-form.js`、`sasfit-state.js`、`sasfit-format.js`、`sasfit-labels.js`、`sasfit-jobs.js`、`sasfit-hints.js`、`sasfit-html.js`、`sasfit-plot-data.js` | M3 的純模組：參數表單、頁面狀態（M4 加 `plotView`、`seq` 與第四個分段）、數字格式、標籤、Worker 工作的組裝、提示、HTML 字串、圖的資料 | — |
+| `js/sasfit-plots.js` | 主圖、殘差、疊圖；M4 加趨勢圖（`renderTrend(config)`，圖的實例由它擁有） | plot-data |
+| `js/sasfit-shape-geom.js` | 7 個形狀模型的網格（面帶 `part` 標記）、固定種子的亂數、蠕蟲鏈中心線（M4；純） | — |
+| `js/sasfit-shape-view.js` | 視角 reducer、正交投影、繪製順序、Lambert 亮度、比例尺、nm 標註與文字描述（M4；純） | shape-geom |
+| `js/sasfit-shape3d.js` | Canvas 繪製、拖曳／鍵盤／縮放、自動旋轉、PNG 用的淺色重繪、「曲線｜3D 結構」切換（M4；頂層不碰 DOM） | shape-view |
+| `js/sasfit-sequence.js` | 序列擬合的排程、每檔範圍、起始值規則、執行器（client 由呼叫端注入；M4；純） | jobs、weighting、hints |
+| `js/sasfit-seq-view.js` | 序列表（選檔＋結果）的列與 HTML、趨勢圖的資料與 config（M4；純） | sequence、format |
+| `js/sasfit-export.js` | 匯出共用工具：`num`、CSV 儲存格、註解列、檔名、data URL → 位元組、軟體字串、由 FitResult 取參數列、擬合曲線 CSV（M4；純） | — |
+| `js/sasfit-report.js` | 報告 TXT、序列結果 CSV（M4；純） | export、seq-view |
+| `js/sasfit-iucr.js` | `AppState.sasfitData` 物件、可否送出的判斷、「Model fitting」列的 HTML（M4；純） | export |
+| `js/sasfit-data-ui.js`、`sasfit-params-ui.js`、`sasfit-fit-ui.js` | M3 的三個分段（DOM） | 以上 |
+| `js/sasfit-seq-ui.js` | 序列分段：選項、執行／停止、表格、趨勢圖、點列載入（M4；DOM） | sequence、seq-view |
+| `js/sasfit-export-ui.js` | 匯出與「送進 IUCr 表格」按鈕、下載、各圖 PNG（M4；DOM） | export、report、iucr |
+| `js/section-sasfit.js` | 分頁 UI 串接（四個分段的註冊、`ctx`） | 以上全部 |
+| `js/section-iucr.js` | IUCr 頁（既有）；M4 加 `setIUCrModelFit`、`renderIUCrModelFit`、`iucrCopySource`、`iucrExecCopy` | iucr |
+| `css/sasfit-views.css` | M4 的樣式：檢視切換、3D 區、序列分段、匯出列、IUCr 擬合段（`sasfit.css` 已近行數上限） | — |
 
 - `wasm/` 放在 `saxs-calculator/` 底下（部署 workflow 只上傳 `./saxs-calculator`）。
 - 開發用 `tools/sasfit/` 放在 **repo 根目錄**，不會被部署。
@@ -88,9 +99,9 @@
 
 ### 3.3 載入策略、模組慣例與守門測試
 
-**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、validate、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、linalg、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。
+**模組慣例**：每個 `sasfit-*.js` 以 IIFE 包住，只透過 `globalThis.SasFitXxx = Object.freeze({...})` 匯出一個凍結物件（例：`SasFitKernel`、`SasFitFitter`）。用 `globalThis` 而非 `window`——Worker 內沒有 `window`。純計算模組（meta、validate、weights、kernel、product、py-models、evaluate、weighting、data-io、sld、linalg、fitter、worker-core，以及 sequence、export 的純函式部分）頂層不得觸碰 `window`、`document`、`Chart`。M4 的 shape-geom、shape-view、sequence、seq-view、export、report、iucr 同屬純模組（`tests/load.js` 的 `LOAD_ORDER` 內）；shape3d 頂層不碰 DOM、也在 `LOAD_ORDER` 內；seq-ui、export-ui 是 DOM 模組。**沒有任何 M4 模組在 Worker 內載入。**
 
-**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → validate → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → linalg → fitter → worker-core → worker-client → sequence → plots → shape3d → export → section-sasfit，置於 `app.js` 之前。
+**主執行緒**：`index.html` 以 `<script>` 載入除 `sasfit-worker.js` 以外的全部 `sasfit-*.js`，順序：meta → validate → weights → kernel → product → py-models → evaluate → weighting → data-io → sld → linalg → fitter → worker-core → worker-client → form → state → format → labels → jobs → hints → html → plot-data → plots → shape-geom → shape-view → shape3d → sequence → seq-view → export → report → iucr → data-ui → params-ui → fit-ui → seq-ui → export-ui → section-sasfit，置於 `app.js` 之前（M4 完成後的實際順序）。
 
 **Worker**：`sasfit-worker.js` 以 `importScripts` 載入 meta → validate → weights → kernel → product → py-models → evaluate → weighting → linalg → fitter → worker-core（與 `index.html` 相對順序一致）。linalg 必須排在 fitter 之前：fitter 在載入時就讀 `globalThis.SasFitLinalg`。validate 必須排在 weights 之前：kernel、product、py-models、evaluate 在載入時就讀 `globalThis.SasFitValidate`（weights 在呼叫時讀）。Worker 依 `fit` 訊息中的權重選項，自行用 weighting 模組算 w_i 與遮罩。
 
@@ -310,15 +321,17 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 ```
 ┌─ 側欄 ─┬────── 左欄：操作 ──────┬──────────── 右欄：圖（sticky，較寬）────────────┐
-│        │ [資料][模型][擬合][序列] │ I(q) [log-log│Guinier│Kratky] [重設縮放] [PNG] │
-│        │ ┌ 擬合列（三個分段都在）┐ │  空心資料點（誤差棒）＋墨色的模型曲線             │
+│        │ [資料][模型][擬合][序列] │ [曲線│3D 結構] I(q) [log-log│Guinier│Kratky] [重設縮放] │
+│        │ ┌ 擬合列（四個分段都在）┐ │  空心資料點（誤差棒）＋墨色的模型曲線             │
 │        │ │[開始擬合][停止]      │ │  灰色區＋虛線＝擬合範圍外                        │
-│        │ │ χ²ᵣ 1.02 已收斂 5 步 │ │ ─────────────────────────────────────────── │
-│        │ │ q 範圍·點數·擬合參數  │ │ 殘差（與主圖共用 x 軸；沒有結果時只有一行字）      │
-│        │ └────────────────────┘ │ ─────────────────────────────────────────── │
-│        │  分段內容                │ 3D 結構示意（拖曳旋轉、滾輪縮放）                 │
+│        │ │ χ²ᵣ 1.02 已收斂 5 步 │ │  操作說明           [主圖 PNG][殘差 PNG]         │
+│        │ │ q 範圍·點數·擬合參數  │ │ ─────────────────────────────────────────── │
+│        │ └────────────────────┘ │ 殘差（與主圖共用 x 軸；沒有結果時只有一行字）      │
+│        │  分段內容                │                                                │
 └────────┴─────────────────────────┴────────────────────────────────────────────────┘
 ```
+
+**「曲線｜3D 結構」切換（M4；決策 30）**：圖卡標題列最前面的分段控制（`#sfViewTabs`，在標題之前，所以標題的字換了它也不移動），狀態 `plotView: 'curve' | 'shape'`，預設「曲線」。「曲線」＝狀態列、主圖、操作說明與 PNG 鈕、殘差；「3D 結構」＝`#sfShapeView`：狀態行、3D 畫布（主圖的位置與高度）、操作說明、尺寸清單與說明文字（殘差圖的位置，固定高度，放不下時在自己裡面捲動——此時才是 Tab 停駐點）。標題列的工具跟著換（曲線：主圖模式／重設縮放；結構：重設視角／自動旋轉／PNG）。兩種檢視在 1440×900、1280×800、1024×768 都不產生欄內捲動，標題列不折行（實測見 M4 計畫的完成紀錄）。單欄版面在「模型」分段把圖釘在頂端時，「3D 結構」只留畫布。
 
 **欄寬與斷點（修正批次 B，UI 審查 2026-11-19；決策 29）**：斷點看的是**分頁內容的寬度**（`#section-sasfit` 是 CSS container，`@container sf`），不是視窗寬度——側欄在視窗 1024 px 以下會收起來，視窗 1024 的內容（約 973 px）其實比視窗 1280（有側欄，約 938 px）還寬，用視窗寬度當斷點會在比較寬的那一邊先變單欄。
 
@@ -330,12 +343,12 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 主圖高 `clamp(300px, 46vh, 460px)`（單欄時 `clamp(180px, 30vh, 260px)`），殘差圖 140 px（單欄 110 px）；還沒有擬合結果時殘差圖收成一行「尚無擬合結果」。左欄最窄 26 rem：四欄的參數表（§5.3）在 1440、1280、1024 三種視窗都不需要橫向捲動；320 px（或 400 % 縮放）時參數表每個參數改排兩行（`@container sfparams (max-width: 21.5rem)`），整頁沒有橫向捲軸。
 
-**擬合列**（`#sfFitBar`，分段鈕與分段內容之間，寬螢幕時捲動固定在左欄頂端）：三個分段都看得到「開始擬合」「停止」、擬合量度（χ²ᵣ 或「加權殘差均方」，§5.4）與狀態、步數；一行摘要 `q 0.005–0.07 Å⁻¹ · 57 點 · 擬合 scale、background、radius`（不能開始時改寫原因，「開始擬合」以 `aria-describedby` 指向它）；進行中顯示「正在擬合 <模型>…已 N s」與最新一步。調參數（模型分段）與看 ± 欄不必再切到擬合分段才能按開始。
+**擬合列**（`#sfFitBar`，分段鈕與分段內容之間，捲動時固定在左欄頂端；視窗 1024 px 以下左邊留出固定選單鈕的位置）：四個分段都看得到「開始擬合」「停止」、擬合量度（χ²ᵣ 或「加權殘差均方」，§5.4）與狀態、步數；一行摘要 `q 0.005–0.07 Å⁻¹ · 57 點 · 擬合 scale、background、radius`（不能開始時改寫原因，「開始擬合」以 `aria-describedby` 指向它）；進行中顯示「正在擬合 <模型>…已 N s」與最新一步。調參數（模型分段）與看 ± 欄不必再切到擬合分段才能按開始。序列進行中擬合列顯示不含檔名的短進度（例：「序列 2／3 · 第 7 步 · 約化 χ² 1.84」，量度名稱照決策 24），含檔名的完整文字在序列分段；在序列分段時「開始擬合」是次要按鈕的樣子（該分段的主要動作是「執行序列擬合」）。
 
 ### 5.2 資料分段
 
 - 拖放區＋檔案選擇（多選，`accept=".dat,.txt,.csv"`）；一般文字檔的 q 單位選擇。
-- 清單欄位：顯示（☑）｜擬合對象（◉，原稱「作用中」）｜序列（☑，M4）｜檔名與狀態｜條件值（可編輯數字）｜移除。狀態排在檔名之下（左欄窄，少一欄檔名才不必折成三行）：未擬合是文字；有結果時是一個短晶片——量度與數值，疑慮時多一個詞（`χ²ᵣ 711 偏大`、`未收斂`、`失敗`、`有警示`），完整狀態在 `title` 與報讀文字裡，不只靠顏色（§5.7 第 19 點）。過長的檔名截掉中段顯示（44 字，`title` 是完整檔名，所有 `aria-label` 用完整檔名）。
+- 清單欄位：顯示（☑）｜擬合對象（◉，原稱「作用中」）｜檔名與狀態｜條件值（可編輯數字）｜移除。**清單沒有「序列」欄**（M4；決策 36）：要納入序列的檔在序列分段的那一張表裡勾選。狀態排在檔名之下（左欄窄，少一欄檔名才不必折成三行）：未擬合是文字；有結果時是一個短晶片——量度與數值，疑慮時多一個詞（`χ²ᵣ 711 偏大`、`未收斂`、`失敗`、`有警示`），完整狀態在 `title` 與報讀文字裡，不只靠顏色（§5.7 第 19 點）。過長的檔名截掉中段顯示（44 字，`title` 是完整檔名，所有 `aria-label` 用完整檔名）。
 - 條件名稱與單位輸入（預設「條件」，例：Temperature (K)、濃度 (mg/mL)、幀號）。**條件名稱就是清單那一欄的標題**，也用在各條件值輸入框的 `aria-label`；留空時標題為「條件值」。
 - 移除後出現「已移除 <檔名>［復原］」一列：復原把該檔放回原位，連同它的「顯示」勾選與擬合結果；原本是擬合對象的仍是擬合對象。只能復原最後一次移除，清單再變動（載入檔案、再移除）後就不提供（`SasFitState` 的 `removed`／`undoRemove`／`dismissRemoved`）。
 - 一次載入超過 8 組時在清單下說明「只自動顯示前 8 組」。
@@ -381,6 +394,17 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 ### 5.5 序列分段（§7）
 
+由上到下（M4 實作；UI 審查後修正）：
+
+1. **選項**：「以前一筆結果作為下一筆初值」「依條件值排序」（預設皆開）。
+2. **摘要**一行：模型、範圍（未編輯：「各檔的預設範圍」；編輯過：「<範圍>（各檔截到自己的可用範圍）」）、權重、要擬合的參數、最大步數、將擬合／跳過幾個檔——這些都在模型與擬合分段設定，這裡只讀；不能執行時改寫原因。排程的警告（沒有條件值的檔、會被跳過的檔）與上一次的結束說明列在下面（`#sfSeqHints`）。**序列中止或放棄的原因也留在這裡**（錯誤色），不只在頁面頂端共用的訊息區——後者會被下一次成功的預覽清掉。
+3. **「執行序列擬合」**與進度行（含檔名的完整文字；結束後是「完成 3／3 筆：收斂 3、未收斂 0、跳過 0」）。這裡沒有停止鈕：擬合列的「停止」停掉進行中的那一筆，序列就此結束。
+4. **趨勢圖**（有點可畫時才出現，高 220 px，不開縮放）：y 軸選單（各擬合參數＋量度）、PNG。
+5. 「全選／全不選」「匯出序列結果 CSV」。
+6. **一張表**同時負責選檔與結果（上限 500 列，在自己的框裡捲動，表頭固定）。欄序：納入（☑）｜檔名（＋「載入」鈕）｜條件值｜量度（第二行是狀態晶片）｜各擬合參數（值，下一行 ± 誤差或貼邊界的標記）。**註記不佔欄**：有話要說的列（初值來自哪個檔、哪些參數沒有沿用、範圍被截、跳過或出錯的原因、之後被單獨重新擬合）下面多一列橫跨全表的註記列，以 `headers` 指回該檔的列標題，寬度跟著框、表格橫捲時不被切掉。檔名欄最窄 8 rem、固定在左邊（內容寬度 480 px 以下不固定）：1440／1280／1024 的左欄裡，檔名、條件值、量度＋狀態與第一個參數不必橫捲就看得到。
+
+序列進行中整頁鎖定（`fit.phase` 全程是 `'running'`），不逐筆整頁重繪：`seqStep` 與 `fitProgress` 靜默 dispatch，進度文字直接寫入，另有一個最多每 250 ms 一次的整頁重繪。
+
 ### 5.6 圖區
 
 - 主圖模式：log-log（I vs q，雙對數）、Guinier（ln I vs q²，線性軸）、Kratky（q²I vs q，線性軸）。三種模式套用到所有顯示中的資料與其模型曲線。圖卡標題跟著模式（I(q)／ln I – q²／q²·I – q）。
@@ -389,7 +413,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 - **預設軸範圍**：x 軸取資料的 q 範圍（預覽用較寬的網格時不把軸撐開）；Guinier 預設只看低 q——到擬合對象的強度降到低 q 水準的十分之一為止，且不超過擬合範圍上限，y 軸取窗內資料的範圍。縮放中換資料不動使用者的視野；「重設縮放」回到當時資料的預設範圍。
 - **擬合範圍**：範圍外灰色之外，再加兩條虛線（`reference` 角色）——只靠灰色的對比是 1.25:1，遠端桌面下看不出來。
 - 殘差圖：r_i（§4.8），y 軸標題「(I − I模型)/w」，x 軸跟隨主圖模式（log-log、Kratky 用 q；Guinier 用 q²）；只畫擬合對象。沒有殘差時整張圖收成一行「尚無擬合結果」。
-- **縮放（chartjs-plugin-zoom 2.2.0；決策 28）**：Ctrl＋滾輪或兩指縮放、拖曳框選放大、Shift＋拖曳平移；**單純的滾輪捲動頁面**（圖是 sticky 的大區塊，滾輪被它吃掉就捲不動參數表）。「重設縮放」只有縮放中才可按，狀態列此時寫「已縮放」；圖下有一行操作說明。PNG 匯出一律淺色白底。
+- **縮放（chartjs-plugin-zoom 2.2.0；決策 28）**：Ctrl＋滾輪或兩指縮放、拖曳框選放大、Shift＋拖曳平移；**單純的滾輪捲動頁面**（圖是 sticky 的大區塊，滾輪被它吃掉就捲不動參數表）。「重設縮放」只有縮放中才可按，狀態列此時寫「已縮放」；圖下有一行操作說明。PNG 匯出一律淺色白底。「主圖 PNG」「殘差 PNG」兩顆按鈕與操作說明同一列（圖下，M4）；3D 的 PNG 在結構檢視的工具列，趨勢圖的在序列分段；四者都經 Blob＋object URL 下載（Chart.js 的 data URL 先解成位元組，不 fetch）。對數橫軸在繪圖區窄於 260 px（手機）時只留約 4 個刻度文字，不互相重疊。
 - **canvas 的替代文字**帶著結果：主圖「N 組資料，模式…，擬合對象：…，模型 …，約化 χ² 1.02（已收斂），擬合範圍 q …」；殘差圖「… 的殘差，N 點，範圍 a 至 b，|殘差| > 3 的有 k 點」。
 - **暫停的預覽有三種狀態**：尚未更新「即時預覽已暫停（多分散網格過大），曲線尚未更新；按「更新曲線」重算」→ 計算中「計算中…」→ 已手動更新「曲線已更新（手動）；再改參數後需再按「更新曲線」」。「預覽以 N 點計算」只在它描述的就是畫面上那條曲線時出現。
 
@@ -427,65 +451,92 @@ M2 的科學審查與程式審查（2026-11-18）指出，下列情況擬合器�
 18. **第一次擬合的引導**（預設只勾 scale 與 background，這一點不變）：模型有尺寸參數（P 的參數中單位是 Å、不是 SLD 也不是取向的；`SasFitJobs.sizeNames`）而一個都沒勾時，擬合前出一則說明（提示 id `fixed-size`）「尺寸參數（radius）目前固定，只擬合 scale 與 background；要擬合尺寸請到「模型」勾選」。擬合後 χ²ᵣ > 10（權重＝資料 σ）且有未擬合的尺寸參數時，第 1 點的提示後面接「也可能是尺寸參數被固定：radius 沒有勾選擬合，請換起始值，或到「模型」勾選要擬合的尺寸參數」。擬合列的摘要點名要擬合的參數。
 19. **狀態不只靠顏色**：有疑慮的「已收斂」在文字裡說出原因——「已收斂・約化 χ² 偏大」「已收斂・約化 χ² 偏小」（只在權重＝資料 σ）、「已收斂・有警示」（旗標或數值非有限，四種權重相同）；主角磚、擬合列、檔案清單與 canvas 的替代文字都用這個文字（`SasFitHints.statusLabel` 的 `text`／`short`）。
 
-## 6. 3D 結構示意圖（`sasfit-shape3d.js`）
+## 6. 3D 結構示意圖（`sasfit-shape-geom.js`、`sasfit-shape-view.js`、`sasfit-shape3d.js`）
 
-- 自寫 Canvas 2D 繪製器：參數化曲面網格→旋轉投影→由遠到近排序（painter's algorithm）→Lambert 明暗；滑鼠拖曳旋轉、滾輪縮放、「重設視角」、「自動旋轉」開關；PNG 匯出。不引入 three.js。
-- 顏色只從 `chart-theme.js` 取：新增 3D 角色色（兩主題各一組）與明暗函式 `ChartTheme.shade3d(role, k)`（k＝Lambert 亮度係數 0–1，回傳顏色字串）。`sasfit-shape3d.js` 內不得出現任何顏色字面值或 `rgb(`／`rgba(` 等顏色函式（`no-color-literals` 會擋）。主題切換時重畫。
-- 依目前參數**按比例**繪製；標註用 nm（1 位小數）並附比例尺；參數表仍為 Å。
+位置：圖卡內的「3D 結構」檢視（§5.1；決策 30）。以下是 M4 實作並經審查修正後的內容（決策 37）。
 
-| 模型 | 畫法與標註 |
-|---|---|
-| sphere | 實心球；R |
-| ellipsoid | 旋轉橢球；R_polar、R_equatorial |
-| cylinder | 實心圓柱；R、L |
-| core_shell_sphere | 切掉 1/4 露出核／殼兩色；R_core、t_shell |
-| vesicle | 切掉 1/4 的中空殼；R_inner、t |
-| core_shell_cylinder | 切掉 1/4 的核殼圓柱；R、t、L |
-| flexible_cylinder | 依 Kuhn 長度生成的代表性蠕蟲鏈管（固定亂數種子，同參數畫出相同構形）；L、b、R |
-| lamellar | 一片雙層薄板；δ |
-| 與形狀無關 5 模型 | 不畫；顯示「此模型沒有固定形狀」 |
+- 自寫 Canvas 2D 繪製器，不引入 three.js：網格 → **正交投影**（「按比例」與比例尺只有在正交投影下才處處成立）→ 背面剔除 → 依 `part` 與切面排序、由遠到近 → Lambert 明暗。預設視角方位 45°、仰角 20°，縮放以外接球為準（轉動時比例尺不變）。只在需要時重畫（參數或模型改變、互動、主題切換、尺寸改變）；「自動旋轉」開啟時才有動畫迴圈（≤ 30 fps），系統設定「減少動態效果」時停用。`plotView` 是「曲線」時不建網格。
+- **操作**：拖曳旋轉（物件跟著指標：向右拖方位角變小，向下拖仰角變大）；**方向鍵與拖曳同方向**（→ 方位角 −5°、← +5°、↓ 仰角 +5°、↑ −5°），＋／－ 縮放，0 或 Home 重設；**Ctrl＋滾輪**或兩指縮放（單純的滾輪捲動頁面，同決策 28）；縮放範圍 0.5–4，不提供平移。觸控：畫布 `touch-action: pan-y`，直接上下滑動是捲頁，先左右拖曳就交給頁面旋轉（兩個角度都可以）。畫布是 `role="group"`＋`tabindex="0"`，名稱「3D 結構示意」，操作說明（含鍵盤）以 `aria-describedby` 連到圖下看得見的那一行。
+- 顏色只從 `chart-theme.js` 取：3D 角色色（實心／殼＝藍，核＝琥珀；兩主題各一組）與 `ChartTheme.shade3d(role, k, theme?)`。**顏色不對應 SLD，不畫溶劑。** `sasfit-shape*.js` 內沒有顏色字面值。主題切換時重畫；PNG 與列印一律淺色白底。
+- 依目前參數**按比例**繪製；**尺寸不畫在 3D 圖上**：圖上只有比例尺（1–2–5 級距，nm），尺寸在圖下的文字清單（nm，1 位小數；參數表仍為 Å）。
 
-- 多分散度與 S(Q) 不畫入幾何，在圖下方以文字標示（例：「R = 5.0 ± 0.5 nm（Schulz）」「S(Q)：hardsphere，φ = 0.20，R_eff = 5.0 nm」）。
-- 渲染上限：每物件 ≤ 4000 個面，維持拖曳流暢。
+| 模型 | 畫法 | 清單 |
+|---|---|---|
+| sphere | 實心球 | 半徑 R |
+| ellipsoid | 旋轉橢球（極軸＝旋轉軸） | 極半徑、赤道半徑 |
+| cylinder | 實心圓柱 | 半徑 R、長度 L |
+| core_shell_sphere | 切掉 1/4 露出核／殼兩色 | 核半徑、殼厚、**外直徑** |
+| vesicle | 切掉 1/4 的中空殼（`radius` 是內半徑；裡面是溶劑，不畫） | 內半徑、膜厚 |
+| core_shell_cylinder | 切掉 1/4 的核殼圓柱；殼包住側面**與兩端**（sasmodels 的定義） | 核半徑、殼厚、核長度、總長 |
+| flexible_cylinder | **沿中心線的粗線**（不是管狀網格：預設值下接點轉角 42°、步長比半徑短，網格會自己折疊），圓端、有輪廓線與高光；一個代表性構形 | 輪廓長度 L、Kuhn 長度 b、半徑 R |
+| lamellar | 單一均勻薄板，厚度按比例、橫向只是示意（模型在橫向無限延伸，圖下註明） | 厚度 δ |
+| 與形狀無關 5 模型 | 不畫；顯示「此模型沒有固定形狀」 | — |
 
-## 7. 序列擬合（`sasfit-sequence.js`）
+- **蠕蟲鏈**：持續長度 l_p＝b/2，固定亂數種子（同參數畫出相同構形），**沒有排除體積**（`flexible_cylinder` 模型本身有）；狀態行與替代文字寫明「一個代表性構形」。步數＝clamp(round(8L/b), 16, 200)，每一步代表 ds＝L／步數 的輪廓。離散鏈必須在任何 L/b 下都有蠕蟲鏈的大小（科學審查：原先 ⟨t·t′⟩＝exp(−ds/l_p)，步數被 200 封頂後鏈太大，⟨Rg²⟩ 在 L/b＝300 是 1.7 倍、1000 是 5 倍）：ds < b 時每步長 ds，切線每步繞兩個橫向軸各轉一個高斯角，使 ⟨t·t′⟩＝α＝(2l_p/ds − 1)/(2l_p/ds + 1)（定長步、相關係數 α 的鏈有 ⟨R²⟩→2l_p L）；ds ≥ b（L/b ≥ 200）時改成粗粒化的自由連接鏈——每步方向均勻隨機、長 √(b·ds)，⟨R²⟩＝L·b，此時整體大小按比例、**畫出的輪廓比 L 短**，圖下註明「輪廓長度只是示意」。實測 ⟨Rg²⟩／蠕蟲鏈解析值（3000 個種子）：L/b＝10、50、100、300、1000 為 1.02、1.01、1.01、1.01、1.01。
+- 多分散度與 S(Q) 不畫入幾何，在圖下以文字標示，寬度照 sasmodels `weights.py` 的定義說：gaussian／schulz／rectangle 的寬度是 σ／中心值 →「半徑 R = 5.0 ± 0.5 nm（schulz）」；lognormal 的中心值是中位數、寬度是 ln 值的 σ →「半徑 R：中位數 5.0 nm，ln 值的 σ = 0.10（lognormal）」；uniform 的寬度是半寬／中心值 →「半徑 R = 4.5–5.5 nm（uniform）」；boltzmann 的寬度是 e 折長度／中心值，只寫寬度。S(Q) 例：「S(Q)：hardsphere，φ = 0.20，R_eff = 5.0 nm」。畫出來小於 2 像素的尺寸另有一句說明。
+- 渲染上限：每物件 ≤ 4000 個面、整個場景 ≤ 8000 個面；後備解析度＝CSS 尺寸 × min(devicePixelRatio, 2)。
 
-- 範圍：清單中「序列」勾選的資料；沿用目前的模型規格、擬合勾選（含 PD 寬度）、上下限、Q 範圍、權重、最大步數。Q 範圍若超出某組資料的可用範圍，該組自動截到可用範圍並在結果列註記。
-- 選項（預設皆開）：「以前一筆結果作為下一筆初值」「依條件值排序」（條件值空白者排最後並警告）。
-- 某筆失敗或未收斂：標記於該列；若開啟「以前一筆為初值」，下一筆改用**最後一次收斂的結果**為初值；序列不中斷。
-- 進度：目前第 k／N 筆＋該筆迭代進度；「停止」立即結束（已完成的結果保留）。
-- 結果表：條件值｜各擬合參數 ± 誤差｜χ²ᵣ｜狀態；點列→該組設為作用中並把其擬合參數載入參數表。
-- 趨勢圖：y 軸參數可選（含 χ²ᵣ），x 軸為條件值（名稱與單位取自條件設定），含誤差棒；PNG 匯出。
-- 每組資料的 FitResult 存在 `datasetId → FitResult` 映射（單組擬合與序列擬合共用）。
+## 7. 序列擬合（`sasfit-sequence.js`、`sasfit-seq-view.js`、`sasfit-seq-ui.js`）
 
-## 8. IUCr 表格整合
+M4 實作並經審查修正後的規則（決策 34–36、39）。
 
-- 「送進 IUCr 表格」寫入 `AppState.sasfitData`（新物件取代舊值）：
+- **範圍**：序列分段的表裡勾選、且讀得出資料的檔（沒設定過的視為勾選）；沿用目前的模型規格、擬合勾選（含 PD 寬度）、上下限、權重、最大步數。官方檔與一般檔可以混用。
+- **每檔的 Q 範圍**（決策 34）：使用者沒編輯過範圍時，**每個檔用自己的預設範圍**（`SasFitWeighting.defaultRange`）；編輯過則把要求的範圍截到該檔在這個權重下可參與擬合的首尾 q，並在該列註記；範圍內沒有點、或點數不多於自由參數個數的檔跳過並說明原因。
+- **權重不因檔而異**：σ 權重下沒有可用 σ 的檔**跳過**並註記，不改用別的權重——同一張表、同一張趨勢圖不能混兩種擬合量度。
+- 選項（預設皆開）：「以前一筆結果作為下一筆初值」「依條件值排序」（由小到大、同值維持清單順序；條件值空白者排最後並警告）。
+- **初值規則**（開啟「以前一筆為初值」時；決策 35）：
+  1. 來源是**最後一筆可用的結果**：已收斂、不是 `blockedByNonFinite`、不是 `illConditioned`、不是 `jacobianNonFinite`（任何權重），而且 σ 權重時 χ²ᵣ ≤ 10（`SasFitHints.CHI2R_WARN`）。未收斂、失敗或不可用的結果不更新它；沒有可用的結果時從表單的原始值出發。
+  2. 只沿用**定得出來的參數**：畫面顯示的誤差是有限值且小於 |數值|（與畫面「誤差大於數值」的分類相同）；定不出來的參數從表單的原始值出發，該列註記「未沿用上一筆的 <參數>（上一筆未能決定，改用原始設定值）」。貼邊界的值照舊沿用（畫面不把它歸為未能決定）。
+  3. 沿用的值經與單筆擬合回填相同的捨入；上下限、擬合勾選、多分散設定與模型永遠來自序列開始時的表單。
+- 某筆失敗或未收斂：標記於該列，序列不中斷。Worker／wasm 層級的錯誤、或狀態寫不進去時中止整個序列；原因留在序列分段（§5.5）。
+- 進度：第 k／N 筆（每筆開始與結束時更新）＋該筆的步數與量度；朗讀區只在開始、每筆結束（最多每 2 秒一次）與結束時更新。「停止」立即結束，已完成的結果保留。**不做續跑**：再按執行就重新開始（決策 36）。
+- **結束後**（完成或停止）：擬合對象若在這次序列中完成，把它的結果寫進參數表並清掉「還原擬合前的參數」，頁面才不會把使用者沒動過的表單稱為「參數已改動」；否則不動表單，提示可逐列載入。
+- 結果表與註記列見 §5.5；「載入」把該檔設為擬合對象，表單＝**序列開始時的表單快照**＋該列的擬合值（FitResult 不記上下限與勾選，而且頁面上的表單此時可能已是別的模型）。
+- 趨勢圖：y 軸可選各擬合參數或量度，x 軸為條件值（全部沒有條件值時改用序號並註明），誤差棒取畫面顯示的誤差（貼邊界的值與量度沒有誤差棒）；未收斂的點是三角形；失敗、跳過、未完成、沒有條件值或非有限的點不畫並計數說明。
+- 每組資料的 FitResult 存在 `datasetId → FitResult` 映射（單筆與序列共用）；序列另在自己的列裡留著**那一次序列的結果**。序列之後某個檔被單獨重新擬合時，序列表、趨勢圖與序列 CSV **仍顯示序列自己的結果**，該列多一則「已單獨重新擬合」的註記（決策 39）——單筆擬合可能用了另一種權重或範圍，混在一起就不是同一個量度。
+
+## 8. IUCr 表格整合（`sasfit-iucr.js`、`section-iucr.js`）
+
+- **可送出的條件**（決策 32）：`status === 'converged'`、權重＝資料 σ、不是 `blockedByNonFinite`、而且結果仍與參數表相符（`resultMatchesForm`）——送進投稿表格的必須是畫面上的參數。不符合時按鈕停用並以一句中文說明原因（例：「只有以資料 σ 加權的擬合可以送進 IUCr 表格（其他權重沒有公認的適合度統計量）」）。警示（貼邊界、`illConditioned`、`jacobianNonFinite`、強相關、誤差大於數值、χ²ᵣ > 10、曲線有非有限點）不擋送出，寫進 Notes。其他權重的擬合仍可匯出 CSV 與 TXT。
+- 「送進 IUCr 表格」寫入 `AppState.sasfitData`（新的凍結物件取代舊值；只在 `section-iucr.js` 的 `setIUCrModelFit` 一處寫入）：
 
 ```
 {
-  datasetName, model,               // model 例：'core_shell_sphere@hardsphere'
+  datasetName, model,               // model 例：'core_shell_sphere@hardsphere+power_law'
   structureFactorMode,              // 'P*S' | 'P*(1+beta*(S-1))' | null
-  params: [{ name, value, error, errorScaled, unit, fitted }],   // 含被擬合的 PD 寬度
-  chi2r, qMin, qMax, npoints, weighting,
-  software                          // 'sasmodels 1.0.12 (WebAssembly), TPS13A SAXS Calculator v5.3'
+  radiusEffectiveMode,              // 有效半徑的定義，或 null
+  params: [{ name, value, error, errorScaled, errorShown, unit, fitted, atBound }],   // 含多分散寬度（unit＝分布名稱）
+  measure: { isChi2: true, label: 'Reduced χ²', value },
+  chi2r, errorsScaled: false, dof, qMin, qMax, npoints, weighting, status,
+  assumptions: [text], notes: [text],
+  software                          // 'sasmodels 1.0.12 (WebAssembly), TPS13A SAXS Calculator v<頁面版本>'
 }
 ```
 
-- IUCr 頁在 Molecular-mass determination 之後新增段落「Model fitting」，列：Data file｜Model｜各參數（Value、±、Unit；固定參數 ± 欄填 fixed；±依 §4.9 顯示規則）｜q-range for fitting｜χ²ᵣ｜Software。元素 id 前綴 `iucr-sf`。
-- 列由 JS 動態產生；所有字串進 `innerHTML` 前經 `FormUtils.escapeHtml`。現有「複製表格」須包含此段（驗收項）。
-- 未送出前此段顯示「尚未送入擬合結果」。
+  `software` 的版本由頁面版本導出，不寫死。`measure.isChi2` 恆為 true、`errorsScaled` 恆為 false（只收 σ 權重）；鍵留著給讀這個物件的程式。
+- IUCr 頁在 Molecular-mass determination 之後的段落，標題 **「Model fitting (analytical scattering model)」**（決策 33；模型含結構因子與冪律項，不只是 form factor）。列：Data file｜Model｜Structure-factor combination（有 S(Q) 才有）｜各參數（Value、±、Unit；固定參數 ± 欄填 fixed，貼邊界填 at upper/lower bound；數字照 §5.4 的畫面格式）｜q-range for fitting｜Number of points｜Weighting｜Reduced χ²（值後附自由度，例 `1.02 (dof 54)`）｜Status｜Parameter errors (±)｜Assumptions｜Notes｜Software。元素 id 前綴 `iucr-sf`，參數名稱不會變成 id。
+- **Assumptions**：每個開啟的多分散一句（分布、寬度是擬合或固定、點數、nsigmas，**並寫明該分布的寬度是什麼**：gaussian／schulz／rectangle＝σ/centre，lognormal＝σ of ln x、centre 是中位數，uniform＝half-width/centre，boltzmann＝e-folding length/centre）、f ≈ Z、S(Q) 的組合與有效半徑、hayter_msa 的限制、低 q 冪律。
+- **Notes** 的第一句固定是 `Supplementary to the IUCr template; applies to the data file named here. CorMap P-value not computed.`，其後才是各項警示。**不列 CorMap P-value 的列**（本工具不計算；決策 33）。
+- 列由 `SasFitIucr.rowsHtml` 產生，所有字串進 `innerHTML` 前經 `FormUtils.escapeHtml`。已送入的段落是英文的。
+- 未送出前此段在畫面上顯示「尚未送入擬合結果」，但**空的段落不進「複製表格」**（否則這句話會被貼進投稿表格）。
+- **「複製表格」**（決策 31）：內容取自表格的複本——q-range／Exposure time／Temperature 三個輸入框換成**目前的值**（文字節點），複製出去的 HTML 不留 `<input>`；HTML 與純文字兩種都帶。Clipboard API 不可用或被拒時的後備路徑（`execCommand('copy')`）以一次性的 `copy` 監聽器寫入同一份 HTML 與純文字，兩條路內容完全相同；`execCommand` 回報成功才顯示「已複製」。
 
-## 9. 匯出（`sasfit-export.js`）
+## 9. 匯出（`sasfit-export.js`、`sasfit-report.js`、`sasfit-export-ui.js`）
 
 | 檔案 | 檔名 | 內容 |
 |---|---|---|
-| 擬合曲線 CSV | `<資料名>_<模型>_fit.csv` | q、I、σ、I_model、殘差、in_fit（0/1）；開頭 `#` 註解列出模型與參數 |
-| 報告 TXT | `<資料名>_<模型>_report.txt` | 資料檔名與檔頭（能量、q_start、厚度、SF、透射率）；模型、S(Q) 組合與有效半徑模式；多分散設定（分布、寬度、npts、nsigmas、cutoff）；各參數值、誤差（不乘／乘 √χ²ᵣ 兩欄）、擬合或固定、觸及邊界；χ²、χ²ᵣ、自由度、點數、q 範圍、權重；演算法與設定、迭代數、狀態；SLD 近似 f≈Z 的註記；軟體與版本 |
-| 序列結果 CSV | `<條件名>_sequence.csv` | 序列結果表全部欄位 |
-| PNG | 各圖 | 主圖、殘差、3D、趨勢圖；淺色白底 |
+| 擬合曲線 CSV | `<資料名>_<模型>_fit.csv` | 註解列，表頭 `q,I,sigma,I_model,residual,in_fit`，然後**每一個**資料點（含範圍外的）；`in_fit` 取 Worker 自己的選點（`SasFitWeighting.select`），不由殘差是否有限推斷 |
+| 報告 TXT | `<資料名>_<模型>_report.txt` | 資料檔名與檔頭（能量與換算的波長、q_start、厚度、SF、透射率…）；模型、S(Q) 組合與有效半徑模式；多分散設定（分布、寬度、npts、nsigmas、cutoff）；各參數；χ²、量度、自由度、點數、q 範圍、權重；演算法與設定、迭代數、狀態與旗標、強相關；註記（f ≈ Z、hayter_msa、貼邊界、誤差大於數值）；軟體與版本 |
+| 序列結果 CSV | `<條件名>_sequence.csv` | 序列表的每一列（序列自己的結果，§7）：序號、檔名、條件值、各參數與顯示的誤差、量度、dof、迭代數、狀態碼與狀態文字、q 範圍、初值來源、註記 |
+| PNG | `…_main.png`、`…_residual.png`、`…_shape.png`、`<條件名>_trend.png` | 主圖、殘差、3D、趨勢圖；淺色白底（深色主題下也是） |
 
-CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
+- **數值**：匯出檔的數字一律 `SasFitExport.num`＝`String(x)`（讀回同一個 double 的最短寫法、與地區設定無關；NaN／±∞ 寫成空白）。報告 TXT 的參數另有一欄與畫面相同的「值 ± 誤差」（`SasFitFormat`），所以**每個參數有全精度與畫面格式兩種寫法**；誤差有未乘與乘 √量度 兩欄，並註明畫面顯示的是哪一欄。鍵名英文、說明句繁體中文。
+- **量度名稱**照決策 24：σ 權重是 `chi2r`／Reduced chi-square，其餘是 `weighted_mean_square_residual`，並說明它不是 χ²ᵣ。
+- **CSV**：RFC 4180 引號、UTF-8 BOM（Excel 才讀成 UTF-8）、換行 `\n`。註解列以「# 」開頭、**不加 CSV 引號**（加了就不是以註解字元開頭），值裡的逗號、分號、引號與控制字元換成底線；第 2 行寫明讀法（`numpy.genfromtxt(f, delimiter=",", comments="#", encoding="utf-8-sig")` 或 `pandas.read_csv(f, comment="#")`）。擬合曲線 CSV 另有一行說明殘差的定義：`# residual: (I - I_model)/w; w = sigma`（√|I| 權重是 `w = sqrt(|I|)`、|I| 權重是 `w = |I|`、不加權是 `w = 1`）。
+- **文字儲存格**：以 `= + - @`、Tab 或 CR 開頭的文字前置單引號（公式注入防護）；含 `#` 的文字加引號（pandas 會在未加引號的 # 處截斷）；儲存格裡的換行換成一個空白（一列就是一行）。數字儲存格不處理（負數仍是數字）。
+- **檔名**（`safeName`）：NFC；去掉路徑與**已知的資料副檔名**（`.dat`／`.txt`／`.csv`，不分大小寫；`sample.v2` 的 `.v2` 是檔名的一部分）；`\ / : * ? " < > |`、控制字元、雙向控制字元與落單的代理碼位換成底線；去頭尾的空白與點；Windows 保留名前置底線；以 UTF-8 位元組計上限 120。條件名稱不當檔名處理（`mg/mL` → `mg_mL`）。
+- **報告的波長**以 hc ＝ 12.398 keV·Å 換算並印出算式（`12.398 / E`），與「SAXS 結構參數」頁同一個常數，兩頁顯示相同的波長（決策 38）。共變異的說明寫 `(J^T J)^-1`。
+- 下載一律 Blob＋object URL（用完 revoke）；匯出不經 Worker、不重算，完全由已存的 Dataset 與 FitResult 組成。「已停止」的結果沒有曲線，不能匯出。
 
 ## 10. 建置流程（repo 根目錄 `tools/sasfit/`，不部署）
 
@@ -594,6 +645,16 @@ CSV 沿用站內慣例：RFC 4180 引號、UTF-8 BOM（`downloadCsv`）。
 | 27 | 擬合對象的模型曲線用自己的顏色（`ChartTheme` 新角色 `modelCurve`，墨色），資料點改空心、縮小；其他檔的曲線仍用系列色。**推翻 M3 計畫的工程決定 7**（曲線與資料點同系列色） | 好的擬合時曲線與自己的資料點同色、疊在一起，完全看不出來——擬合工具最基本的判斷（線有沒有穿過點）做不了。既有的 `fit` 角色是紅色，與系列色第 1 色（擬合對象通常就是它）只差 1.82:1，所以另立中性的墨色 | UI 審查 2026-11-19（前後對照圖見完成紀錄） |
 | 28 | 主圖的滾輪縮放要按住 Ctrl；另加拖曳框選（x、y 同時）與 Shift＋拖曳平移；單純的滾輪捲動頁面 | 圖區是 sticky、佔畫面四成的區塊，游標停在上面時滾輪被圖吃掉，捲不動很長的參數表，視野也在不知不覺中被改掉。框選取 xy 而不是只有 x：只縮 x 時 y 仍是六個級距，低 q 區段擠在圖的上緣 | UI 審查 2026-11-19 |
 | 29 | 參數表改為四欄＋每個參數一列明細（上下限、多分散、化學式面板）；「開始擬合／停止」與擬合量度移到三個分段都看得到的擬合列；兩欄的斷點改看內容寬度，圖區是較寬的一欄 | 七欄的表剛好塞滿左欄：名稱在字中間斷行、錯誤訊息擠成三行、圖在 1280 px 只剩 318 px 寬；調參數與看 ± 在模型分段，開始鈕與結果在擬合分段，每一輪來回切兩次 | UI 審查 2026-11-19 |
+| 30 | 3D 結構示意放在圖卡內，以分段控制「曲線｜3D 結構」切換（`plotView`，預設曲線）；畫布用主圖的位置與高度，尺寸與說明用殘差圖的位置。**推翻 §5.1 原先畫在殘差圖之下的版面**。UI 審查後按鈕標為「3D 結構」並移到標題之前 | 圖欄在 1024×768 有擬合結果時只剩 24 px：再加一列 3D 就要在欄內捲動。切換鈕在標題之前，標題的字換了它也不移動 | 使用者 2026-11-19；位置與標籤＝工程（UI 審查 2026-11-19） |
+| 31 | IUCr「複製表格」的內容帶 q-range／Exposure／Temperature 三個輸入框**目前的值**，複製出去的 HTML 不留 `<input>`；空的擬合段不進複製；後備路徑與 Clipboard API 內容相同 | 舊行為：HTML 只帶輸入框的預設值屬性、純文字完全不含輸入框的值——貼出去的表格缺三列使用者填的值。後備路徑原先讓瀏覽器序列化選取範圍，會帶進暫時容器的樣式 | 使用者 2026-11-19（現值）；後備路徑＝工程（程式審查 2026-11-19） |
+| 32 | 可送 IUCr 的條件：已收斂、**權重＝資料 σ**、不是 `blockedByNonFinite`、結果仍與參數表相符。警示不擋送出，寫進 Notes | 投稿表格裡的必須是畫面上的參數；其他權重沒有公認的適合度統計量可以填進表格（決策 24：那個量不是 χ²ᵣ）。CSV／TXT 仍可匯出 | 使用者 2026-11-19（只收 σ 權重）；其餘＝工程（M4 計畫審查 2026-11-19） |
+| 33 | IUCr 段落標題「Model fitting (analytical scattering model)」；列＝§8 所列；**不列 CorMap P-value**；Notes 的第一句固定為「Supplementary to the IUCr template; applies to the data file named here. CorMap P-value not computed.」；量度列附自由度；Assumptions 寫明各分布寬度的定義 | 2017／2023 的 IUCr 範本沒有解析模型擬合的專屬段落，這一段是補充，要自己說清楚；模型可含結構因子與冪律項，稱 form factor 不準確；本工具不計算 CorMap，明說比留白好；lognormal 的寬度不是 σ/R，不寫明會被讀錯 | 使用者 2026-11-19（固定句）；標題與其餘＝工程（科學審查 2026-11-19） |
+| 34 | 序列各檔的範圍與權重：範圍未經編輯時每檔用自己的預設範圍；編輯過則截到各檔的可用範圍並註記；σ 權重下沒有可用 σ 的檔跳過（不改用別的權重）；官方檔與一般檔可混用 | 各檔的 q_start 與光束擋片區不同，套同一個數字會把無效點放進擬合；一張表、一張趨勢圖不能混兩種量度 | 工程（M4 計畫審查 2026-11-19） |
+| 35 | 序列初值規則：來源＝最後一筆「已收斂、非 `blockedByNonFinite`、非 `illConditioned`、非 `jacobianNonFinite`、σ 權重時 χ²ᵣ ≤ 10」的結果；**只沿用定得出來的參數**（誤差有限且 < \|數值\|），其餘從表單原始值出發並在該列註記；貼邊界的值可沿用 | 定不出來的參數（例：背景 −0.96 ± 3.5）帶到下一筆等於把雜訊當初值，會一路傳下去；病態或 Jacobian 不完整的結果連數值本身都不可靠 | 使用者 2026-11-19（只沿用定得出來的參數）；`illConditioned`／`jacobianNonFinite` 與其餘＝工程（2026-11-19） |
+| 36 | 序列不做續跑（停止後再按就重跑）；結束後只自動載入擬合對象自己的結果；選檔與結果是同一張表，資料清單沒有「序列」欄；狀態併入量度欄、註記改成註記列 | 規格 §7 沒有續跑，重跑只要幾秒；自動載入讓頁面不把沒動過的表單稱為已改動；左欄約 390 px，多一欄或兩張表都放不下 | 工程（M4 計畫審查與 UI 審查 2026-11-19） |
+| 37 | 3D 的畫法慣例：正交投影；殼／實心藍、核琥珀，不對應 SLD，不畫溶劑；尺寸用圖下的文字清單＋圖上的比例尺；lamellar 單一薄板、橫向示意；柔性圓柱畫成沿中心線的粗線、沒有排除體積、寫明是一個代表性構形；**蠕蟲鏈以 α＝(2l_p/ds−1)/(2l_p/ds+1) 保持蠕蟲鏈的大小，L/b ≥ 200 時改粗粒化並註明輪廓長度是示意**；方向鍵與拖曳同方向；Ctrl＋滾輪縮放、不提供平移；觸控先橫向拖曳即可旋轉 | 見 §6。蠕蟲鏈：原構造在步數封頂後 ⟨Rg²⟩ 偏大到 1.7–5 倍，「按比例」不成立；方向鍵原先與拖曳相反 | 工程（M4 計畫審查、科學審查與 UI 審查 2026-11-19） |
+| 38 | 報告 TXT 的波長以 hc ＝ 12.398 keV·Å 換算，與「SAXS 結構參數」頁相同 | 兩頁對同一個能量顯示不同的波長（CODATA 值與 12.398 在第 5 位有差）會讓使用者懷疑其中一個；SAXS 頁不動 | 使用者 2026-11-19 |
+| 39 | 序列之後被單獨重新擬合的檔：序列表、趨勢圖與序列 CSV 仍用**序列自己的結果**，另加「已單獨重新擬合」註記。**推翻 M4 計畫假設 (a)4**（顯示 `fitResults` 目前的內容） | 單筆擬合可以換權重與範圍：原做法會在同一張表、同一條趨勢線與同一個 CSV 裡混兩種量度（實測：σ 權重的表頭下出現不加權擬合的數字） | 工程（程式審查 2026-11-19） |
 
 ## 16. 已知限制與 B 版候選
 

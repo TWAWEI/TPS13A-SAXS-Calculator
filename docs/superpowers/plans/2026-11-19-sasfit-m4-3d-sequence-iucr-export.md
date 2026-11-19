@@ -763,12 +763,23 @@ ctx.deps 新增：raf、cancelRaf、matchMedia、createCanvas、observeResize（
 
 ## M4 完成紀錄（Task 19 填寫）
 
-- 完成日期／最後一個 commit：
-- 測試數（`node --test`）、三支冒煙腳本與 `check_iucr_copy.py` 的結果：
-- 3D：1440×900、1280×800、1024×768 兩種檢視下 `.sf-plots` 的 `scrollHeight／clientHeight`、畫布尺寸、標題列是否折行；一格重畫時間；各模型面數：
-- 序列：三個合成檔的 radius 與量度；500 列表格重建時間；執行期間整頁重繪的次數：
-- IUCr：複製基準比對結果（輸入框清空時的文字與 HTML）；現值進入兩種內容的檢查；最後的列清單：
-- 匯出：四種檔的實際檔名；Excel 開啟擬合曲線 CSV 的結果（註解列、BOM）；numpy／pandas 的讀檔結果：
-- 與本計畫的出入：
-- 規格 §15 新增的決策編號（30–37）與審查的更動：
-- 未驗證事項（真實螢幕報讀軟體、觸控裝置、Safari／Firefox、pandas）：
+- **完成日期／最後一個 commit**：2026-11-20。審查後的修正三個 commit：`3aa2ec7`（3D、圖區版面、表格樣式）、`bcf46f6`（序列、IUCr 段、匯出、剪貼簿）、`3b2d4f0`（結構檢視的高度）；文件是其後的 `docs: sasfit M4 spec amendments and completion record`。版本仍是 5.2（M5 才 bump），未 push。
+- **測試數與冒煙**：`node --test saxs-calculator/tests/*.test.js` 1875 項、1874 通過、0 失敗、1 略過（修正前 1855／1854）。`smoke_browser.py` 8 PASS、`smoke_ui.py` 41 PASS、`smoke_m4.py` 48 PASS、`check_iucr_copy.py` 13 PASS，四支都是 `RESULT: ALL PASS`；整輪 0 個 console error、0 個 pageerror（1 個 Chromium 的 `willReadFrequently` 警告，來自冒煙腳本自己讀像素）；axe 0 違規（兩個主題；`smoke_ui.py` 14 項、`smoke_m4.py` 10 項）。
+- **3D**：`.sf-plots` 的 `scrollHeight／clientHeight`——1440×900 曲線 759／759、結構 759／759；1280×800 713／713、713／713；1024×768 698／698、698／698（欄高上限 849／749／717）。「減少動態效果」與觸控各讓操作說明多一句時仍是 759／713／698（結構檢視高度固定，文字框 147 → 127 px 吸收）。畫布 575×414、420×368、448×353；單欄 658×260（760×900）、218×192（320×640）。標題列在 1280 與 1024 兩種檢視都是一行，切換鈕的位置不隨檢視改變。一格重畫（core_shell_cylinder，2288 面，575×414，60 格）：中位數 1.60 ms、最大 6.50 ms（Task 18；修正後重量 1.50／3.60 ms）。面數：sphere 1536、ellipsoid 1536、cylinder 768、core_shell_sphere 3968、vesicle 2432、core_shell_cylinder 2288、lamellar 6；flexible_cylinder 預設 80 段粗線。蠕蟲鏈 ⟨Rg²⟩／解析值（3000 個種子）：L/b＝1、10、25、50、100、150、199、200、300、1000、10000 → 1.11、1.02、1.01、1.01、1.01、1.01、1.02、1.02、1.01、1.01、1.01（L/b＝1 的 1.11 是 17 個點取樣一根近似直棒的離散誤差，與鏈的構造無關）；修正前 L/b＝300 是 1.70、1000 是 4.83。預設參數（L 1000、b 100）的構形與修正前最多差 2.1 Å（外接半徑 190 Å 的 1.1 %）。
+- **序列**：三個合成檔（sphere，3 個自由參數）radius 49.944、52.292、54.168（真值 50、52、54），χ²ᵣ 1.025、0.794、0.993，按下到完成 0.04 s；第 2 筆的註記是「未沿用上一筆的 background（上一筆未能決定，改用原始設定值）；初值來自 SYNTH_sphere_10.dat」（第 1 筆的 background 是 −0.96 ± 3.5）。500 個檔的表格（833 個 `<tr>`，含註記列，7 欄）：`bodyHtml` 中位數 2.10 ms、寫入 `innerHTML` 5.70 ms（修正前沒有註記列時 1.80／5.40 ms）。整頁重繪：三筆 2 次、500 筆 2 次（開始與結束；單元測試）。表格寬度／框寬：1440 → 520／394、1280 → 520／389、1024 → 520／396（第一個參數欄的右緣在 377 px，檔名、條件、量度＋狀態與第一個參數不必橫捲）；760 → 656／656；320 → 520／216（檔名欄不固定）。
+- **IUCr**：複製基準比對——輸入框清空時文字 604／604 字元、HTML 2378／2378 字元與基準相同（已填值時 655／655、2429／2429）；現值進入文字與 HTML、HTML 無 `<input>`、無暫時容器殘留；後備路徑（`clipboard.write` 被拒）與 Clipboard API 的 `text/plain`（629 字元）與 `text/html`（8383 字元）逐字相同，`execCommand` 回傳 false 時顯示「複製失敗」。最後的列清單：標題「Model fitting (analytical scattering model)」｜Data file｜Model｜（Structure-factor combination）｜各參數｜q-range for fitting｜Number of points｜Weighting｜Reduced χ²（附 dof）｜Status｜Parameter errors (±)｜Assumptions｜Notes（第一句固定）｜Software。不加權的擬合：「送進 IUCr 表格」停用並說明原因，CSV／TXT 仍可匯出（瀏覽器實測）。
+- **匯出**：實際檔名 `SYNTH_sphere_10_sphere_fit.csv`（16 kB、BOM、註解列含 residual 的定義、305 列資料、`in_fit`＝1 的 57 列）、`SYNTH_sphere_10_sphere_report.txt`、`濃度 (mg_mL)_sequence.csv`、`SYNTH_sphere_10_sphere_main.png`／`_residual.png`／`_shape.png`、`濃度 (mg_mL)_trend.png`（兩個主題下左上角都是白色）。`numpy.genfromtxt(delimiter=",", comments="#", encoding="utf-8-sig")` 讀回 [306, 6]（表頭列＋資料）。Excel 與 pandas **沒有實際開啟**（見未驗證事項；pandas 的 `comment="#"` 行為是計畫審查時以 2.3.3 與 3.0.2 查過的）。
+- **與本計畫的出入**（審查後的修正；規格已同步）：
+  1. 序列初值只沿用定得出來的參數，並排除 `illConditioned`／`jacobianNonFinite` 的結果（原工程決定 6 只看收斂與 χ²ᵣ）。
+  2. 被單筆擬合取代的列顯示**序列自己的結果**（推翻假設 (a)4）；「載入」也因此永遠載入序列那一筆，「結果無法載入」的情況只剩寫不進表單時。
+  3. 序列表改欄序、狀態併入量度欄、註記改成註記列；`tests/sasfit-html-helpers.js` 的屬性白名單加了 `headers`（註記列指回列標題用）。
+  4. 只有 σ 權重的擬合可送 IUCr；`sasfit-iucr.js` 的「加權殘差均方」分支因此移除。IUCr 標題改為 analytical scattering model；Notes 有固定的第一句，所以「物件不含 CorMap 字樣」的測試改成「除了那一句之外不含、而且沒有 CorMap 的列或鍵」。
+  5. 報告的 hc 改 12.398（原為 CODATA 值）。
+  6. 3D：方向鍵方向反過來（與拖曳一致）；觸控可改仰角（原工程決定 10「觸控只能改方位角」推翻）；蠕蟲鏈的構造改寫；切換鈕標「3D 結構」並移到標題前；結構檢視高度固定。
+  7. 擬合列在序列進行中只放短進度；視窗 1024 px 以下左邊多留選單鈕的位置。
+  8. `safeName` 只去掉 `.dat／.txt／.csv`；文字儲存格的換行改成空白（原為保留在引號內）。
+  9. `smoke_m4.py`／`smoke_m4_js.py` 跟著改了五處：標題常數、狀態晶片與列量度的選擇器（表格結構變了）、等「第 1 筆」開始的條件（擬合列的文字變了；舊條件會等到第 1 筆結束才成立）、表格量測的標示（500 個檔＝833 個 `<tr>`）。`check_iucr_copy.py` 沒有改。
+- **規格 §15 新增的決策**：30–39（30 切換、31 複製帶現值、32 可送 IUCr 的條件、33 IUCr 段的標題與列、34 序列各檔的範圍與權重、35 初值規則、36 不續跑／結束後載入／一張表、37 3D 畫法、38 hc＝12.398、39 被取代的列保留序列的結果）。審查的更動：32、33、35、38 有使用者 2026-11-19 的決定；37 的蠕蟲鏈與方向鍵、39 是審查推翻原計畫的部分。
+- **審查提出而沒有做的**：核／殼的色相不改；不加觸控用的方向按鈕；程式審查的 L2（分號）與 L4（空的 catch）照舊。
+- **另外看到、沒有處理的**：`css/sasfit.css` 裡單欄版面的 `.sf-fitbar { position: static }` 寫在一般規則 `position: sticky` **之前**，同樣的優先度下後者勝出——單欄時擬合列實際上仍是 sticky（760×900 實測 `position: sticky`）。這是 M3 就有的行為，本次只確認它不會被選單鈕蓋住（左邊已留位置），沒有改。
+- **未驗證事項**：真實螢幕報讀軟體（VoiceOver／NVDA）對註記列與 3D 畫布的朗讀；實體觸控裝置（觸控改仰角只有單元測試的合成事件，`touch-action: pan-y` 下瀏覽器何時把手勢交給頁面沒有在實機上看過）；Safari 與 Firefox（冒煙只跑 Chromium；`:has()` 與 container query 單位 `cqw` 需要 Safari 16+／Firefox 121+，不支援時結構檢視回到自動高度、註記列回到跟著表格寬度）；Excel 開啟 CSV；pandas 讀檔；`execCommand` 後備路徑在真正沒有 Clipboard API 的瀏覽器上（只以「把 `clipboard.write` 換成拒絕」模擬）。
