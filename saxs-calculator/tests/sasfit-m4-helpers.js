@@ -15,6 +15,17 @@
  *                   segment（SasFitShape3d.create 的回傳）、creates()（create 被呼叫的次數）、
  *                   paints()（畫面上的畫布被重畫的次數）、builds()（SasFitShapeGeom.build 被呼叫的次數）
  *   restore()       還原本檔動過的全域（window 上的假函式、SasFitShapeGeom 的包裝）
+ *
+ * 序列擬合（M4 Task 8–12）：
+ *   seqDatasets()   三個合成檔 SYNTH_sphere_{10,20,30}.dat 的 Dataset（SasFitDataIo.parse；條件值 10／20／30）
+ *   seqFiles(conditions?)  同三個檔的 state.files 項目（id d1–d3；conditions 可覆寫條件值）
+ *   sphereForm(ticks?)     sphere 表單，勾選擬合 ticks（預設 scale、background 之外再加 radius）
+ *   fakeResult({ job?, status, values, errors, chi2r, weighting, ... })  完整的 FitResult（鍵與
+ *                   SasFitWorkerCore.buildFitResult 相同）；給 job 時 params／settings 取自它，所以結果對得上表單
+ *   seqClient(script)  照腳本回覆的假 client：script[k] 是第 k 次 fit 的回覆——
+ *                   { values, status, chi2r, progress: n, ... }（先發 n 個進度事件再 resolve fakeResult）、
+ *                   { reject: code }、{ throws: true }（同步丟例外）、{ wait: true }（等 stop() 才以 'stopped' resolve）、
+ *                   { raw: 任意值 }（原樣 resolve）。腳本用完後一律收斂。jobs 是收到的 job、stops 是 stop() 次數
  */
 const ui = require('./sasfit-ui-helpers.js');
 
@@ -139,4 +150,69 @@ function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion
     };
 }
 
-module.exports = { fakeContext, fakeFrames, fakeCanvas, shapePage, restore };
+// ---------------------------------------------------------------- 序列擬合
+
+const SEQ_FILES = ['SYNTH_sphere_10.dat', 'SYNTH_sphere_20.dat', 'SYNTH_sphere_30.dat'];
+const DEFAULT_ERRORS = { scale: 0.01, background: 0.0001, radius: 0.05 };
+
+const seqDatasets = () => SEQ_FILES.map((name) => globalThis.SasFitDataIo.parse(ui.fixtureText(name), { fileName: name, qUnit: 'A' }).dataset);
+
+function seqFiles(conditions) {
+    return seqDatasets().map((dataset, i) => Object.freeze({
+        id: 'd' + (i + 1), fileName: SEQ_FILES[i], dataset, issues: [], issueOverflow: 0, notes: {},
+        condition: conditions === undefined ? dataset.condition : conditions[i],
+    }));
+}
+
+function sphereForm(ticks = ['radius']) {
+    const F = globalThis.SasFitForm;
+    return ticks.reduce((form, name) => F.reduce(form, { type: 'setFit', name, fit: true }), F.create('sphere'));
+}
+
+function fakeResult({ job = null, status = 'converged', values = {}, errors = {}, chi2r = 1.1, weighting, names, ...rest } = {}) {
+    const fitted = names || (job === null ? Object.keys(values) : Object.keys(job.fitFlags).filter((name) => job.fitFlags[name]));
+    const mode = weighting || (job === null ? 'sigma' : job.weighting);
+    const base = job === null ? { scale: 1, background: 0.001, sld: 1, sld_solvent: 6, radius: 50 } : job.params;
+    const errorOf = (name) => (Object.hasOwn(errors, name) ? errors[name] : (DEFAULT_ERRORS[name] || 0.01));
+    const root = Math.sqrt(chi2r);
+    const identity = fitted.map((_, i) => fitted.map((__, j) => (i === j ? 1 : 0)));
+    return Object.freeze({
+        params: Object.freeze({ ...base, ...values }), names: Object.freeze(fitted.slice()),
+        errors: Object.freeze(Object.fromEntries(fitted.map((name) => [name, errorOf(name)]))),
+        errorsScaled: Object.freeze(Object.fromEntries(fitted.map((name) => [name, errorOf(name) * root]))),
+        displayErrorsScaled: mode !== 'sigma', covariance: identity, correlation: identity,
+        chi2: chi2r * 54, chi2r, dof: 54, iterations: 7, status, atBound: Object.freeze({}),
+        illConditioned: false, blockedByNonFinite: false, jacobianNonFinite: false, nonFiniteCurvePoints: 0,
+        curve: new Float64Array(3), residuals: new Float64Array(3),
+        settings: Object.freeze({
+            modelSpec: job === null ? Object.freeze({ model: 'sphere', structure: null, lowQPowerLaw: false }) : job.modelSpec,
+            weighting: mode, range: job === null ? Object.freeze({ qMin: 0.005, qMax: 0.35 }) : job.range,
+            cutoff: 1e-5, maxSteps: 200, method: 'lm', ftol: 1e-10, xtol: 1e-10,
+        }),
+        ...rest,
+    });
+}
+
+function seqClient(script = []) {
+    const client = { jobs: [], stops: 0, waiting: null, stopThrows: false };
+    client.fit = (job, options) => {
+        const step = script[client.jobs.length] || {};
+        client.jobs.push(job);
+        if (step.throws === true) throw new Error('seqClient: scripted throw');
+        if (step.reject !== undefined) return Promise.reject(Object.assign(new Error('錯誤 ' + step.reject), { code: step.reject, detail: 'detail of ' + step.reject }));
+        if (step.wait === true) return new Promise((resolve) => { client.waiting = () => resolve(fakeResult({ job, status: 'stopped', names: [] })); });
+        const { progress = 0, raw, ...result } = step;
+        for (let i = 1; i <= progress; i++) options.onProgress({ iteration: i, chi2r: 10 / i });
+        return Promise.resolve(Object.hasOwn(step, 'raw') ? raw : fakeResult({ job, ...result }));
+    };
+    client.stop = () => {
+        client.stops += 1;
+        if (client.stopThrows) throw new Error('seqClient: stop failed');
+        const release = client.waiting;
+        client.waiting = null;
+        if (release !== null) release();
+    };
+    return client;
+}
+
+module.exports = { fakeContext, fakeFrames, fakeCanvas, shapePage, restore, seqDatasets, seqFiles, sphereForm, fakeResult, seqClient, SEQ_FILES };
