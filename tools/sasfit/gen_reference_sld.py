@@ -92,6 +92,72 @@ INVALID = [
 ]
 
 
+# Isotopes the page accepts beside the 84 elements (fix pass A): deuterium, written D.
+# periodictable knows D as an isotope of hydrogen; Z and mass are read from it.
+ISOTOPES = ["D"]
+
+# (formula as the page writes it, the same in periodictable's grammar, density g/cm^3, atoms)
+ISOTOPE_CASES = [
+    ("D2O", "D2O", 1.1044, {"D": 2, "O": 1}),                 # heavy water at 25 C
+    ("C6D6", "C6D6", 0.950, {"C": 6, "D": 6}),
+]
+
+# The preset materials of the page (design spec 4.7; owner decisions D2, D3 of 2026-11-18):
+# (id, formula as the page writes it, the same in periodictable's grammar, density g/cm^3).
+# The values are computed here, independently of the JS, and compared in tests/sasfit-sld.test.js.
+PRESETS = [
+    ("water", "H2O", "H2O", 0.9982),
+    ("protein", "C4.9384H7.7583N1.3577O1.4773S0.0417", "C4.9384H7.7583N1.3577O1.4773S0.0417", 1.35),
+    ("lipid_head", "C10H18NO8P", "C10H18NO8P", 1.62),
+    ("lipid_head_hydrated", "C10H18NO8P·8H2O", "C10H18NO8P(H2O)8", 1.353),
+    ("lipid_tail", "C17H33", "C17H33", 0.801),
+    ("peg", "C2H4O", "C2H4O", 1.125),
+    ("sio2", "SiO2", "SiO2", 2.2),
+    ("au", "Au", "Au", 19.32),
+    ("fe3o4", "Fe3O4", "Fe3O4", 5.17),
+]
+
+
+def isotope_table():
+    table = {}
+    for symbol in ISOTOPES:
+        isotope = getattr(periodictable, symbol)
+        table[symbol] = [isotope.number, isotope.mass]
+    return table
+
+
+def atoms_of(pt_formula):
+    return {str(el): float(n) for el, n in periodictable.formula(pt_formula).atoms.items()}
+
+
+def build_isotope_cases(table):
+    entries = []
+    for formula, pt_formula, density, atoms in ISOTOPE_CASES:
+        if atoms_of(pt_formula) != {k: float(v) for k, v in atoms.items()}:
+            raise RuntimeError("composition of %r differs from periodictable" % formula)
+        molar_mass, electrons, rho_e, sld = compute(atoms, density, table)
+        entries.append({"formula": formula, "density": density, "atoms": atoms, "molarMass": molar_mass,
+                        "electrons": electrons, "electronDensity": rho_e, "sld": sld})
+    return entries
+
+
+def build_presets(table):
+    entries = []
+    for preset_id, formula, pt_formula, density in PRESETS:
+        atoms = atoms_of(pt_formula)
+        molar_mass, electrons, rho_e, sld = compute(atoms, density, table)
+        entries.append({"id": preset_id, "formula": formula, "density": density, "molarMass": molar_mass,
+                        "electrons": electrons, "electronDensity": rho_e, "sld": sld,
+                        "volumeA3": molar_mass / (N_A * density) * 1e24})
+    by_id = {e["id"]: e for e in entries}
+    # Electron bookkeeping of the lipid presets: head + 2 tails = DOPC (C44H84NO8P, 434 e).
+    if by_id["lipid_head"]["electrons"] + 2 * by_id["lipid_tail"]["electrons"] != 434:
+        raise RuntimeError("PC head + two oleoyl tails must have the 434 electrons of DOPC")
+    if by_id["lipid_head_hydrated"]["electrons"] != by_id["lipid_head"]["electrons"] + 8 * 10:
+        raise RuntimeError("hydrated head = head + 8 waters")
+    return entries
+
+
 def element_table():
     table = {}
     for z in ELEMENT_Z:
@@ -161,6 +227,8 @@ def main():
                            % (EXPECTED_PERIODICTABLE, periodictable.__version__))
     table = element_table()
     cases, cross_checked = build_cases(table)
+    isotopes = isotope_table()
+    with_isotopes = dict(table, **isotopes)
     pt_re = periodictable.constants.electron_radius * 1e10   # m -> Angstrom
     rel_diff = (pt_re - R_E_A) / R_E_A
     print("periodictable electron_radius = %.10e A; spec r_e = %.10e A; relative difference %.3e"
@@ -179,6 +247,10 @@ def main():
         "elements": table,
         "cases": cases,
         "invalid": [{"formula": f, "category": c} for f, c in INVALID],
+        # additions of fix pass A (the keys above are unchanged)
+        "isotopes": isotopes,
+        "isotopeCases": build_isotope_cases(with_isotopes),
+        "presets": build_presets(table),
     })
 
 

@@ -423,7 +423,8 @@
         if (formula.trim() === '') return { result: null, error: null, ready: false };
         try {
             if (density.trim() === '') return { result: { atoms: sld.parseFormula(formula).atoms, sld: NaN, electronDensity: NaN }, error: null, ready: false };
-            return { result: sld.compute(formula, Number(density)), error: null, ready: true };
+            const result = sld.compute(formula, sld.parseDensity(density));       // strict: no 0x10, no value that overflows
+            return { result, error: null, ready: Number.isFinite(result.sld) };
         } catch (err) {
             return { result: null, error: err instanceof Error ? err : new Error(String(err)), ready: false };
         }

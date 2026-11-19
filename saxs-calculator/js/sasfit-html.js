@@ -86,9 +86,9 @@
     ]);
     const TEXT = Object.freeze({
         stale: '參數已修改，下列為上次擬合的結果',
-        sldApprox: '以 f ≈ Z 計算（忽略異常散射），SLD 與能量無關；含吸收邊靠近 15 keV 的元素'
-            + '（Au、Pt 的 L 邊，Br、Sr 的 K 邊等）時誤差較大。',
-        sldSyntax: '句點是小數點；水合物請寫成 CuSO4·5H2O 或 CuSO4(H2O)5',
+        sldApprox: '以 f ≈ Z 計算（忽略異常散射），SLD 與能量無關。15 keV 下，含 Rb、Sr、Y、Zr、Br、Kr 或 Pt、Au、Hg、Tl、Pb、Bi、'
+            + 'Th、U 的物質，實際 SLD 會低約 4–10 %（例：Au 131.5 → 約 124），對比度平方的誤差約為兩倍；其他能量下受影響的元素不同。',
+        sldSyntax: '句點是小數點；水合物請寫成 CuSO4·5H2O 或 CuSO4(H2O)5；氘寫成 D（例：D2O）',
         noSigma: '此檔沒有可用的誤差',
         docs: 'SasView 模型文件（另開視窗）',
     });
@@ -373,7 +373,7 @@
     function presetRow(preset) {
         if (preset === null) return null;
         return { label: esc(preset.label), value: esc(preset.formula),
-            note: [esc('密度 ' + String(preset.density) + ' g/cm³'), esc('出處：' + preset.source)] };
+            note: [esc('密度 ' + String(preset.density) + ' g/cm³'), esc('出處：' + preset.source), esc(text(preset.note))] };
     }
 
     function sldRows(result) {

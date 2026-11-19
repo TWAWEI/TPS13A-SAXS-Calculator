@@ -37,14 +37,18 @@ test('module is frozen; constants are the spec values', () => {
     assert.equal(S.N_A, FX.conventions.N_A);
 });
 
-test('G6 element table: exactly the 84 fixture elements, Z and mass equal', () => {
+test('G6 element table: the 84 fixture elements plus exactly D (deuterium), Z and mass equal', () => {
     const symbols = Object.keys(FX.elements);
     assert.equal(symbols.length, 84);
-    assert.deepEqual(Object.keys(S.ELEMENTS).sort(), symbols.slice().sort());
+    assert.deepEqual(Object.keys(FX.isotopes), ['D']);
+    assert.deepEqual(Object.keys(S.ELEMENTS).sort(), symbols.concat(['D']).sort());
     symbols.forEach((sym) => {
         assert.equal(S.ELEMENTS[sym].z, FX.elements[sym][0], sym + ' Z');
         assert.equal(S.ELEMENTS[sym].mass, FX.elements[sym][1], sym + ' mass');
     });
+    assert.equal(S.ELEMENTS.D.z, FX.isotopes.D[0]);
+    assert.equal(S.ELEMENTS.D.z, 1);
+    assert.equal(S.ELEMENTS.D.mass, FX.isotopes.D[1]);
     assert.ok(Object.isFrozen(S.ELEMENTS) && Object.isFrozen(S.ELEMENTS.H));
 });
 
@@ -160,39 +164,86 @@ test('compute: frozen result, atom order, density must be a finite positive numb
     assert.ok(relDiff(out.sld, S.R_E * out.electronDensity * 1e6) < 1e-14);
 });
 
-/**
- * Expected values of the eight presets, computed independently of the JS with periodictable 2.1.0
- * masses and the spec constants (throwaway script, 2026-11-18): formula, density (g/cm3),
- * SLD (1e-6 A^-2) and electron density (e/A^3), 4 significant figures.
- */
-const PRESET_EXPECTED = Object.freeze({
-    water: ['H2O', 0.9982, 9.403, 0.3337],
-    protein: ['C4.9384H7.7583N1.3577O1.4773S0.0417', 1.35, 12.24, 0.4344],
-    lipid_head: ['C10H18NO8P', 1.62, 14.49, 0.5141],
-    lipid_tail: ['C17H33', 0.801, 7.728, 0.2742],
-    peg: ['C2H4O', 1.125, 10.40, 0.3691],
-    sio2: ['SiO2', 2.2, 18.64, 0.6615],
-    au: ['Au', 19.32, 131.5, 4.667],
-    fe3o4: ['Fe3O4', 5.17, 41.68, 1.479],
+test('deuterium: D counts one electron and its own mass; Dy, Ds and Db are not read as D', () => {
+    FX.isotopeCases.forEach((c) => {
+        const out = S.compute(c.formula, c.density);
+        assert.deepEqual({ ...out.atoms }, c.atoms, c.formula);
+        assert.ok(relDiff(out.molarMass, c.molarMass) < 1e-14, c.formula);
+        assert.equal(out.electrons, c.electrons);
+        assert.ok(relDiff(out.sld, c.sld) < 1e-13, c.formula + ' ' + out.sld);
+    });
+    const light = S.compute('H2O', 1.1044);
+    const heavy = S.compute('D2O', 1.1044);
+    assert.ok(heavy.sld < light.sld, 'same electrons in a heavier molecule: fewer electrons per gram');
+    assert.deepEqual({ ...S.parseFormula('Dy2O3').atoms }, { Dy: 2, O: 3 });
+    assert.throws(() => S.parseFormula('Ds'), (e) => e.code === 'unsupported_element');
+    assert.throws(() => S.parseFormula('Db2'), (e) => e.code === 'unsupported_element');
+    assert.throws(() => S.parseFormula('T2O'), (e) => e.code === 'unknown_element');
 });
 
-test('PRESETS: the eight materials of spec 4.7 with sources and the expected SLD', () => {
+test('parseDensity: a plain decimal number > 0, strictly; compute refuses a result that is not finite', () => {
+    assert.equal(S.parseDensity('0.9982'), 0.9982);
+    assert.equal(S.parseDensity(' 1e0 '), 1);
+    assert.equal(S.parseDensity('.5'), 0.5);
+    assert.equal(S.parseDensity('19.'), 19);
+    for (const bad of ['', ' ', '0', '-1', '+1', '0x10', '1,0', '1e400', 'Infinity', 'NaN', '1 2', '1e', 'abc', '1'.repeat(40), null, 1]) {
+        assert.throws(() => S.parseDensity(bad), (e) => e.code === 'bad_density' && /密度/.test(e.message), String(bad));
+    }
+    assert.throws(() => S.compute('H2O', 1e308), (e) => e.code === 'bad_density', 'the SLD would not be finite');
+    assert.throws(() => S.compute('H2O', Infinity), (e) => e.code === 'bad_density');
+    assert.ok(Number.isFinite(S.compute('H2O', 1e250).sld));
+});
+
+/**
+ * The nine presets (design spec 4.7; owner decisions D2 and D3 of 2026-11-18). Expected values come from
+ * fixtures/sasfit/sld.json `presets`, computed with periodictable by tools/sasfit/gen_reference_sld.py.
+ */
+const PRESET_IDS = ['water', 'protein', 'lipid_head', 'lipid_head_hydrated', 'lipid_tail', 'peg', 'sio2', 'au', 'fe3o4'];
+const PRESET_LABELS = ['水（20 °C）', '蛋白質（平均）', '脂質頭基（PC，不含水合水）', '脂質頭區（PC，含 8 個水合水）', '脂質尾鏈（液態相）',
+    'PEG（塊材，非晶態）', 'SiO₂（非晶態）', 'Au（面心立方）', 'Fe₃O₄（磁鐵礦）'];
+// SLD (1e-6 A^-2) and electron density (e/A^3) to 4 significant figures, for the record of the review
+const PRESET_ROUNDED = Object.freeze({
+    water: [9.403, 0.3337], protein: [12.24, 0.4344], lipid_head: [14.49, 0.5141], lipid_head_hydrated: [12.30, 0.4366],
+    lipid_tail: [7.728, 0.2742], peg: [10.40, 0.3691], sio2: [18.64, 0.6615], au: [131.5, 4.667], fe3o4: [41.68, 1.479],
+});
+
+test('PRESETS: the nine materials with sources, notes and the SLD of the periodictable reference', () => {
     assert.ok(Object.isFrozen(S.PRESETS));
-    assert.deepEqual(S.PRESETS.map((p) => p.id), Object.keys(PRESET_EXPECTED));
-    assert.equal(new Set(S.PRESETS.map((p) => p.id)).size, 8);
-    const labels = S.PRESETS.map((p) => p.label);
-    ['水', '蛋白質（平均）', '脂質頭基', '脂質尾鏈', 'PEG', 'SiO₂', 'Au', 'Fe₃O₄'].forEach((name, i) => {
-        assert.ok(labels[i].startsWith(name), labels[i] + ' should start with ' + name);
-    });
-    S.PRESETS.forEach((p) => {
+    assert.deepEqual(S.PRESETS.map((p) => p.id), PRESET_IDS);
+    assert.deepEqual(FX.presets.map((p) => p.id), PRESET_IDS);
+    assert.deepEqual(S.PRESETS.map((p) => p.label), PRESET_LABELS);
+    S.PRESETS.forEach((p, i) => {
         assert.ok(Object.isFrozen(p));
-        assert.deepEqual(Object.keys(p), ['id', 'label', 'formula', 'density', 'source']);
+        assert.deepEqual(Object.keys(p), ['id', 'label', 'formula', 'density', 'source', 'note']);
         assert.ok(typeof p.source === 'string' && p.source.trim().length > 10, p.id + ' source');
-        const [formula, density, sld, rhoE] = PRESET_EXPECTED[p.id];
-        assert.equal(p.formula, formula);
-        assert.equal(p.density, density);
+        assert.equal(typeof p.note, 'string');
+        const ref = FX.presets[i];
+        assert.equal(p.formula, ref.formula);
+        assert.equal(p.density, ref.density);
         const out = S.compute(p.formula, p.density);
-        assert.equal(sig4(out.sld), sld, p.id + ' SLD ' + out.sld);
-        assert.equal(sig4(out.electronDensity), rhoE, p.id + ' rho_e ' + out.electronDensity);
+        assert.ok(relDiff(out.sld, ref.sld) < 1e-13, p.id + ' SLD ' + out.sld);
+        assert.ok(relDiff(out.electronDensity, ref.electronDensity) < 1e-13, p.id);
+        assert.equal(out.electrons, ref.electrons);
+        assert.deepEqual([sig4(out.sld), sig4(out.electronDensity)], PRESET_ROUNDED[p.id], p.id);
     });
+});
+
+test('PRESETS: the lipid presets partition DOPC; the hydrated head region is head + 8 waters in 559 A^3', () => {
+    const by = Object.fromEntries(S.PRESETS.map((p) => [p.id, { ...p, ...S.compute(p.formula, p.density) }]));
+    assert.equal(by.lipid_head.electrons + 2 * by.lipid_tail.electrons, S.compute('C44H84NO8P', 1).electrons);
+    assert.equal(by.lipid_head.electrons, 164);
+    assert.equal(by.lipid_head_hydrated.electrons, 164 + 8 * 10);
+    assert.deepEqual({ ...by.lipid_head_hydrated.atoms }, { C: 10, H: 34, N: 1, O: 16, P: 1 });
+    const volume = (p) => p.molarMass / (S.N_A * p.density) * 1e24;
+    assert.ok(Math.abs(volume(by.lipid_head) - 319) < 0.1, 'V_H ' + volume(by.lipid_head));
+    assert.ok(Math.abs(volume(by.lipid_head_hydrated) - 559) < 0.5, 'head + 8 waters ' + volume(by.lipid_head_hydrated));
+    assert.ok(Math.abs(2 * volume(by.lipid_tail) - 984) < 1, 'two chains ' + 2 * volume(by.lipid_tail));
+    assert.match(by.lipid_head.note, /成分密度，不可直接當作殼層 SLD/);
+    assert.equal(by.lipid_head_hydrated.note, '頭區 SLD 隨水合數而變：5–12 個水為 0.42–0.46 e/Å³；V_H 取 319 Å³（文獻範圍 319–340）');
+    assert.match(by.lipid_tail.note, /V_H＝319 Å³/);
+    assert.match(by.peg.note, /水溶液/);
+    for (const n of [5, 12]) {
+        const rho = S.compute('C10H18NO8P·' + n + 'H2O', (311.227 + n * 18.015) / (S.N_A * (319 + n * 29.9686) * 1e-24)).electronDensity;
+        assert.ok(rho > 0.415 && rho < 0.46, n + ' waters: ' + rho);
+    }
 });

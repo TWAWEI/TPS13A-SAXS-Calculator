@@ -533,6 +533,12 @@ test('[sasfit-params-ui] SLD 面板：開啟、即時顯示元素組成、預設
     assert.equal(density.getAttribute('aria-invalid'), 'true');
     assert.equal(page.$('sfSldApply').disabled, true);
     assert.equal(page.$('sfSldPreset').value, '', '手改後不再是預設物質');
+    for (const bad of ['0x10', '1e308', '1,0', '1e400', 'Infinity']) {
+        density.value = bad;
+        density.fire('input');
+        assert.equal(page.$('sfSldApply').disabled, true, bad + ' 不是可用的密度');
+        assert.equal(density.getAttribute('aria-invalid'), 'true', bad);
+    }
     density.value = String(preset.density);
     density.fire('input');
     assert.equal(page.$('sfSldApply').disabled, false);

@@ -196,7 +196,8 @@ test('sldPanelHtml: labelled formula, density and preset inputs, apply and cance
     assert.equal(tags.find((t) => t.attrs.id === 'sfSldDensity').attrs.value, '0.9982');
     assert.equal(tags.find((t) => t.attrs.id === 'sfSldFormula').attrs.maxlength, String(Sld.MAX_FORMULA_LENGTH));
     const options = html.slice(html.indexOf('<select'), html.indexOf('</select>')).match(/<option[^>]*>[^<]*/g);
-    assert.equal(options.length, 9);
+    assert.equal(options.length, 1 + Sld.PRESETS.length);
+    assert.equal(options.length, 10, 'custom + nine presets');
     assert.equal(options[0], '<option value="" selected>自訂');
     assert.deepEqual(options.slice(1).map((o) => /value="([^"]*)"/.exec(o)[1]), Sld.PRESETS.map((p) => p.id));
     Sld.PRESETS.forEach((p) => assert.ok(html.includes('>' + esc(p.label)), p.id));
@@ -207,7 +208,7 @@ test('sldPanelHtml: labelled formula, density and preset inputs, apply and cance
     assert.ok(html.includes('>套用</button>') && html.includes('>取消</button>'));
     assert.ok(tags.some((t) => t.attrs['data-target'] === 'sld_solvent'));
     assert.ok(html.includes('sld_solvent'));
-    assert.ok(/f ≈ Z/.test(html) && /吸收邊/.test(html));
+    assert.ok(/f ≈ Z/.test(html) && /異常散射/.test(html) && /15 keV/.test(html));
     assert.ok(html.includes('句點是小數點；水合物請寫成 CuSO4·5H2O 或 CuSO4(H2O)5'));
     const output = tags.find((t) => t.attrs.id === 'sfSldOutput');
     assert.equal(output.attrs['aria-live'], 'polite');
@@ -226,6 +227,20 @@ test('sldOutputHtml: the parsed composition, the SLD and the electron density', 
     const water = H.sldOutputHtml(sldView());
     assert.ok(/9\.4\d{4}</.test(water), 'water is about 9.4e-6 per square angstrom: ' + water);
     assert.ok(!/出處/.test(water), 'a custom formula has no source');
+});
+
+test('SLD panel: a preset shows its note; the help text names the elements affected at 15 keV and how to write D', () => {
+    const head = Sld.PRESETS.find((p) => p.id === 'lipid_head');
+    const html = H.sldPanelHtml(sldView({ formula: head.formula, density: String(head.density), presetId: head.id,
+        result: Sld.compute(head.formula, head.density) }));
+    assert.ok(html.includes(esc('成分密度，不可直接當作殼層 SLD')));
+    const peg = Sld.PRESETS.find((p) => p.id === 'peg');
+    assert.ok(H.sldPanelHtml(sldView({ presetId: 'peg' })).includes(esc(peg.note)));
+    assert.doesNotMatch(H.sldPanelHtml(sldView({ presetId: 'water' })), /<div class="[^"]*"><\/div>/, 'an empty note leaves no empty element');
+    const help = /id="sfSldHelp">([^<]*)</.exec(html)[1];
+    ['Rb', 'Sr', 'Y', 'Zr', 'Br', 'Kr', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Th', 'U'].forEach((el) => assert.ok(help.includes(el), el));
+    assert.match(help, /實際 SLD 會低約 4–10 %（例：Au 131\.5 → 約 124）/);
+    assert.match(help, /氘寫成 D（例：D2O）/);
 });
 
 test('sldOutputHtml: a preset also shows its own formula, density and source', () => {
