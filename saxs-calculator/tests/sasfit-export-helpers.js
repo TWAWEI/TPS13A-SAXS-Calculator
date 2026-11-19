@@ -111,7 +111,7 @@ function formOf(fitResult) {
         if (Object.hasOwn(params, name)) form = F.reduce(form, { type: 'setValue', name, value: String(params[name]) });
         form = F.reduce(form, { type: 'setFit', name, fit: fitResult.names.includes(name) });
     });
-    return form;
+    return globalThis.SasFitJobs.applyResult(form, fitResult);       // 擬合值照頁面的回填規則捨入，結果才與表單相符
 }
 
 function parseCsv(text) {

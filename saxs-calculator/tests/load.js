@@ -71,6 +71,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-seq-view.js',         // IIFE，只掛 globalThis.SasFitSeqView；序列表與趨勢圖的資料與 HTML 字串，呼叫時才經 host() 讀 FormUtils／ChartTheme
     'sasfit-export.js',           // IIFE，只掛 globalThis.SasFitExport；匯出的數字／CSV 儲存格／檔名／擬合曲線 CSV，純函式，呼叫時才讀其他 SasFit 模組
     'sasfit-report.js',           // IIFE，只掛 globalThis.SasFitReport；報告 TXT 與序列結果 CSV 的字串，純函式，呼叫時才讀其他 SasFit 模組
+    'sasfit-iucr.js',             // IIFE，只掛 globalThis.SasFitIucr；送進 IUCr 表格的資料物件與列的 HTML 字串，純函式，呼叫時才經 host() 讀 FormUtils
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -128,4 +129,5 @@ module.exports = {
     SasFitSeqView: globalThis.SasFitSeqView,
     SasFitExport: globalThis.SasFitExport,
     SasFitReport: globalThis.SasFitReport,
+    SasFitIucr: globalThis.SasFitIucr,
 };
