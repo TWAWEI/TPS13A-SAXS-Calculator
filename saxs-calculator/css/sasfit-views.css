@@ -101,6 +101,25 @@
     border-radius: var(--radius-sm);
 }
 
+/* 操作說明的行數會變（窄圖卡折行、觸控與「減少動態效果」各多一句）：整個結構檢視的高度固定成
+   「有擬合結果的曲線檢視」的高度，說明多出來的行數由下面的文字框吸收（它本來就能自己捲動），
+   圖欄在 1024×768 才不會因為多一行說明而出現欄內捲動。沒有形狀可畫時（只剩狀態行）不套用。 */
+.sf-plots #sfShapeView:not([hidden]):has(.sf-shape-stage:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+    height: calc(1.875rem + var(--spacing-xs) + clamp(300px, 46vh, 460px) + 1.5rem + var(--spacing-xs) + var(--spacing-md) + 140px + 1.3125rem);
+}
+
+.sf-plots #sfShapeView:has(.sf-shape-stage:not([hidden])) > * {
+    flex: 0 0 auto;
+}
+
+.sf-plots #sfShapeView:has(.sf-shape-stage:not([hidden])) > .sf-shape-text {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 3rem;
+}
+
 .sf-shape-dims {
     display: flex;
     flex-wrap: wrap;
@@ -149,7 +168,13 @@
     }
 
     /* 單欄時圖卡在一般的文件流裡（頁面本來就會捲動）：文字不限高度，只保留與殘差圖相同的最小高度 */
-    .sf-shape-text {
+    .sf-plots #sfShapeView:not([hidden]):has(.sf-shape-stage:not([hidden])) {
+        display: block;
+        height: auto;
+    }
+
+    .sf-shape-text,
+    .sf-plots #sfShapeView:has(.sf-shape-stage:not([hidden])) > .sf-shape-text {
         height: auto;
         min-height: calc(110px + 1.3125rem);
         overflow-y: visible;
