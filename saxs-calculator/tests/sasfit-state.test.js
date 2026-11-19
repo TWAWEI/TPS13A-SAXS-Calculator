@@ -39,7 +39,9 @@ test('module is frozen; constants of the plan', () => {
     assert.ok(Object.isFrozen(S));
     assert.equal(S.MAX_FILES, 500);
     assert.equal(S.DEFAULT_SHOWN, 8);
-    assert.deepEqual([...S.TABS], ['data', 'model', 'fit']);
+    assert.deepEqual([...S.TABS], ['data', 'model', 'fit', 'sequence']);
+    assert.deepEqual([...S.PLOT_VIEWS], ['curve', 'shape']);
+    assert.ok(Object.isFrozen(S.TABS) && Object.isFrozen(S.PLOT_VIEWS));
     assert.deepEqual([...S.PLOT_MODES], ['loglog', 'guinier', 'kratky']);
 });
 
@@ -51,7 +53,11 @@ test('initial(): empty, idle, deep-frozen, no stale / forced flags', () => {
         range: null, weighting: 'sigma', weightingUserSet: false, maxSteps: 200, plotMode: 'loglog',
         stagger: { on: false, decades: 1 },
         fit: { phase: 'idle', datasetId: null, iteration: 0, chi2r: null, outcome: null },
-        tab: 'data', nextId: 1, notice: null, removed: null,
+        tab: 'data', nextId: 1, notice: null, removed: null, plotView: 'curve',
+        seq: {
+            phase: 'idle', selected: {}, options: { chain: true, sort: true }, order: null, rows: {},
+            form: null, settings: null, warnings: [], y: null, outcome: null,
+        },
     });
     assert.equal('resultStale' in s, false);
     assert.equal('weightingForced' in s, false);
@@ -291,7 +297,7 @@ test('setCondition changes only the file entry; setConditionName', () => {
     assert.throws(() => S.reduce(s, { type: 'setConditionName', name: 5 }), /name/);
 });
 
-test('setShown, setMaxSteps, setPlotMode, setStagger, setTab validate their payload', () => {
+test('setShown, setMaxSteps, setPlotMode, setStagger, setTab, setPlotView validate their payload', () => {
     const s = loaded(good('a.dat'), good('b.dat'));
     assert.equal(S.reduce(s, { type: 'setShown', id: 'd2', shown: false }).shown.d2, false);
     assert.throws(() => S.reduce(s, { type: 'setShown', id: 'd2', shown: 1 }), /shown/);
@@ -309,7 +315,13 @@ test('setShown, setMaxSteps, setPlotMode, setStagger, setTab validate their payl
     });
     assert.throws(() => S.reduce(s, { type: 'setStagger', on: 'yes', decades: 1 }), /on/);
     S.TABS.forEach((tab) => assert.equal(S.reduce(s, { type: 'setTab', tab }).tab, tab));
-    assert.throws(() => S.reduce(s, { type: 'setTab', tab: 'sequence' }), /sequence/);
+    assert.equal(S.reduce(s, { type: 'setTab', tab: 'sequence' }).tab, 'sequence');
+    assert.throws(() => S.reduce(s, { type: 'setTab', tab: 'export' }), /Unknown tab: export/);
+    assert.equal(s.plotView, 'curve');
+    S.PLOT_VIEWS.forEach((view) => assert.equal(S.reduce(s, { type: 'setPlotView', view }).plotView, view));
+    ['3d', undefined, null, 'Shape'].forEach((view) => {
+        assert.throws(() => S.reduce(s, { type: 'setPlotView', view }), /Unknown plot view/);
+    });
 });
 
 test('fit life cycle: started, progress, settled', () => {
@@ -373,8 +385,22 @@ const ALLOWED_WHILE_RUNNING = [
     { type: 'dismissRemoved' },
     { type: 'fitProgress', iteration: 1, chi2r: 2 },
     { type: 'fitSettled', result: null },
+    { type: 'setPlotView', view: 'shape' },
+    { type: 'setSeqY', name: 'radius' },
 ];
+const SEQ_PLAN = Object.freeze({ items: [{ id: 'd1', range: { qMin: 0.01, qMax: 0.05 }, note: '', skip: null }], warnings: [] });
+const SEQ_SETTINGS = Object.freeze({ weighting: 'sigma', maxSteps: 200, rangeEdited: false });
+const SEQ_FORM = Object.freeze({ model: 'sphere' });
+const SEQ_ROW = Object.freeze({ id: 'd1', state: 'done', result: null, range: null, note: '', startedFrom: null });
+/** Blocked while a single fit runs, and an Error without a running sequence too. */
+const NEEDS_A_SEQUENCE = ['seqStep', 'seqSettled'];
 const BLOCKED_WHILE_RUNNING = [
+    { type: 'setSeqSelected', id: 'd2', selected: false },
+    { type: 'setSeqAll', selected: false },
+    { type: 'setSeqOption', key: 'chain', value: false },
+    { type: 'seqStarted', plan: SEQ_PLAN, form: SEQ_FORM, settings: SEQ_SETTINGS },
+    { type: 'seqStep', id: 'd1', row: SEQ_ROW, next: null },
+    { type: 'seqSettled', outcome: 'finished' },
     add(good('c.dat')),
     { type: 'removeFile', id: 'd2' },
     { type: 'undoRemove' },
@@ -412,7 +438,12 @@ BLOCKED_WHILE_RUNNING.forEach((action) => {
 
 test('BLOCKED actions all work when no fit is running (the lock is what stops them)', () => {
     const idle = S.reduce(loaded(good('a.dat'), good('b.dat'), good('z.dat')), { type: 'removeFile', id: 'd3' });      // something to undo
-    BLOCKED_WHILE_RUNNING.forEach((action) => assert.ok(S.reduce(idle, action), action.type));
+    BLOCKED_WHILE_RUNNING.filter((a) => NEEDS_A_SEQUENCE.indexOf(a.type) < 0)
+        .forEach((action) => assert.ok(S.reduce(idle, action), action.type));
+    NEEDS_A_SEQUENCE.forEach((type) => {
+        const action = BLOCKED_WHILE_RUNNING.find((a) => a.type === type);
+        assert.throws(() => S.reduce(idle, action), new RegExp(type + ': no sequence is running'));
+    });
 });
 
 test('shownFiles: list order, list index, the active file even when unticked, never a failed file', () => {
@@ -426,7 +457,12 @@ test('shownFiles: list order, list index, the active file even when unticked, ne
 });
 
 test('nextTab: arrows cycle, Home / End, other keys stay', () => {
-    const tabs = ['data', 'model', 'fit'];
+    assert.equal(S.nextTab(S.TABS, 'fit', 'ArrowRight'), 'sequence');
+    assert.equal(S.nextTab(S.TABS, 'model', 'End'), 'sequence');
+    assert.equal(S.nextTab(S.TABS, 'sequence', 'ArrowRight'), 'data');
+    assert.equal(S.nextTab(S.TABS, 'data', 'ArrowLeft'), 'sequence');
+    assert.equal(S.nextTab(S.TABS, 'sequence', 'Home'), 'data');
+    const tabs = ['data', 'model', 'fit'];                 // a page that has only these three (until the fourth button lands)
     assert.equal(S.nextTab(tabs, 'data', 'ArrowLeft'), 'fit');
     assert.equal(S.nextTab(tabs, 'fit', 'ArrowRight'), 'data');
     assert.equal(S.nextTab(tabs, 'data', 'ArrowRight'), 'model');
@@ -455,6 +491,12 @@ test('every action returns a new deep-frozen state, leaves its input alone and s
         { type: 'rangeDefault' }, { type: 'rangeFull' }, { type: 'setWeighting', mode: 'sqrtI' },
         { type: 'setMaxSteps', value: 30 }, { type: 'setPlotMode', mode: 'guinier' },
         { type: 'setStagger', on: true, decades: 1 }, { type: 'setTab', tab: 'model' },
+        { type: 'setPlotView', view: 'shape' }, { type: 'setSeqSelected', id: 'd2', selected: false },
+        { type: 'setSeqAll', selected: true }, { type: 'setSeqOption', key: 'sort', value: false },
+        { type: 'setSeqY', name: 'radius' },
+        { type: 'seqStarted', plan: SEQ_PLAN, form: SEQ_FORM, settings: SEQ_SETTINGS },
+        { type: 'seqStep', id: 'd1', row: { ...SEQ_ROW, result: RESULT('maxiter') }, next: null },
+        { type: 'seqSettled', outcome: 'finished' },
         { type: 'fitStarted' }, { type: 'fitProgress', iteration: 1, chi2r: 3 }, { type: 'fitSettled', result },
         { type: 'removeFile', id: 'd3' }, { type: 'undoRemove' }, { type: 'removeFile', id: 'd2' }, { type: 'dismissRemoved' },
         { type: 'clearNotice' },

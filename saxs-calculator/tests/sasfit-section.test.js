@@ -214,7 +214,7 @@ test('[sasfit-section] 點分頁鈕：該鈕 aria-selected／tabindex／.active�
 
 test('[sasfit-section] 方向鍵／Home／End 依 SasFitState.nextTab 移動，焦點移到新分頁，並取消預設捲動', () => {
     const { Section, $ } = boot();
-    const order = SasFitState.TABS;
+    const order = TABS.map(t => t.key);      // 頁面實際有的分頁（SasFitState.TABS 可能比頁面多：第四個分頁鈕之後才加入）
     let current = 'data';
     for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'Home', 'End', 'ArrowLeft']) {
         const next = SasFitState.nextTab(order, current, key);

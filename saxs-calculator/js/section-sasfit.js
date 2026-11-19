@@ -316,7 +316,8 @@
     function onTabKey(event) {
         if (NAV_KEYS.indexOf(event.key) < 0) return;
         event.preventDefault();                                   // Home / End would scroll the page
-        const next = globalThis.SasFitState.nextTab(globalThis.SasFitState.TABS, getState().tab, event.key);
+        // the tabs this page has: SasFitState.TABS may name one whose button is not in the markup yet
+        const next = globalThis.SasFitState.nextTab(Object.keys(TAB_ELEMENTS), getState().tab, event.key);
         dispatch({ type: TAB_ACTION, tab: next });
         el(TAB_ELEMENTS[next].tab).focus();
     }
