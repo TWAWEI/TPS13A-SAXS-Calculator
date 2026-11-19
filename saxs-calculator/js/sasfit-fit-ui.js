@@ -4,7 +4,11 @@
  * pass B after the UI review of 2026-11-19). Original code. DOM module:
  * loaded before section-sasfit.js, which calls SasFitFitUi.create(ctx) once.
  *
- *   SasFitFitUi.create(ctx) -> { render() }
+ *   SasFitFitUi.create(ctx) -> { render(), forgetRevert(), setBarProgress(text) }
+ *       forgetRevert()        drops the revert point: the form was replaced as a whole (a row of a
+ *                             sequence was loaded), so "the parameters before the fit" no longer exist
+ *       setBarProgress(text)  writes the progress line of the fit bar; it then belongs to the active
+ *                             dataset like any other progress text (cleared when another one is chosen)
  *
  * What it owns:
  *   fit bar   start / stop, the fit measure of the active dataset
@@ -41,6 +45,13 @@
  * Focus: "start" is disabled while a fit runs, so the focus moves to "stop";
  * when a fit stops or fails it returns to "start"; a finished fit moves it to
  * the results on the fit tab (A11y.focusResults), else to "start".
+ *
+ * A sequence (SasFitSeqUi; ctx.sequence.running()) uses this bar too: "start"
+ * is disabled as during any fit, "stop" stops it (the client resolves the
+ * running fit as 'stopped' and the sequence ends there), the progress line is
+ * written by the sequence through setBarProgress, and the measure line is
+ * blank until the sequence has ended (it would show one dataset's old result
+ * next to the progress of another).
  *
  * While a fit runs every control here except "stop" is disabled. render()
  * does not dispatch and writes HTML only through ctx.setHtml, so nothing is
@@ -314,7 +325,8 @@
         const stale = result !== null && (locked || !(matches || notApplied));
         [results, params].forEach((element) => element.classList.toggle(STALE_CLASS, stale));
         results.setAttribute('aria-busy', String(locked));
-        ctx.setHtml(ctx.el('sfFitMeasure'), html.fitBarHtml({ result, matches: matches || notApplied, running: locked }));
+        const inSequence = isObject(ctx.sequence) && ctx.sequence.running() === true;
+        ctx.setHtml(ctx.el('sfFitMeasure'), inSequence ? '' : html.fitBarHtml({ result, matches: matches || notApplied, running: locked }));
         // the hints describe the result as fitted; "continue" must not be offered for other values or during a run
         ctx.setHtml(ctx.el('sfFitHints'), matches && !locked ? html.hintsHtml(globalThis.SasFitHints.fitHints(result)) : '');
         if (!locked && store.get().progress !== '' && store.get().progressFor !== state.activeId) {
@@ -501,7 +513,11 @@
             beforeFor: null, run: 0, progress: '', progressFor: null, unapplied: null, tick: null, seconds: 0, waiting: false, step: '',
         }) });
         bind(ui);
-        return Object.freeze({ render: () => render(ui) });
+        return Object.freeze({
+            render: () => render(ui),
+            forgetRevert: () => { ui.store.set({ before: null, beforeFor: null }); },
+            setBarProgress: (text) => setProgress(ui, typeof text === 'string' ? text : '', false),
+        });
     }
 
     globalThis.SasFitFitUi = Object.freeze({ create });

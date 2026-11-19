@@ -500,6 +500,8 @@
                                 <p class="stat-sub sf-progress" id="sfFitProgress"></p>
                             </div>
                             <div class="sr-only" id="sfFitLive" role="status" aria-live="polite"></div>
+                            <!-- 序列擬合的朗讀區放在擬合列（四個分段都在畫面上；放在序列面板裡的話，切到別的分段就讀不到） -->
+                            <div class="sr-only" id="sfSeqLive" role="status" aria-live="polite"></div>
                         </div>
 
                         <!-- 分段：資料 -->
@@ -683,7 +685,6 @@
                                 <button type="button" class="btn btn-primary" id="sfSeqRun" aria-describedby="sfSeqSettings" disabled>執行序列擬合</button>
                                 <p class="stat-sub sf-progress" id="sfSeqProgress"></p>
                             </div>
-                            <div class="sr-only" id="sfSeqLive" role="status" aria-live="polite"></div>
 
                             <div class="sf-seq-trend" id="sfSeqTrendBox" hidden>
                                 <div class="sf-seq-trend-head">

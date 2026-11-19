@@ -24,8 +24,9 @@
  *                   SasFitWorkerCore.buildFitResult 相同）；給 job 時 params／settings 取自它，所以結果對得上表單
  *   seqClient(script)  照腳本回覆的假 client：script[k] 是第 k 次 fit 的回覆——
  *                   { values, status, chi2r, progress: n, ... }（先發 n 個進度事件再 resolve fakeResult）、
- *                   { reject: code }、{ throws: true }（同步丟例外）、{ wait: true }（等 stop() 才以 'stopped' resolve）、
- *                   { raw: 任意值 }（原樣 resolve）。腳本用完後一律收斂。jobs 是收到的 job、stops 是 stop() 次數
+ *                   { reject: code }、{ throws: true }（同步丟例外）、{ wait: true, ... }（等著：stop() 讓它以 'stopped'
+ *                   resolve，release() 讓它以腳本裡的結果正常結束）、{ raw: 任意值 }（原樣 resolve）。腳本用完後一律
+ *                   收斂。jobs 是收到的 job、stops 是 stop() 次數、stopThrows 讓 stop() 丟例外、evaluations 是預覽請求
  *   seqState({ steps, weighting, conditions, form, files, outcome, conditionName, options })
  *                   經 SasFitState.reduce 走完一次序列的狀態（不經執行器）：steps[k] 是第 k 個要擬合的項目的結果——
  *                   fakeResult 的參數，或 { error: 訊息 }；steps 比項目少時，其餘留在 pending。回傳 { state, form, plan }
@@ -183,6 +184,7 @@ function fakeResult({ job = null, status = 'converged', values = {}, errors = {}
     const errorOf = (name) => (Object.hasOwn(errors, name) ? errors[name] : (DEFAULT_ERRORS[name] || 0.01));
     const root = Math.sqrt(chi2r);
     const identity = fitted.map((_, i) => fitted.map((__, j) => (i === j ? 1 : 0)));
+    const points = job === null ? 3 : job.data.q.length;          // 曲線與殘差的長度要對得上資料，圖才畫得出來
     return Object.freeze({
         params: Object.freeze({ ...base, ...values }), names: Object.freeze(fitted.slice()),
         errors: Object.freeze(Object.fromEntries(fitted.map((name) => [name, errorOf(name)]))),
@@ -190,7 +192,7 @@ function fakeResult({ job = null, status = 'converged', values = {}, errors = {}
         displayErrorsScaled: mode !== 'sigma', covariance: identity, correlation: identity,
         chi2: chi2r * 54, chi2r, dof: 54, iterations: 7, status, atBound: Object.freeze({}),
         illConditioned: false, blockedByNonFinite: false, jacobianNonFinite: false, nonFiniteCurvePoints: 0,
-        curve: new Float64Array(3), residuals: new Float64Array(3),
+        curve: new Float64Array(points).fill(1), residuals: new Float64Array(points),
         settings: Object.freeze({
             modelSpec: job === null ? Object.freeze({ model: 'sphere', structure: null, lowQPowerLaw: false }) : job.modelSpec,
             weighting: mode, range: job === null ? Object.freeze({ qMin: 0.005, qMax: 0.35 }) : job.range,
@@ -201,24 +203,31 @@ function fakeResult({ job = null, status = 'converged', values = {}, errors = {}
 }
 
 function seqClient(script = []) {
-    const client = { jobs: [], stops: 0, waiting: null, stopThrows: false };
+    const client = { jobs: [], stops: 0, waiting: null, stopThrows: false, evaluations: [] };
+    client.evaluate = (request) => new Promise((resolve, reject) => { client.evaluations.push({ request, resolve, reject }); });
     client.fit = (job, options) => {
         const step = script[client.jobs.length] || {};
         client.jobs.push(job);
         if (step.throws === true) throw new Error('seqClient: scripted throw');
         if (step.reject !== undefined) return Promise.reject(Object.assign(new Error('錯誤 ' + step.reject), { code: step.reject, detail: 'detail of ' + step.reject }));
-        if (step.wait === true) return new Promise((resolve) => { client.waiting = () => resolve(fakeResult({ job, status: 'stopped', names: [] })); });
-        const { progress = 0, raw, ...result } = step;
+        const { progress = 0, raw, wait, ...result } = step;
         for (let i = 1; i <= progress; i++) options.onProgress({ iteration: i, chi2r: 10 / i });
+        if (wait === true) {
+            return new Promise((resolve) => {
+                client.waiting = { stop: () => resolve(fakeResult({ job, status: 'stopped', names: [] })), release: () => resolve(fakeResult({ job, ...result })) };
+            });
+        }
         return Promise.resolve(Object.hasOwn(step, 'raw') ? raw : fakeResult({ job, ...result }));
     };
+    const take = () => { const waiting = client.waiting; client.waiting = null; return waiting; };
     client.stop = () => {
         client.stops += 1;
         if (client.stopThrows) throw new Error('seqClient: stop failed');
-        const release = client.waiting;
-        client.waiting = null;
-        if (release !== null) release();
+        const waiting = take();
+        if (waiting !== null) waiting.stop();
     };
+    /** 讓等待中的那一筆正常結束（以它腳本裡的結果）。 */
+    client.release = () => { const waiting = take(); if (waiting !== null) waiting.release(); };
     return client;
 }
 

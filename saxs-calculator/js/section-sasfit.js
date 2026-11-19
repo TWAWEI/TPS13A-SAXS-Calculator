@@ -39,6 +39,7 @@
  *     { render() }                                   every segment
  *     { render(), schedulePreview(), cancelPreview(), lastPreview(), previewStatus() }   the model segment
  *     { render(), running(), barText() }             the sequence segment
+ *     { render(), forgetRevert(), setBarProgress(text) }   the fit segment
  * render() draws the segment from ctx.getState() / ctx.getForm(); it must not
  * dispatch, and it must leave alone what did not change: refresh() runs while
  * the user is typing (see setHtml). A module that is not there yet is skipped,
@@ -77,6 +78,8 @@
  *     sequence               { running(), barText() } -> the sequence segment: whether a sequence
  *                            is running and the progress text the fit bar shows for it; false
  *                            and '' while there is no sequence segment
+ *     fit                    { forgetRevert(), setBarProgress(text) } -> the fit segment; no-ops
+ *                            while there is none
  *
  * The state and the form are never modified: every change replaces the frozen
  * object. Non-SasFit globals are read through host() at call time; nothing
@@ -329,6 +332,10 @@
             const segment = page.segments.sequence;
             return segment !== undefined && typeof segment[method] === 'function' ? segment[method]() : fallback;
         };
+        const fitCall = (method, arg) => {
+            const segment = page.segments.fit;
+            if (segment !== undefined && typeof segment[method] === 'function') segment[method](arg);
+        };
         const ctx = {
             el, getState, dispatch, getForm, setForm, refresh, setHtml,
             deps: page.deps,
@@ -339,6 +346,7 @@
                 status: call('previewStatus', NO_PREVIEW_STATUS),
             }),
             sequence: Object.freeze({ running: sequence('running', false), barText: sequence('barText', '') }),
+            fit: Object.freeze({ forgetRevert: () => fitCall('forgetRevert'), setBarProgress: (text) => fitCall('setBarProgress', text) }),
         };
         Object.defineProperty(ctx, 'client', { get: getClient, enumerable: true });
         return Object.freeze(ctx);
