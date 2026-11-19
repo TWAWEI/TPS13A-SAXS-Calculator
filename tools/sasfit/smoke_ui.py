@@ -19,9 +19,10 @@ from pathlib import Path
 sys.dont_write_bytecode = True                    # before the import: no tools/sasfit/__pycache__
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import smoke_browser as sb                        # noqa: E402
+import smoke_ui_b as passb                        # noqa: E402  (checks added with fix pass B)
 from playwright.sync_api import sync_playwright, Error as PwError   # noqa: E402
 
-TOTAL_TIMEOUT_S = 240
+TOTAL_TIMEOUT_S = 480
 STEP_TIMEOUT_MS = 40_000
 FIX = sb.ROOT / 'tests' / 'fixtures' / 'sasfit' / 'dat'
 SHOTS = Path(__file__).resolve().parent / 'build' / 'smoke-ui'
@@ -63,14 +64,17 @@ JS_MODE_INFO = """() => {
 JS_RANGES = "() => ({ main: __ui.xr('sfMainChart'), residual: __ui.xr('sfResidualChart') })"
 
 JS_TILES = """() => {
-  const tile = (label) => [...document.querySelectorAll('#sfFitResults .tile')]
+  const tile = (label) => [...document.querySelectorAll('#sfFitParams .tile')]
     .find((t) => t.querySelector('.tile-label').textContent.trim() === label);
   const val = (t) => (t ? parseFloat(t.querySelector('.tile-value').textContent.replace('−', '-')) : null);
   const hero = document.querySelector('#sfFitResults .tile--hero');
   const row = document.querySelector('#sfDataBody tr.is-active .sf-file-status');
   return { chi2r: val(hero), heroText: hero ? hero.textContent.replace(/\\s+/g, ' ') : null, radius: val(tile('radius')),
            rowStatus: row ? row.textContent.replace(/\\s+/g, ' ').trim() : null,
-           fitted: [...document.querySelectorAll('#sfFitResults .tile:not(.tile--hero) .tile-label')].map((e) => e.textContent.trim()),
+           fitted: [...document.querySelectorAll('#sfFitParams .tile .tile-label')].map((e) => e.textContent.trim()),
+           heroes: document.querySelectorAll('#section-sasfit .tile--hero').length,
+           hintsBeforeTiles: document.getElementById('sfFitHints').compareDocumentPosition(document.getElementById('sfFitParams')) === 4,
+           listRoles: document.querySelectorAll('#sfFitParams [role=list] > [role=listitem]').length,
            hints: document.getElementById('sfFitHints').children.length };
 }"""
 
@@ -84,9 +88,11 @@ JS_LAYOUT = """() => {
   const ws = document.querySelector('.sf-workspace');
   const p = plots.getBoundingClientRect(), c = ctl.getBoundingClientRect();
   const el = document.documentElement;
+  const canvas = document.getElementById('sfMainChart').getBoundingClientRect();
   return { position: getComputedStyle(plots).position,
            columns: getComputedStyle(ws).gridTemplateColumns.split(' ').length,
-           plotsLeft: p.left, plotsTop: p.top, controlsRight: c.right, controlsBottom: c.bottom,
+           plotsLeft: p.left, plotsTop: p.top, plotsBottom: p.bottom, controlsRight: c.right, controlsBottom: c.bottom, controlsTop: c.top,
+           controlsWidth: c.width, plotsWidth: p.width, canvasWidth: canvas.width, canvasHeight: canvas.height,
            pageOverflow: el.scrollWidth - el.clientWidth, bodyOverflow: document.body.scrollWidth - el.clientWidth };
 }"""
 
@@ -202,6 +208,15 @@ def pick_model(page, model):
     page.select_option('#sfModel', model)
 
 
+def set_detail(page, name, want_open=True):
+    """Open (or close) the detail row of a parameter: bounds, dispersity and the formula button are in there."""
+    button = page.locator(f'#sfMore_{name}')
+    if (button.get_attribute('aria-expanded') == 'true') != want_open:
+        button.dispatch_event('click')                        # not a pointer click: the narrow layout keeps a sticky plot above the table
+        page.wait_for_function('([n, w]) => (document.getElementById("sfMore_" + n).getAttribute("aria-expanded") === "true") === w',
+                               arg=[name, want_open], timeout=5_000)
+
+
 def fit_sphere(page, radius='53', qmax='0.07'):
     """Radius starts at `radius`, its fit box ticked, Qmax typed, fit started, wait for the hero tile."""
     pick_model(page, 'sphere')
@@ -213,6 +228,7 @@ def fit_sphere(page, radius='53', qmax='0.07'):
     page.click('#sfFitStart')
     page.wait_for_selector('#sfFitResults .tile--hero', timeout=10_000)
     page.wait_for_function('() => !document.getElementById("sfFitStart").disabled', timeout=10_000)
+    page.wait_for_function('() => /擬合結束/.test(document.getElementById("sfFitLive").textContent)', timeout=10_000)
 
 
 def palette(page, theme):
@@ -220,13 +236,16 @@ def palette(page, theme):
 
 
 def wheel_zoom(page):
+    """Zoom in with Ctrl + wheel (a plain wheel scrolls the page: check 22)."""
     canvas = page.locator('#sfMainChart')
     canvas.scroll_into_view_if_needed()
     box = canvas.bounding_box()
     page.mouse.move(box['x'] + box['width'] * 0.45, box['y'] + box['height'] * 0.5)
+    page.keyboard.down('Control')
     for _ in range(3):
         page.mouse.wheel(0, -300)
         page.wait_for_timeout(120)
+    page.keyboard.up('Control')
     page.wait_for_timeout(700)
 
 
@@ -286,9 +305,11 @@ def check_preview(ctx):
         t0 = time.time()
         wait_curve_change(page, before, 1000)
         ms = (time.time() - t0) * 1000
-        colours = page.evaluate('() => [__ui.curve().borderColor, __ui.activeData().borderColor]')
-        return colours[0] == colours[1], f'curve changed {ms:.0f} ms after typing radius=55; curve borderColor={colours[0]} data borderColor={colours[1]}'
-    ctx.check('3 model tab: radius 55 changes the preview curve within 1 s; curve colour = active data colour', run)
+        colours = page.evaluate('() => [__ui.curve().borderColor, __ui.activeData().borderColor, ChartTheme.palette().modelCurve]')
+        ok = colours[0] == colours[2] and colours[0] != colours[1]
+        return ok, (f'curve changed {ms:.0f} ms after typing radius=55; curve borderColor={colours[0]} (palette.modelCurve={colours[2]}) '
+                    f'data borderColor={colours[1]}')
+    ctx.check('3 model tab: radius 55 changes the preview curve within 1 s; the preview curve has the model-curve colour, not the data colour', run)
 
 
 # ----------------------------------------------------------------- check 4: fit
@@ -302,7 +323,7 @@ def check_fit(ctx):
         tab(page, 'fit')
         page.fill('#sfQMax', '0.07')
         page.wait_for_function('() => !document.getElementById("sfFitStart").disabled')
-        info = page.inner_text('#sfRangeInfo')
+        info = page.inner_text('#sfFitSummary')
         boxes = page.evaluate(JS_ANNOTATIONS)
         grey = any(b['xMin'] is not None and close(float(b['xMin']), 0.07) for b in boxes)
         page.click('#sfFitStart')
@@ -312,9 +333,11 @@ def check_fit(ctx):
         t = page.evaluate(JS_TILES)
         resid = page.evaluate('() => __ui.datasets("sfResidualChart").reduce((n, d) => n + d.data.length, 0)')
         ok = (t['radius'] is not None and abs(t['radius'] - 50) < 0.5 and t['chi2r'] is not None and 0.6 <= t['chi2r'] <= 1.6
-              and resid > 0 and '已收斂' in (t['rowStatus'] or '') and '已收斂' in (t['heroText'] or '') and grey)
-        return ok, (f"range info: {info!r}; grey box at xMin=0.07: {grey} {boxes}; radius tile={t['radius']} (truth 50) chi2r={t['chi2r']} "
-                    f"residual points={resid}; file row status={t['rowStatus']!r}; fitted tiles={t['fitted']}; fit hints shown={t['hints']}")
+              and resid > 0 and '已收斂' in (t['rowStatus'] or '') and '已收斂' in (t['heroText'] or '') and grey
+              and t['heroes'] == 1 and t['hintsBeforeTiles'] and t['listRoles'] == len(t['fitted']) and 'radius' in info)
+        return ok, (f"fit bar summary: {info!r}; grey box at xMin=0.07: {grey} {boxes}; radius tile={t['radius']} (truth 50) chi2r={t['chi2r']} "
+                    f"residual points={resid}; file row status={t['rowStatus']!r}; fitted tiles={t['fitted']} (list items={t['listRoles']}); "
+                    f"hero tiles on the page={t['heroes']}; hints placed before the parameter tiles={t['hintsBeforeTiles']}; fit hints shown={t['hints']}")
     ctx.check('4 fit radius 53 -> 50 (Qmax 0.07): |radius-50|<0.5, chi2r 0.6-1.6, 已收斂, residuals drawn, grey region', run)
 
 
@@ -377,37 +400,6 @@ def check_theme(ctx):
 
 # ----------------------------------------------------------------- checks 5, 8, 9, 10: model flows
 
-def check_slow_fit_stop(ctx):
-    def run():
-        page = ctx.page
-        pick_model(page, 'cylinder')
-        for name in ('radius', 'length'):
-            page.click(f'#sfPdToggle_{name}')
-            page.fill(f'#sfPdWidth_{name}', '0.2')
-        for name in ('scale', 'radius', 'length'):
-            page.check(f'#sfFit_{name}')
-        tab(page, 'fit')
-        page.wait_for_function('() => !document.getElementById("sfFitStart").disabled', timeout=10_000)
-        page.click('#sfFitStart')
-        page.wait_for_function('() => !document.getElementById("sfFitStop").disabled', timeout=5_000)
-        page.wait_for_timeout(200)
-        t0 = time.time()
-        page.click('#sfFitStop')
-        page.wait_for_function('() => /已停止/.test(document.getElementById("sfFitProgress").textContent + document.getElementById("sfFitResults").textContent)',
-                               timeout=1000)
-        stop_ms = (time.time() - t0) * 1000
-        page.wait_for_function('() => !document.getElementById("sfFitStart").disabled', timeout=5_000)
-        text = page.inner_text('#sfFitProgress') + ' / ' + page.inner_text('#sfFitResults')
-        tab(page, 'model')
-        before = curve_sig(page)
-        current = float(page.input_value('#sfValue_radius'))
-        page.fill('#sfValue_radius', f'{current + 3:g}')
-        t1 = time.time()
-        wait_curve_change(page, before, 20_000)
-        return True, f'已停止 shown {stop_ms:.0f} ms after the click ({text.strip()!r}); preview updated {(time.time() - t1) * 1000:.0f} ms after changing radius'
-    ctx.check('5 slow cylinder fit (two PDs) stops within 1 s as 已停止; a parameter change still updates the preview', run)
-
-
 def check_hayter(ctx):
     def run():
         page = ctx.page
@@ -415,9 +407,11 @@ def check_hayter(ctx):
         page.select_option('#sfStructure', 'hayter_msa')
         page.wait_for_function('() => document.getElementById("sfModelHints").textContent.trim() !== ""', timeout=5_000)
         hint = page.inner_text('#sfModelHints').strip().replace('\n', ' ')
+        set_detail(page, 'charge')                            # the bounds are in the detail row
         lower = page.input_value('#sfLower_charge')
+        marker = page.inner_text('#sfMark_charge')
         page.select_option('#sfStructure', '')
-        return lower == '0.5', f'hint={hint[:120]!r}; charge lower field={lower!r}'
+        return lower == '0.5' and marker == '', f'hint={hint[:120]!r}; charge lower field={lower!r}; marker of the default bound={marker!r}'
     ctx.check('8 sphere + hayter_msa: #sfModelHints has text, charge lower bound is 0.5', run)
 
 
@@ -457,28 +451,32 @@ def check_paused(ctx):
     def run():
         page = ctx.page
         pick_model(page, 'core_shell_cylinder')
+        pds = ['radius', 'thickness', 'length']
+        for name in pds:
+            set_detail(page, name)
         names = page.evaluate('() => [...document.querySelectorAll("[data-action=togglePd]")].map((b) => b.dataset.param)')
-        pds = [n for n in ('radius', 'thickness', 'length') if n in names]
-        if len(pds) < 3:
-            return False, f'core_shell_cylinder offers PD buttons {names}; need radius, thickness, length'
+        if any(n not in names for n in pds):
+            return False, f'core_shell_cylinder offers dispersity switches {names}; need radius, thickness, length'
         for name in pds:
             page.click(f'#sfPdToggle_{name}')
             page.fill(f'#sfPdWidth_{name}', '0.1')
         page.wait_for_function('() => !document.getElementById("sfPreviewNow").hidden', timeout=10_000)
         status = page.inner_text('#sfPlotStatus').strip()
-        paused = '已暫停' in status
+        paused = '已暫停' in status and '曲線尚未更新' in status
         ctx.both_themes('paused-preview')
         before = curve_sig(page)
         t0 = time.time()
         page.click('#sfPreviewNow')
         page.wait_for_function('(b) => { const s = __ui.sig(__ui.curve()); return !!s && s !== b; }', arg=before, timeout=30_000)
         compute_s = time.time() - t0
+        page.wait_for_function('() => /曲線已更新（手動）/.test(document.getElementById("sfPlotStatus").textContent)', timeout=10_000)
+        updated = page.inner_text('#sfPlotStatus').strip()
         still = not page.is_hidden('#sfPreviewNow')
         for name in pds[1:]:
             page.fill(f'#sfPdWidth_{name}', '0')
         page.wait_for_function('() => document.getElementById("sfPreviewNow").hidden', timeout=10_000)
         return paused and still, (f'status={status!r}; #sfPreviewNow visible; on-demand compute finished in {compute_s:.1f} s '
-                                  f'(curve changed), button stays while paused={still}; two widths back to 0 -> button hidden')
+                                  f'(curve changed), then status={updated!r}; button stays while paused={still}; two widths back to 0 -> button hidden')
     ctx.check('10 core_shell_cylinder with 3 PDs: 已暫停 + #sfPreviewNow computes on demand; 2 widths back to 0 hides it', run)
 
 
@@ -499,8 +497,8 @@ def check_keyboard(ctx):
             ok = ok and good
             notes.append(f"{key}->{want}:{'ok' if good else state}")
         wanted = {'data': (['sfFileInput'], ['sfShow_', 'sfActive_', 'sfCond_', 'sfRemove_']),
-                  'model': (['sfModelSearch', 'sfModel', 'sfFit_radius', 'sfValue_radius', 'sfLower_radius', 'sfPdToggle_radius'], []),
-                  'fit': (['sfQMin', 'sfQMax', 'sfWeighting', 'sfMaxSteps', 'sfFitStart'], [])}
+                  'model': (['sfFitStart', 'sfModel', 'sfFit_radius', 'sfValue_radius', 'sfMore_radius'], []),
+                  'fit': (['sfFitStart', 'sfQMin', 'sfQMax', 'sfWeighting', 'sfMaxSteps'], [])}
         for key, (exact, prefixes) in wanted.items():
             tab(page, key)
             page.focus({'data': '#sfTabData', 'model': '#sfTabModel', 'fit': '#sfTabFit'}[key])
@@ -523,15 +521,27 @@ def check_layout(ctx):
         page.set_viewport_size({'width': 1440, 'height': 900})
         page.wait_for_timeout(300)
         wide = page.evaluate(JS_LAYOUT)
-        page.set_viewport_size({'width': 1100, 'height': 900})
-        page.wait_for_timeout(300)
-        mid = page.evaluate(JS_LAYOUT)
+        sizes, ok = {}, True
+        for size in ((1280, 800), (1024, 768), (760, 900)):
+            page.set_viewport_size({'width': size[0], 'height': size[1]})
+            page.wait_for_timeout(350)
+            sizes[size[0]] = page.evaluate(JS_LAYOUT)
+        tab(page, 'model')                                    # the narrow layout keeps the plot in view while the model is edited
+        page.wait_for_timeout(200)
+        narrow_model = page.evaluate(JS_LAYOUT)
+        tab(page, 'data')
         page.set_viewport_size({'width': 1440, 'height': 900})
-        ok = (wide['position'] == 'sticky' and wide['columns'] == 2 and wide['plotsLeft'] >= wide['controlsRight'] - 1
-              and mid['columns'] == 1 and mid['plotsTop'] >= mid['controlsBottom'] - 1)
-        return ok, (f"1440x900: plots position={wide['position']}, grid columns={wide['columns']}, plots.left={wide['plotsLeft']:.0f} >= controls.right={wide['controlsRight']:.0f}; "
-                    f"1100x900: grid columns={mid['columns']}, plots.top={mid['plotsTop']:.0f} >= controls.bottom={mid['controlsBottom']:.0f}")
-    ctx.check('13 layout: 1440x900 sticky two columns; 1100x900 one column with the plots below the controls', run)
+        two = [wide, sizes[1280], sizes[1024]]
+        ok = (all(m['position'] == 'sticky' and m['columns'] == 2 and m['plotsLeft'] >= m['controlsRight'] - 1 for m in two)
+              and all(m['plotsWidth'] > m['controlsWidth'] for m in two) and wide['canvasWidth'] >= 540 and sizes[1280]['canvasWidth'] >= 400
+              and sizes[760]['columns'] == 1 and sizes[760]['plotsBottom'] <= sizes[760]['controlsTop'] + 1
+              and sizes[760]['position'] == 'static' and narrow_model['position'] == 'sticky')
+        cols = lambda name, m: (f"{name}: {m['columns']} column(s), controls {m['controlsWidth']:.0f} px, plots {m['plotsWidth']:.0f} px, "
+                                f"canvas {m['canvasWidth']:.0f}x{m['canvasHeight']:.0f}, plots {m['position']}")
+        return ok, (' | '.join([cols('1440x900', wide), cols('1280x800', sizes[1280]), cols('1024x768', sizes[1024]), cols('760x900', sizes[760])])
+                    + f" | 760: plots.bottom={sizes[760]['plotsBottom']:.0f} <= controls.top={sizes[760]['controlsTop']:.0f} (plot first); "
+                    f"on the model tab the plot is {narrow_model['position']}")
+    ctx.check('13 layout: two columns (plot the wider one) at 1440, 1280 and 1024; one column with the plot first at 760, sticky on the model tab', run)
 
 
 def check_measurements(ctx):
@@ -545,21 +555,29 @@ def check_measurements(ctx):
 def check_overflow(ctx):
     def run():
         page, notes, ok = ctx.page, [], True
-        for size in ((1440, 900), (1280, 800)):
+        for size in ((1440, 900), (1280, 800), (1024, 768)):
             page.set_viewport_size({'width': size[0], 'height': size[1]})
             page.wait_for_timeout(300)
-            tab(page, 'model')
+            pick_model(page, 'core_shell_cylinder')            # the longest names; every detail row open, one with its dispersity
+            names = page.evaluate("() => [...document.querySelectorAll('#sfParamBody [data-action=toggleDetail]')].map((b) => b.dataset.param)")
+            for name in names:
+                set_detail(page, name)
+            page.locator('#sfPdToggle_radius').dispatch_event('click')
+            page.wait_for_selector('#sfPdWidth_radius')
             param = page.evaluate(JS_WRAPPER, 'sfParamWrapper')
+            opened = page.evaluate("() => document.querySelectorAll('#sfParamBody .sf-detail-row:not([hidden])').length")
+            ok = ok and opened == len(names) and len(names) >= 8
+            pick_model(page, 'sphere')
             tab(page, 'data')
             files = page.evaluate(JS_WRAPPER, 'sfDataWrapper')
             m = page.evaluate(JS_LAYOUT)
-            ok = ok and m['pageOverflow'] <= 0 and m['bodyOverflow'] <= 0
+            ok = ok and m['pageOverflow'] <= 0 and m['bodyOverflow'] <= 0 and param[0] <= param[1] and files[0] <= files[1]
             notes.append(f"{size[0]}x{size[1]}: #sfParamWrapper scrollWidth/clientWidth={param[0]}/{param[1]} "
                          f"({'scrolls horizontally' if param[0] > param[1] else 'fits'}); #sfDataWrapper (5 files) {files[0]}/{files[1]} "
                          f"({'scrolls horizontally' if files[0] > files[1] else 'fits'}); page-level overflow={m['pageOverflow']} px")
         page.set_viewport_size({'width': 1440, 'height': 900})
         return ok, ' | '.join(notes)
-    ctx.check('14b/19 overflow of parameter and file tables (numbers); fails only on page-level horizontal overflow', run)
+    ctx.check('14b/19 no horizontal overflow of the parameter table (all detail rows open), the file table or the page at 1440, 1280 and 1024', run)
 
 
 def check_narrow(ctx):
@@ -569,14 +587,34 @@ def check_narrow(ctx):
         page.wait_for_timeout(400)
         m = page.evaluate(JS_LAYOUT)
         ctx.shot('narrow-760-light')
-        page.set_viewport_size({'width': 390, 'height': 800})
+        page.set_viewport_size({'width': 320, 'height': 640})
         page.wait_for_timeout(400)
-        phone = page.evaluate(JS_LAYOUT)
+        notes, ok320, param, stacked = [], True, [1, 0], ''
+        for key in ('data', 'fit', 'model'):
+            tab(page, key)
+            page.wait_for_timeout(200)
+            if key == 'model':
+                set_detail(page, 'radius')
+                page.locator('#sfPdToggle_radius').dispatch_event('click')
+                page.wait_for_selector('#sfPdWidth_radius')
+                param = page.evaluate(JS_WRAPPER, 'sfParamWrapper')
+                stacked = page.evaluate("() => getComputedStyle(document.querySelector('#sfParamBody .sf-param-row')).display")
+            p = page.evaluate(JS_LAYOUT)
+            ok320 = ok320 and p['pageOverflow'] <= 0 and p['bodyOverflow'] <= 0
+            notes.append(f"{key} {p['pageOverflow']} px")
+        page.focus('#sfUpper_radius')                         # a field below the sticky plot must not be scrolled under it
+        seen = page.evaluate("""() => { const f = document.activeElement.getBoundingClientRect(), p = document.querySelector('.sf-plots').getBoundingClientRect();
+            return { top: Math.round(f.top), plotBottom: Math.round(p.bottom), sticky: getComputedStyle(document.querySelector('.sf-plots')).position }; }""")
+        ok320 = ok320 and seen['sticky'] == 'sticky' and seen['top'] >= seen['plotBottom'] - 1
+        notes.append(f"focused field top {seen['top']} px, below the {seen['sticky']} plot (bottom {seen['plotBottom']} px)")
+        page.locator('#sfPdToggle_radius').dispatch_event('click')
+        set_detail(page, 'radius', False)
+        tab(page, 'data')
         page.set_viewport_size({'width': 1440, 'height': 900})
-        ok = m['columns'] == 1 and m['pageOverflow'] <= 0 and m['bodyOverflow'] <= 0
-        return ok, (f"760x900: grid columns={m['columns']}, page overflow={m['pageOverflow']} px; "
-                    f"(info) 390x800: columns={phone['columns']}, page overflow={phone['pageOverflow']} px")
-    ctx.check('18 narrow viewport (760 px): single column, no page-level horizontal overflow', run)
+        ok = (m['columns'] == 1 and m['pageOverflow'] <= 0 and m['bodyOverflow'] <= 0 and ok320 and param[0] <= param[1] and stacked == 'grid')
+        return ok, (f"760x900: grid columns={m['columns']}, page overflow={m['pageOverflow']} px; 320x640 page overflow per tab: {', '.join(notes)}; "
+                    f"parameter table at 320 (detail row + dispersity open): scrollWidth/clientWidth={param[0]}/{param[1]}, rows stacked (display {stacked})")
+    ctx.check('18 narrow viewports: single column at 760; no page-level horizontal overflow at 760 and 320 (parameter rows stacked at 320)', run)
 
 
 def check_persistence(ctx):
@@ -586,16 +624,17 @@ def check_persistence(ctx):
         page.select_option('#sfQUnit', 'nm')
         page.fill('#sfStaggerDecades', '3')
         tab(page, 'model')
-        page.fill('#sfModelSearch', 'zzsearch')
         page.fill('#sfValue_radius', '77')
+        set_detail(page, 'radius')
+        page.fill('#sfUpper_radius', '8888')
         page.wait_for_timeout(800)
         stored = page.evaluate('() => JSON.stringify(Object.assign({}, localStorage))')
-        leaked = [s for s in ('ZZZ-condition', 'zzsearch', '"77"') if s in stored]
+        leaked = [s for s in ('ZZZ-condition', '8888', '"77"') if s in stored]
         fresh(page)
         v = page.evaluate("""() => ({ cond: document.getElementById('sfConditionName').value, unit: document.getElementById('sfQUnit').value,
-            dec: document.getElementById('sfStaggerDecades').value, search: document.getElementById('sfModelSearch').value,
+            dec: document.getElementById('sfStaggerDecades').value, search: document.getElementById('sfModelSearch') === null,
             radius: document.getElementById('sfValue_radius').value })""")
-        ok = not leaked and v['cond'] == '條件' and v['unit'] == 'A' and v['dec'] == '1' and v['search'] == '' and v['radius'] != '77'
+        ok = not leaked and v['cond'] == '條件' and v['unit'] == 'A' and v['dec'] == '1' and v['search'] and v['radius'] != '77'
         return ok, f'after reload: {v}; typed strings found in localStorage: {leaked or "none"}'
     ctx.check('15 form persistence exclusion: typed values are neither stored nor restored after reload', run)
 
@@ -654,16 +693,45 @@ def prep_data(ctx):
 def prep_model(ctx):
     page = ctx.page
     pick_model(page, 'sphere')
+    set_detail(page, 'radius')
     page.click('#sfPdToggle_radius')
-    page.click('[data-action=sld] >> nth=0')
-    page.wait_for_selector('#sfSldPanel:not([hidden])')
+    set_detail(page, 'sld')
+    page.click('#sfSldBtn_sld')
+    page.wait_for_selector('#sfSldSlot_sld:not([hidden]) #sfSldPreset')
+    page.select_option('#sfSldPreset', 'water')
     page.wait_for_timeout(500)
 
 
 def prep_fit(ctx):
     page = ctx.page
+    page.keyboard.press('Escape')                             # closes the formula panel of the state before
     fit_sphere(page)
     page.wait_for_timeout(600)
+
+
+def prep_bad_fit(ctx):
+    """A fit that converges far from the data: hints under the hero tile, a doubtful status chip, a stale-free result."""
+    page = ctx.page
+    pick_model(page, 'sphere')
+    page.fill('#sfValue_radius', '80')
+    tab(page, 'fit')
+    page.click('#sfRangeDefault')
+    page.wait_for_function('() => !document.getElementById("sfFitStart").disabled')
+    page.click('#sfFitStart')
+    page.wait_for_function('() => /偏大/.test(document.getElementById("sfFitMeasure").textContent)', timeout=15_000)
+    page.wait_for_function('() => document.getElementById("sfFitHints").children.length > 0', timeout=5_000)
+    page.wait_for_timeout(500)
+
+
+def prep_stale(ctx):
+    """The result of the state before with a parameter changed since, on the model tab with a value error."""
+    page = ctx.page
+    tab(page, 'model')
+    page.fill('#sfValue_radius', '70')
+    set_detail(page, 'scale')
+    page.fill('#sfLower_scale', 'x')
+    tab(page, 'fit')
+    page.wait_for_timeout(500)
 
 
 def check_axe(ctx):
@@ -674,10 +742,12 @@ def check_axe(ctx):
     if ctx.axe_error:
         print('      ' + ctx.axe_error)
     states = (('empty', 'empty page', prep_empty), ('data', 'data loaded (data tab)', prep_data),
-              ('model', 'model tab, PD row + SLD panel open', prep_model), ('fit', 'fit tab with results and hints', prep_fit))
+              ('model', 'model tab, detail rows open with dispersity + SLD panel', prep_model), ('fit', 'fit tab with a good result', prep_fit),
+              ('badfit', 'fit tab, bad fit with hints under the hero tile', prep_bad_fit),
+              ('stale', 'fit tab, stale result + field error (fit bar says why it cannot start)', prep_stale))
     for key, text, prep in states:
         prep(ctx)
-        if key == 'fit':
+        if key in ('fit', 'badfit'):
             print('      fit hints shown: ' + str(page.evaluate('() => document.getElementById("sfFitHints").children.length')))
         for theme in ('light', 'dark'):
             ctx.theme(theme)
@@ -767,13 +837,19 @@ def run_light(browser, base_url, report, shots):
         check_data(ctx)
         check_preview(ctx)
         check_fit(ctx)
+        me = sys.modules[__name__]
+        passb.check_curve_style(ctx, me)
         check_modes(ctx)
         check_theme(ctx)
-        check_slow_fit_stop(ctx)
+        passb.check_wheel(ctx, me)
+        passb.check_fit_bar(ctx, me)
+        passb.check_focus_and_stop(ctx, me)
         check_paused(ctx)
         check_hayter(ctx)
+        passb.check_detail_rows(ctx, me)
         check_error_path(ctx)
         check_measurements(ctx)
+        passb.check_undo(ctx, me)
         fresh(ctx.page)
         load_files(ctx.page, FIVE)
         check_keyboard(ctx)
