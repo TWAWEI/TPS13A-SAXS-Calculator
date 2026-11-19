@@ -1,7 +1,8 @@
 /**
- * sasfit-plots.js -- the two Chart.js instances of the SAS fitting page: the
- * main chart (#sfMainChart) and the residual chart (#sfResidualChart)
- * (design spec 5.6; plan M3 Task 11). Original code.
+ * sasfit-plots.js -- the Chart.js instances of the SAS fitting page: the
+ * main chart (#sfMainChart), the residual chart (#sfResidualChart) and the
+ * trend chart of a sequence (#sfSeqTrend)
+ * (design spec 5.6, 7; plan M3 Task 11, M4 Task 9). Original code.
  *
  *   SasFitPlots.render(view) -> the main chart | null
  *       view is the one of SasFitPlotData (mainConfig / residualConfig). The
@@ -13,8 +14,13 @@
  *   SasFitPlots.resetZoom()        both charts, back to the default limits of the view drawn last
  *   SasFitPlots.isZoomed()         the main chart is zoomed or panned
  *   SasFitPlots.setZoomListener(fn)  fn(zoomed) after every zoom, pan and reset
+ *   SasFitPlots.renderTrend(config | null) -> the trend chart | null
+ *       config is SasFitSeqView.trendConfig's. Created on the first call (with
+ *       the error bar plugin); later calls write the new dataset and the axis
+ *       titles into the instance. null destroys it. null is also returned
+ *       when Chart.js or the canvas is missing; nothing is thrown.
  *   SasFitPlots.getChart(canvasId) -> the instance | null
- *   SasFitPlots.destroy()
+ *   SasFitPlots.destroy()          all three charts
  *   SasFitPlots.ERROR_BARS         the Chart.js plugin { id: 'sfErrorBars', beforeDatasetsDraw }
  *
  * Colours: none here. A chart is created with ChartTheme.colorize, and every
@@ -41,10 +47,11 @@
 
     const MAIN_ID = 'sfMainChart';
     const RESIDUAL_ID = 'sfResidualChart';
+    const TREND_ID = 'sfSeqTrend';
     const ERROR_BARS_ID = 'sfErrorBars';
     const ERROR_BAR_WIDTH = 1;
     const NO_ANIMATION = 'none';
-    const NO_CHARTS = Object.freeze({ main: null, residual: null, mode: null, listener: null, view: null });
+    const NO_CHARTS = Object.freeze({ main: null, residual: null, mode: null, listener: null, view: null, trend: null });
 
     const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const isObject = (v) => v !== null && typeof v === 'object';
@@ -174,9 +181,20 @@
 
     const zoomedChart = (chart) => chart !== null && typeof chart.isZoomedOrPanned === 'function' && chart.isZoomedOrPanned() === true;
 
-    function destroy() {
+    /** The main and the residual chart (their axis types depend on the mode); the trend chart is not theirs to take down. */
+    function destroyCurves() {
         [charts.main, charts.residual].filter((chart) => chart !== null).forEach((chart) => chart.destroy());
-        charts = Object.freeze({ ...NO_CHARTS, listener: charts.listener, view: charts.view });
+        charts = Object.freeze({ ...NO_CHARTS, listener: charts.listener, view: charts.view, trend: charts.trend });
+    }
+
+    function destroyTrend() {
+        if (charts.trend !== null) charts.trend.destroy();
+        charts = Object.freeze({ ...charts, trend: null });
+    }
+
+    function destroy() {
+        destroyCurves();
+        destroyTrend();
     }
 
     /** After a zoom or a pan of the main chart: the residual chart follows, and the page is told. */
@@ -211,7 +229,7 @@
         const residualCanvas = canvasOf(RESIDUAL_ID);
         if (typeof host().Chart !== 'function' || !mainCanvas || !residualCanvas) return null;
         const keep = charts.main !== null && charts.mode === view.mode;
-        if (!keep) destroy();
+        if (!keep) destroyCurves();
         const main = keep ? updateChart(charts.main, mainConfigOf(view)) : createChart(mainCanvas, mainConfigOf(view));
         charts = Object.freeze({ ...charts, main, mode: view.mode });
         const residualConfig = residualConfigOf(view, main);
@@ -228,10 +246,35 @@
         onViewChanged();
     }
 
-    function getChart(canvasId) {
-        if (canvasId === MAIN_ID) return charts.main;
-        return canvasId === RESIDUAL_ID ? charts.residual : null;
+    // ------------------------------------------------------------- trend chart of a sequence
+
+    /** The new dataset and axis titles into the existing trend chart, then colour and update it. */
+    function updateTrend(chart, config) {
+        const target = chart.config;
+        target.data.datasets = config.data.datasets;
+        ['x', 'y'].forEach((axis) => { target.options.scales[axis].title.text = config.options.scales[axis].title.text; });
+        target.options.plugins.tooltip.callbacks = config.options.plugins.tooltip.callbacks;       // they name the axes
+        host().ChartTheme.applyTo(chart);
+        return chart;
     }
 
-    globalThis.SasFitPlots = Object.freeze({ ERROR_BARS, render, resetZoom, isZoomed, setZoomListener, getChart, destroy });
+    function renderTrend(config) {
+        if (config === null || config === undefined) {
+            destroyTrend();
+            return null;
+        }
+        const canvas = canvasOf(TREND_ID);
+        if (typeof host().Chart !== 'function' || !canvas) return null;
+        const trend = charts.trend === null ? createChart(canvas, { ...config, plugins: [ERROR_BARS] }) : updateTrend(charts.trend, config);
+        charts = Object.freeze({ ...charts, trend });
+        return trend;
+    }
+
+    const CHART_KEYS = Object.freeze({ [MAIN_ID]: 'main', [RESIDUAL_ID]: 'residual', [TREND_ID]: 'trend' });
+
+    function getChart(canvasId) {
+        return Object.prototype.hasOwnProperty.call(CHART_KEYS, canvasId) ? charts[CHART_KEYS[canvasId]] : null;
+    }
+
+    globalThis.SasFitPlots = Object.freeze({ ERROR_BARS, render, renderTrend, resetZoom, isZoomed, setZoomListener, getChart, destroy });
 })();

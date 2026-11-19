@@ -323,3 +323,69 @@ test('[sasfit-plots] 誤差棒的顏色＝該 dataset 當下的 borderColor（�
 test('[sasfit-plots] 誤差棒：圖還沒排版好（沒有 chartArea 或 y 軸）時不丟錯', () => {
     assert.doesNotThrow(() => Plots.ERROR_BARS.beforeDatasetsDraw({ ctx: {}, data: { datasets: [] }, chartArea: undefined, scales: {} }));
 });
+
+// ---------------------------------------------------------------- 序列的趨勢圖（M4 Task 9）
+const { seqState } = require('./sasfit-m4-helpers.js');
+
+const SeqView = globalThis.SasFitSeqView;
+const trendConfigOf = (options, y = 'radius') => SeqView.trendConfig(SeqView.trend(seqState(options).state, y));
+function installTrendDom() {
+    const canvases = { sfMainChart: { id: 'sfMainChart' }, sfResidualChart: { id: 'sfResidualChart' }, sfSeqTrend: { id: 'sfSeqTrend' } };
+    global.document = { getElementById: (id) => canvases[id] || null };
+}
+
+test('[sasfit-plots] renderTrend：第一次在 #sfSeqTrend 建立，已上色，帶誤差棒外掛', () => {
+    installTrendDom();
+    const config = trendConfigOf();
+    const chart = Plots.renderTrend(config);
+    assert.equal(created.length, 1);
+    assert.equal(chart, created[0]);
+    assert.equal(chart.canvas.id, 'sfSeqTrend');
+    assert.equal(Plots.getChart('sfSeqTrend'), chart);
+    assert.ok(chart.config.plugins.some((plugin) => plugin.id === Plots.ERROR_BARS.id));
+    assert.equal(chart.config.data.datasets[0].borderColor, ChartTheme.PALETTES.light.series[0]);
+    assert.equal(chart.config.data.datasets[0].backgroundColor, ChartTheme.PALETTES.light.series[0], '實心點：形狀區分未收斂');
+    assert.equal(config.plugins, undefined, '傳入的 config 沒被改');
+    assert.equal(config.data.datasets[0].borderColor, undefined);
+    assert.match(SOURCE, /createChart\(canvas, \{ \.\.\.config, plugins: \[ERROR_BARS\] \}\)/);
+});
+
+test('[sasfit-plots] renderTrend：之後的呼叫把新資料與軸標題寫進既有實例並以 ChartTheme.applyTo 更新', () => {
+    installTrendDom();
+    const chart = Plots.renderTrend(trendConfigOf());
+    const next = trendConfigOf({ conditionName: 'pH' }, SeqView.MEASURE_KEY);
+    assert.equal(Plots.renderTrend(next), chart);
+    assert.equal(created.length, 1);
+    assert.equal(chart.config.data.datasets[0].label, '約化 χ²');
+    assert.equal(chart.config.data.datasets[0].borderColor, ChartTheme.PALETTES.light.series[0], '新 dataset 已上色');
+    assert.equal(chart.config.options.scales.x.title.text, 'pH');
+    assert.equal(chart.config.options.scales.y.title.text, '約化 χ²');
+    assert.deepEqual(chart.updates, ['none']);
+    assert.equal(chart.config.options.plugins.tooltip.callbacks.label({ parsed: { x: 1, y: 2 } }), '約化 χ² 2.0000');
+});
+
+test('[sasfit-plots] renderTrend(null) 銷毀；destroy() 連趨勢圖一起；主圖換模式不動趨勢圖', () => {
+    installTrendDom();
+    const first = Plots.renderTrend(trendConfigOf());
+    assert.equal(Plots.renderTrend(null), null);
+    assert.equal(first.destroyed, true);
+    assert.equal(Plots.getChart('sfSeqTrend'), null);
+    assert.doesNotThrow(() => Plots.renderTrend(null));
+    const second = Plots.renderTrend(trendConfigOf());
+    Plots.render(viewOf());
+    Plots.render(viewOf({ mode: 'kratky' }));
+    assert.equal(second.destroyed, false, '主圖重建不銷毀趨勢圖');
+    assert.equal(Plots.getChart('sfSeqTrend'), second);
+    Plots.destroy();
+    assert.equal(second.destroyed, true);
+    assert.equal(Plots.getChart('sfSeqTrend'), null);
+    assert.equal(Plots.getChart('nope'), null);
+});
+
+test('[sasfit-plots] renderTrend：沒有 Chart 或沒有 canvas → null、不丟錯', () => {
+    assert.equal(Plots.renderTrend(trendConfigOf()), null, 'installDom 的文件沒有 sfSeqTrend');
+    installTrendDom();
+    delete window.Chart;
+    assert.equal(Plots.renderTrend(trendConfigOf()), null);
+    assert.equal(created.length, 0);
+});

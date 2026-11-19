@@ -26,6 +26,9 @@
  *                   { values, status, chi2r, progress: n, ... }（先發 n 個進度事件再 resolve fakeResult）、
  *                   { reject: code }、{ throws: true }（同步丟例外）、{ wait: true }（等 stop() 才以 'stopped' resolve）、
  *                   { raw: 任意值 }（原樣 resolve）。腳本用完後一律收斂。jobs 是收到的 job、stops 是 stop() 次數
+ *   seqState({ steps, weighting, conditions, form, files, outcome, conditionName, options })
+ *                   經 SasFitState.reduce 走完一次序列的狀態（不經執行器）：steps[k] 是第 k 個要擬合的項目的結果——
+ *                   fakeResult 的參數，或 { error: 訊息 }；steps 比項目少時，其餘留在 pending。回傳 { state, form, plan }
  */
 const ui = require('./sasfit-ui-helpers.js');
 
@@ -215,4 +218,38 @@ function seqClient(script = []) {
     return client;
 }
 
-module.exports = { fakeContext, fakeFrames, fakeCanvas, shapePage, restore, seqDatasets, seqFiles, sphereForm, fakeResult, seqClient, SEQ_FILES };
+const DEFAULT_STEPS = [{ values: { radius: 50.12 } }, { values: { radius: 52.07 } }, { values: { radius: 53.95 } }];
+
+function loadedState({ files, conditions, weighting, conditionName }) {
+    const S = globalThis.SasFitState;
+    const entries = files || seqDatasets().map((dataset, i) => ({ fileName: SEQ_FILES[i], dataset, issues: [], notes: {} }));
+    let state = S.reduce(S.initial(), { type: 'addFiles', files: entries });
+    (conditions || []).forEach((value, i) => { state = S.reduce(state, { type: 'setCondition', id: state.files[i].id, value }); });
+    if (weighting !== undefined) state = S.reduce(state, { type: 'setWeighting', mode: weighting });
+    return conditionName === undefined ? state : S.reduce(state, { type: 'setConditionName', name: conditionName });
+}
+
+function seqState({ steps = DEFAULT_STEPS, form = sphereForm(), outcome, options = {}, ...load } = {}) {
+    const S = globalThis.SasFitState;
+    let state = loadedState(load);
+    Object.keys(options).forEach((key) => { state = S.reduce(state, { type: 'setSeqOption', key, value: options[key] }); });
+    const { weighting, maxSteps } = state;
+    const plan = globalThis.SasFitSequence.plan({ files: state.files, selected: state.seq.selected, options: state.seq.options, range: state.range, weighting, form });
+    state = S.reduce(state, { type: 'seqStarted', plan, form, settings: { weighting, maxSteps, rangeEdited: state.range !== null && state.range.userEdited } });
+    const todo = plan.items.filter((item) => item.skip === null);
+    let last = null;
+    todo.slice(0, steps.length).forEach((item, k) => {
+        const step = steps[k];
+        const dataset = state.files.find((file) => file.id === item.id).dataset;
+        const job = globalThis.SasFitJobs.fitJob(form, dataset, { range: item.range, weighting, maxSteps });
+        const result = step.error === undefined ? fakeResult({ job, ...step }) : null;
+        const row = { id: item.id, state: result === null ? 'error' : 'done', result, range: item.range,
+            note: result === null ? step.error : item.note, startedFrom: state.seq.options.chain ? last : null };
+        state = S.reduce(state, { type: 'seqStep', id: item.id, row, next: k + 1 < todo.length ? todo[k + 1].id : null });
+        if (globalThis.SasFitSequence.isUsableStart(result)) last = item.id;
+    });
+    const how = outcome || (steps.length < todo.length ? 'stopped' : 'finished');
+    return { state: S.reduce(state, { type: 'seqSettled', outcome: how }), form, plan };
+}
+
+module.exports = { loadedState, seqState, fakeContext, fakeFrames, fakeCanvas, shapePage, restore, seqDatasets, seqFiles, sphereForm, fakeResult, seqClient, SEQ_FILES };
