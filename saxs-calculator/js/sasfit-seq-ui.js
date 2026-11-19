@@ -15,7 +15,17 @@
  *             and fit tabs and only read here -- or why it cannot run
  *   table     ONE table (SasFitSeqView.headHtml / bodyHtml) that both selects
  *             the files and lists their results; ticks by event delegation
- *             (data-action "pick"), "all" / "none"
+ *             (data-action "pick"), "all" / "none". Table and trend chart are
+ *             drawn again only when something they show was replaced.
+ *   trend     the trend chart (SasFitSeqView.trend / trendConfig, drawn by
+ *             ctx.deps.plots.renderTrend) and the choice of its y; hidden
+ *             while there is no point to draw. It is kept up to date while
+ *             the segment is not on screen (Chart.js sizes itself when shown).
+ *   load      "load" of a row (data-action "load") makes that file the fit
+ *             target and puts its fitted values on top of the form the last
+ *             run started from (SasFitSeqView.loadForm says why that form).
+ *             The revert point of the fit tab is dropped: it belonged to a
+ *             form that is gone.
  *
  *   run       "run" plans the sequence, locks the page (action seqStarted) and
  *             hands the plan to SasFitSequence.run with the Worker client as
@@ -105,6 +115,10 @@
         cannotStart: '序列擬合無法開始，請重新整理頁面後再試',
         endFailed: '序列擬合結束時發生未預期的錯誤，部分結果可能沒有顯示；請重新整理頁面後再試',
         rowError: '出錯',
+        omitted: (count) => count + ' 筆沒有畫出（擬合失敗、被跳過、未完成或沒有條件值）',
+        byOrder: '沒有條件值，橫軸改用序號',
+        loaded: (name) => '已載入 ' + name + ' 的擬合參數（模型與上下限回到序列開始時的設定）',
+        cannotLoad: (name) => name + ' 的結果無法載入：它不是以序列開始時的模型與固定參數擬合的；請到「資料」把它設為擬合對象查看',
     });
 
     const isObject = (v) => v !== null && typeof v === 'object';
@@ -192,17 +206,53 @@
         });
     }
 
+    /** true when one of `inputs` was replaced since the last call with this key (the state is immutable: identity is enough). */
+    function changed(ui, key, inputs) {
+        const seen = ui.store.get()[key];
+        if (seen !== null && inputs.every((input, i) => input === seen[i])) return false;
+        ui.store.set({ [key]: Object.freeze(inputs) });
+        return true;
+    }
+
     function renderTable(ui, state, locked) {
         const { ctx } = ui;
         const view = globalThis.SasFitSeqView;
-        const rows = view.tableRows(state);
-        const empty = rows.length === 0;
-        ctx.setHtml(ctx.el('sfSeqHead'), view.headHtml(view.columns(state), state.conditionName));
-        ctx.setHtml(ctx.el('sfSeqBody'), view.bodyHtml(rows, { locked }));
+        const empty = !state.files.some((file) => file.dataset !== null);
+        // refresh() also runs while the user types in the parameter table: 500 rows are built only when they changed
+        if (changed(ui, 'tableInputs', [state.files, state.fitResults, state.seq, state.conditionName, state.weighting, state.fit.datasetId, locked])) {
+            ctx.setHtml(ctx.el('sfSeqHead'), view.headHtml(view.columns(state), state.conditionName));
+            ctx.setHtml(ctx.el('sfSeqBody'), view.bodyHtml(view.tableRows(state), { locked }));
+        }
         ctx.el('sfSeqEmpty').textContent = TEXT.noData;
         ctx.el('sfSeqEmpty').hidden = !empty;
         ctx.el('sfSeqWrapper').hidden = empty;
         ['sfSeqAll', 'sfSeqNone'].forEach((id) => { ctx.el(id).disabled = locked || empty; });
+    }
+
+    /** The y the chart shows: the stored one while it is still a choice, else the first. */
+    function chosenY(options, y) {
+        if (options.some((option) => option.value === y)) return y;
+        return options.length === 0 ? '' : options[0].value;
+    }
+
+    function renderTrend(ui, state) {
+        const { ctx } = ui;
+        const { seq } = state;
+        if (!changed(ui, 'trendInputs', [state.files, state.fitResults, seq.rows, seq.order, seq.form, seq.y, state.conditionName])) return;
+        const view = globalThis.SasFitSeqView;
+        const options = view.yOptions(state);
+        const y = chosenY(options, seq.y);
+        const trend = view.trend(state, y);
+        const drawn = trend.points.length > 0;
+        const select = ctx.el('sfSeqY');
+        ctx.setHtml(select, view.yOptionsHtml(options, y));
+        if (select.value !== y) select.value = y;
+        ctx.el('sfSeqTrendBox').hidden = !drawn;
+        ctx.el('sfSeqTrend').setAttribute('aria-label', trend.label);       // Chart.js draws pixels only: the label carries the trend
+        ctx.el('sfSeqTrendNote').textContent = !drawn ? '' : [trend.omitted > 0 ? TEXT.omitted(trend.omitted) : '', trend.byOrder ? TEXT.byOrder : '']
+            .filter((part) => part !== '').join('；');
+        const { plots } = ctx.deps;
+        if (isObject(plots) && typeof plots.renderTrend === 'function') plots.renderTrend(drawn ? view.trendConfig(trend) : null);
     }
 
     /** The summary line (or why a sequence cannot run), the hints of the plan and the run button. */
@@ -212,6 +262,8 @@
         ctx.el('sfSeqLock').hidden = !locked;
         if (locked) {                                     // the plan of a run in progress is in the state, not here
             ctx.el('sfSeqRun').disabled = true;
+            // during a sequence: the warnings of ITS plan; what the run before it left to say is over
+            if (seqRunning(state)) ctx.setHtml(ctx.el('sfSeqHints'), globalThis.SasFitHtml.hintsHtml(runHints(state)));
             return;
         }
         const ready = readiness(ui, state);
@@ -223,10 +275,17 @@
         ctx.setHtml(ctx.el('sfSeqHints'), globalThis.SasFitHtml.hintsHtml(hints));
     }
 
+    /** The warnings of the running sequence's plan and how many files it skips. */
+    function runHints(state) {
+        const skipped = Object.values(state.seq.rows).filter((row) => row.state === 'skipped');
+        const hints = state.seq.warnings.map((text, i) => ({ id: 'seq-warning-' + i, tone: 'warn', text }));
+        return skipped.length === 0 ? hints : hints.concat([{ id: 'seq-skip', tone: 'warn', text: TEXT.willSkip(skipped.length, skipped[0].note) }]);
+    }
+
     /** What the last run left to say (which result went into the form); gone once the rows of that run are. */
     function endHints(ui, state) {
         const { note, noteRows } = ui.store.get();
-        return note !== '' && noteRows === state.seq.rows ? [{ id: 'seq-end', tone: 'ok', text: note }] : [];
+        return note !== '' && noteRows === state.seq.rows ? [{ id: 'seq-end', tone: ui.store.get().noteTone, text: note }] : [];
     }
 
     function render(ui) {
@@ -234,6 +293,7 @@
         const locked = isRunning(state);
         renderOptions(ui, state, locked);
         renderTable(ui, state, locked);
+        renderTrend(ui, state);
         renderReadiness(ui, state, locked);
     }
 
@@ -377,7 +437,7 @@
         const settled = ctx.getState().seq.outcome;        // what the state accepted
         const { finished, total } = store.get();
         const note = settled === 'aborted' ? '' : loadActive(ui);
-        store.set({ current: null, step: '', note, noteRows: ctx.getState().seq.rows });
+        store.set({ current: null, step: '', note, noteTone: 'ok', noteRows: ctx.getState().seq.rows });
         const text = TEXT[settled === 'finished' ? 'finished' : (settled === STOPPED ? 'stopped' : 'aborted')](finished, total);
         // the fit bar's progress line is ours to end: blank after a finished run (its measure line is back), else why it ended
         showProgress(ui, settled === 'finished' ? '' : (settled === STOPPED ? text : TEXT.abortedBar));
@@ -505,6 +565,32 @@
         }
     }
 
+    /** "Load" of a row: that file becomes the fit target and the form becomes the run's form with its fitted values. */
+    function loadRow(ui, id) {
+        const { ctx, store } = ui;
+        const state = ctx.getState();
+        if (isRunning(state) || !state.files.some((file) => file.id === id && file.dataset !== null)) return;
+        const name = fileName(state, id);
+        const form = globalThis.SasFitSeqView.loadForm(state, id);
+        if (form === null) {                               // the button is disabled then: this is the second line of defence
+            store.set({ note: TEXT.cannotLoad(name), noteTone: 'warn', noteRows: state.seq.rows });
+            ctx.refresh();
+            return;
+        }
+        ctx.dispatch({ type: 'setActive', id }, { silent: true });
+        ctx.setForm(form);
+        ctx.fit.forgetRevert();                            // "the parameters before the fit" belonged to the form just replaced
+        store.set({ note: TEXT.loaded(name), noteTone: 'ok', noteRows: state.seq.rows });
+        ctx.refresh();                                     // the focus stays on the button: ctx.setHtml finds it again by its id
+        ctx.preview.schedule();
+        ctx.el('sfSeqLive').textContent = TEXT.loaded(name);
+    }
+
+    function onBodyClick(ui, event) {
+        const target = isObject(event.target) && typeof event.target.closest === 'function' ? event.target.closest('[data-action]') : null;
+        if (target !== null && target.dataset.action === 'load') loadRow(ui, target.dataset.id);
+    }
+
     function onBodyChange(ui, event) {
         const target = isObject(event.target) && typeof event.target.closest === 'function' ? event.target.closest('[data-action]') : null;
         if (target === null || target.dataset.action !== 'pick') return;
@@ -520,6 +606,8 @@
     function bind(ui) {
         const { ctx } = ui;
         ctx.el('sfSeqBody').addEventListener('change', (event) => onBodyChange(ui, event));
+        ctx.el('sfSeqBody').addEventListener('click', (event) => onBodyClick(ui, event));
+        ctx.el('sfSeqY').addEventListener('change', (event) => change(ui, { type: 'setSeqY', name: event.target.value }));
         ctx.el('sfSeqAll').addEventListener('click', () => change(ui, { type: 'setSeqAll', selected: true }));
         ctx.el('sfSeqNone').addEventListener('click', () => change(ui, { type: 'setSeqAll', selected: false }));
         ctx.el('sfSeqRun').addEventListener('click', () => start(ui));
@@ -534,7 +622,7 @@
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
             planInputs: null, plan: null, barText: '', run: 0, total: 0, finished: 0, current: null, step: '',
-            note: '', noteRows: null, stopRequested: false, refreshTimer: null, liveTimer: null, stopTimer: null,
+            note: '', noteTone: 'ok', noteRows: null, tableInputs: null, trendInputs: null, stopRequested: false, refreshTimer: null, liveTimer: null, stopTimer: null,
         }) });
         bind(ui);
         return Object.freeze({

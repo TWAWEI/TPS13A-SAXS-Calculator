@@ -22,7 +22,15 @@
  *       since. A result of another model than the run's form shows no numbers
  *       and cannot be loaded. Skipped, failed and unfinished rows say why.
  *       canLoad: the row shows a result that can be put on top of the run's
- *       form snapshot (SasFitJobs.applyResult needs the same model spec).
+ *       form snapshot (loadForm is not null).
+ *   loadForm(state, id) -> form | null
+ *       The form that loading the row of file `id` gives: the form the last
+ *       run started from with the fitted values of state.fitResults[id]
+ *       written in. The snapshot is the base because a FitResult carries
+ *       neither bounds nor fit ticks, and SasFitJobs.applyResult refuses a
+ *       form of another model spec -- the form on the page may be anything by
+ *       now. null when the row shows no result, or when the result does not
+ *       describe the form so made (a later single fit with other fixed values).
  *   headHtml(columns, conditionName) -> the <tr> of the table head
  *   bodyHtml(rows, { locked })       -> the <tr>s of the body. The checkbox
  *       (sfSeqPick_<id>) and the load button (sfSeqLoad_<id>) carry ids, so
@@ -118,6 +126,20 @@
         return { seqRow, result: sameSpec(seq.form, current) ? current : null, stale: current !== seqRow.result, current };
     }
 
+    /** See the header. */
+    function loadForm(state, id) {
+        const shown = shownOf(state, id);
+        if (shown.result === null) return null;
+        const jobs = globalThis.SasFitJobs;
+        try {
+            const form = jobs.applyResult(state.seq.form, shown.result);
+            // a result of the run itself fits its own snapshot by construction: only a replaced one needs the full comparison
+            return !shown.stale || jobs.resultMatchesForm(form, shown.result) ? form : null;
+        } catch (err) {
+            return null;                      // the values cannot be written into that form: nothing to load
+        }
+    }
+
     /** The files with data: those of the last run in its order, then the rest in list order. */
     function orderedFiles(state) {
         const withData = state.files.filter((file) => file.dataset !== null);
@@ -193,7 +215,7 @@
             return Object.freeze({
                 id: file.id, fileName: file.fileName,
                 condition: isNumber(file.condition) ? globalThis.SasFitFormat.display(String(file.condition)) : '',
-                selected: selected.indexOf(file.id) >= 0, canLoad: result !== null,
+                selected: selected.indexOf(file.id) >= 0, canLoad: result !== null && loadForm(state, file.id) !== null,
                 cells: Object.freeze(names.map((name) => cellOf(result, name))),
                 measure: result === null ? globalThis.SasFitFormat.MISSING : numberText(result.chi2r, MEASURE_DIGITS),
                 status: statusOf(state, file.id, shown), note: noteOf(state, shown.seqRow), stale: shown.stale,
@@ -329,6 +351,6 @@
     }
 
     globalThis.SasFitSeqView = Object.freeze({
-        MEASURE_KEY, columns, tableRows, headHtml, bodyHtml, pickId, loadId, yOptions, yOptionsHtml, trend, trendConfig,
+        MEASURE_KEY, columns, tableRows, loadForm, headHtml, bodyHtml, pickId, loadId, yOptions, yOptionsHtml, trend, trendConfig,
     });
 })();

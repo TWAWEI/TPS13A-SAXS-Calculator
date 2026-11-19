@@ -207,8 +207,9 @@ function fakeClient() {
 
 function fakePlots() {
     const plots = {
-        views: [], resets: 0, listener: null,
+        views: [], resets: 0, listener: null, trends: [],
         render(view) { plots.views.push(view); return null; },
+        renderTrend(config) { plots.trends.push(config); return null; },
         resetZoom() { plots.resets += 1; plots.zoom(false); },
         setZoomListener(fn) { plots.listener = fn; },
         /** What the real module does after a zoom, a pan or a reset of the main chart. */

@@ -272,8 +272,24 @@
     margin: 0;
 }
 
+/* 左欄只有約 390 px：欄多時表格一定要左右捲動。檔名欄固定在左邊，捲到哪一欄都知道是哪個檔 */
+.sf-seq-table .sf-seq-name,
+.sf-seq-table thead th:nth-child(2) {
+    position: sticky;
+    left: 0;
+    background: var(--color-bg-card);
+}
+
+.sf-seq-table .sf-seq-name {
+    z-index: 1;
+}
+
+.sf-seq-table thead th:nth-child(2) {
+    z-index: 2;                        /* 表頭的檔名格同時固定在上與左：蓋過捲過去的表頭與列 */
+}
+
 .sf-seq-name {
-    min-width: 10.5rem;
+    min-width: 10rem;
     font-size: 0.8125rem;
     font-weight: 400;
     letter-spacing: 0;
@@ -312,6 +328,22 @@
     text-align: left;
 }
 
+/* 條件名稱可以很長（例：Temperature (K)）：表頭可折行，不把數字欄撐寬（寫在上面的 nowrap 之後才蓋得過） */
+.sf-seq-table thead th:nth-child(3) {
+    white-space: normal;
+}
+
+/* border-collapse 的格線不會跟著 sticky 的儲存格走：固定的表頭與檔名欄改用內陰影畫底線 */
+.sf-seq-table thead th,
+.sf-seq-table tbody .sf-seq-name {
+    border-bottom: none;
+    box-shadow: inset 0 -1px 0 var(--color-separator);
+}
+
+.sf-seq-table tbody tr:last-child .sf-seq-name {
+    box-shadow: none;
+}
+
 .sf-seq-value {
     display: block;
     color: var(--color-text-primary);
@@ -326,8 +358,9 @@
     color: var(--color-text-muted);
 }
 
+/* 寬到放得下「初值來自 <一般長度的檔名>」一行：註記折成三行會把每一列撐高 */
 .sf-seq-status {
-    min-width: 8.5rem;
+    min-width: 12.5rem;
 }
 
 .sf-seq-status .tile-chip {
@@ -341,6 +374,7 @@
 
 .sf-seq-note {
     display: block;
+    overflow-wrap: anywhere;
     margin-top: 0.125rem;
     font-size: 0.75rem;
     color: var(--color-text-muted);

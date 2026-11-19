@@ -320,3 +320,24 @@ test('[sasfit-seq-view] trendConfig：scatter＋連線、tpsSeries 0、sfErrorBa
     assert.equal(tip, 'radius ' + Format.display(Format.number(52.0712345, 5)));
     assert.ok(Object.isFrozen(trend));
 });
+
+// ---------------------------------------------------------------- 點列載入用的表單
+test('[sasfit-seq-view] loadForm：序列的表單快照＋該列目前的擬合值；結果對不上快照（固定參數不同、另一個模型）或沒有結果 → null', () => {
+    const { state, form } = seqState();
+    const Jobs = globalThis.SasFitJobs;
+    const loaded = View.loadForm(state, 'd2');
+    assert.deepEqual(loaded, Jobs.applyResult(form, state.fitResults.d2));
+    assert.equal(Jobs.resultMatchesForm(loaded, state.fitResults.d2), true);
+    assert.equal(View.loadForm(loadedState({}), 'd1'), null, '還沒跑過');
+    assert.equal(View.loadForm(seqState({ steps: [{}, { error: 'x' }, {}] }).state, 'd2'), null, '出錯的列');
+    // 之後的單筆擬合：同一個模型、同樣的固定參數 → 仍可載入；固定參數（sld）不同 → 不能（載入後表單會對不上結果）
+    const same = fakeResult({ values: { scale: 1, background: 0.001, radius: 61.5 }, names: ['scale', 'background', 'radius'] });
+    const sameState = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: same }) });
+    assert.equal(Number(View.loadForm(sameState, 'd2').fields.radius.value), 61.5);
+    const other = fakeResult({ values: { scale: 1, background: 0.001, radius: 61.5, sld: 2 }, names: ['scale', 'background', 'radius'] });
+    const otherState = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: other }) });
+    assert.equal(View.loadForm(otherState, 'd2'), null);
+    assert.equal(rowOf(otherState, 'd2').canLoad, false);
+    assert.equal(rowOf(otherState, 'd2').stale, true);
+    assert.match(rowOf(otherState, 'd2').cells[2].value, /^61\.5/, '數字照樣顯示');
+});

@@ -370,6 +370,21 @@ test('[seq-ui] 結束後：擬合對象沒勾選 → 表單不變，提示可逐
     assert.equal(aborted.$('sfSeqHints').querySelector('[data-hint="seq-end"]'), null);
 });
 
+test('[seq-ui] 再執行一次：進行中只顯示這次排程的警告，上一次留下的說明不再顯示', async () => {
+    const page = m4.seqPage({ script: RADII.concat([{ wait: true }]) });
+    page.ctx.dispatch({ type: 'setCondition', id: 'd3', value: null });
+    run(page);
+    await settle();
+    assert.ok(page.$('sfSeqHints').querySelector('[data-hint="seq-end"]'));
+    run(page);
+    await settle();
+    assert.equal(page.Section.getState().seq.phase, 'running');
+    assert.equal(page.$('sfSeqHints').querySelector('[data-hint="seq-end"]'), null);
+    assert.match(page.$('sfSeqHints').descendants().map((node) => node.textContent).join(' '), /1 個檔沒有條件值，排在最後/);
+    page.$('sfFitStop').fire('click');
+    await settle();
+});
+
 // ---------------------------------------------------------------- fit-ui 的兩個掛鉤
 test('[sasfit-fit-ui] forgetRevert()：還原鈕停用、說明留白', async () => {
     const page = m4.seqPage({ script: [{ values: { radius: 49 } }] });
