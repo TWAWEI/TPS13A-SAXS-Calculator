@@ -11,36 +11,75 @@ const {
 } = require('./load.js');
 const { FIT_RESULT_FIELDS } = require('./sasfit-fit-helpers.js');
 const {
-    esc, count, ID_RE, TAG_RE, ATTR_RE, ALLOWED_TAGS, ALLOWED_ATTRS, checkMarkup, openTags, byAttr, idsOf, textOf, fitResult, fileRow, tableOf, fieldOf, tileLabels, sldView,
+    esc, count, ID_RE, TAG_RE, ATTR_RE, ALLOWED_TAGS, ALLOWED_ATTRS, checkMarkup, openTags, byAttr, idsOf, textOf, fitResult, fileRow, tableOf, fieldOf, tileLabels, sldView, allResults,
 } = require('./sasfit-html-helpers.js');
 
 // ------------------------------------------------------------------ results
 
 
-test('resultsHtml: one hero tile for chi2r with the status, one regular tile per fitted parameter', () => {
+const CHI2 = 'χ<sup>2</sup><sub>r</sub>';
+const both = (r, ctx) => allResults(H, r, ctx);
+
+test('results: one hero tile for chi2r with the status (resultsHtml), one regular tile per fitted parameter (resultParamsHtml)', () => {
     const r = fitResult();
-    const html = H.resultsHtml(r, { matches: true, fileName: 'a.dat' });
-    checkMarkup(html, 'results');
-    assert.equal(count(html, 'tile--hero'), 1);
-    assert.deepEqual(tileLabels(html), ['χ²ᵣ', 'scale', 'radius', 'radius 的 PD 寬度']);
-    assert.equal(html.match(/<div class="tile(?: tile--hero)?">/g).length, 4, 'fixed parameters have no tile');
-    assert.equal(count(html, '<div class="tiles">'), 1);
-    const hero = ResultTiles.tile({ label: 'χ²ᵣ', value: '1.10', hero: true, chip: { tone: 'ok', text: '已收斂' },
+    const head = H.resultsHtml(r, { matches: true, fileName: 'a.dat' });
+    const params = H.resultParamsHtml(r, {});
+    checkMarkup(head, 'results');
+    checkMarkup(params, 'result params');
+    assert.equal(count(head, 'tile--hero'), 1);
+    assert.equal(count(params, 'tile--hero'), 0);
+    assert.deepEqual(tileLabels(head), ['χ2r'], 'chi-square with real super- and subscripts');
+    assert.deepEqual(tileLabels(params), ['scale', 'radius', 'radius 的多分散寬度']);
+    assert.equal(params.match(/<div class="tile">/g).length, 3, 'fixed parameters have no tile');
+    const hero = ResultTiles.tile({ label: CHI2, value: '1.10', hero: true, chip: { tone: 'ok', text: '已收斂' },
         sub: '自由度 97・100 點・12 次迭代' });
-    assert.ok(html.includes(hero), html);
-    assert.ok(html.includes(ResultTiles.tile({ label: 'scale', value: '1.234', sub: '± 0.012' })) ||
-        html.includes(ResultTiles.tile({ label: 'scale', value: '1.235', sub: '± 0.012' })));
-    assert.ok(html.includes(ResultTiles.tile({ label: 'radius', value: '50.12', unit: 'Å', sub: '± 0.50' })));
-    assert.ok(html.includes(ResultTiles.tile({ label: 'radius 的 PD 寬度', value: '0.100', sub: '± 0.010' })));
-    assert.ok(html.includes('a.dat'));
-    assert.ok(!/參數已修改/.test(html));
+    assert.ok(head.includes(hero), head);
+    assert.ok(params.includes(ResultTiles.tile({ label: 'scale', value: '1.234', sub: '± 0.012' })) ||
+        params.includes(ResultTiles.tile({ label: 'scale', value: '1.235', sub: '± 0.012' })));
+    assert.ok(params.includes(ResultTiles.tile({ label: 'radius', value: '50.12', unit: 'Å', sub: '± 0.50' })));
+    assert.ok(params.includes(ResultTiles.tile({ label: 'radius 的多分散寬度', value: '0.100', sub: '± 0.010' })));
+    assert.ok(head.includes('a.dat'));
+    assert.ok(!/參數已改動/.test(head));
 });
 
-test('resultsHtml: the chip follows statusLabel and is never ok while chi2r gives reason for doubt (spec 5.7 item 1)', () => {
+test('results: the tiles are a list for screen readers (role list / listitem), the hero in a list of its own', () => {
+    const r = fitResult();
+    const head = H.resultsHtml(r, { matches: true, fileName: 'a' });
+    const params = H.resultParamsHtml(r, {});
+    assert.ok(head.includes('<div class="tiles sf-tiles sf-tiles--hero" role="list"><div class="sf-tile-item" role="listitem"><div class="tile tile--hero">'));
+    assert.ok(params.startsWith('<div class="tiles sf-tiles" role="list"><div class="sf-tile-item" role="listitem"><div class="tile">'));
+    assert.equal(count(params, 'role="listitem"'), 3);
+    assert.equal(count(head, 'role="listitem"'), 1);
+});
+
+test('resultParamsHtml: more than four fitted parameters become a read-only list; still exactly one hero tile on the page', () => {
+    const names = ['scale', 'background', 'radius', 'radius_pd', 'thickness'];
+    const errors = Object.fromEntries(names.map((n) => [n, 0.01]));
+    const many = fitResult({ names, errors, errorsScaled: errors });
+    const list = H.resultParamsHtml(many, {});
+    checkMarkup(list, 'result list');
+    assert.equal(count(list, '<div class="tile'), 0);
+    assert.ok(/result-list/.test(list));
+    assert.equal(list, ResultTiles.rows([
+        { label: 'scale', value: '1.234', unit: '', note: ['± 0.010'] },
+        { label: 'background', value: '0.00100', unit: '', note: ['± 0.010', '誤差大於數值：與 0 無法區分，或無法由這組資料決定'] },
+        { label: 'radius', value: '50.123', unit: 'Å', note: ['± 0.010'] },
+        { label: 'radius 的多分散寬度', value: '0.100', unit: '', note: ['± 0.010'] },
+        { label: 'thickness', value: '10.000', unit: 'Å', note: ['± 0.010'] },
+    ]));
+    assert.equal(count(both(many, { matches: true, fileName: 'a' }), 'tile--hero'), 1);
+    const four = fitResult({ names: names.slice(0, 4), errors, errorsScaled: errors });
+    assert.equal(count(H.resultParamsHtml(four, {}), '<div class="tile">'), 4, 'four still fit as tiles');
+    assert.equal(H.resultParamsHtml(null, {}), '');
+    assert.equal(H.resultParamsHtml(fitResult({ status: 'stopped' }), {}), '');
+    assert.equal(H.resultParamsHtml(fitResult({ names: [], errors: {}, errorsScaled: {} }), {}), '');
+});
+
+test('resultsHtml: the chip follows statusLabel and says in words why a converged fit is doubtful (spec 5.7 item 1; not by colour alone)', () => {
     const chipOf = (r) => /<span class="tile-chip tile-chip--(\w+)">([^<]*)</.exec(H.resultsHtml(r, { matches: true, fileName: 'a' })).slice(1);
     assert.deepEqual(chipOf(fitResult()), ['ok', '已收斂']);
-    assert.deepEqual(chipOf(fitResult({ chi2r: Hints.CHI2R_WARN * 2 })), ['warn', '已收斂']);
-    assert.deepEqual(chipOf(fitResult({ chi2r: Hints.CHI2R_LOW / 2 })), ['warn', '已收斂']);
+    assert.deepEqual(chipOf(fitResult({ chi2r: Hints.CHI2R_WARN * 2 })), ['warn', '已收斂・約化 χ² 偏大']);
+    assert.deepEqual(chipOf(fitResult({ chi2r: Hints.CHI2R_LOW / 2 })), ['warn', '已收斂・約化 χ² 偏小']);
     assert.deepEqual(chipOf(fitResult({ status: 'maxiter' })), ['warn', '未收斂（達最大步數）']);
     assert.deepEqual(chipOf(fitResult({ status: 'failed', blockedByNonFinite: true })), ['error', '失敗']);
     [fitResult(), fitResult({ chi2r: 1e4 }), fitResult({ status: 'failed' })].forEach((r) => {
@@ -49,57 +88,60 @@ test('resultsHtml: the chip follows statusLabel and is never ok while chi2r give
     });
 });
 
-test('resultsHtml: errors as the page displays them; at a bound and not computable say so', () => {
-    const scaled = H.resultsHtml(fitResult({ displayErrorsScaled: true }), { matches: true, fileName: 'a' });
+test('results: errors as the page displays them; at a bound (which one) and not computable say so', () => {
+    const scaled = both(fitResult({ displayErrorsScaled: true }), { matches: true, fileName: 'a' });
     assert.ok(scaled.includes(ResultTiles.tile({ label: 'radius', value: '50.1', unit: 'Å', sub: ['± 1.0'] })));
-    const special = H.resultsHtml(fitResult({ atBound: { radius: 'lower' }, errors: { scale: NaN, radius: 0.5, radius_pd: 0.01 } }),
+    const special = both(fitResult({ atBound: { radius: 'lower' }, errors: { scale: NaN, radius: 0.5, radius_pd: 0.01 } }),
         { matches: true, fileName: 'a' });
-    assert.ok(special.includes(ResultTiles.tile({ label: 'radius', value: '50.123', unit: 'Å', sub: Hints.AT_BOUND_ERROR_TEXT })));
+    assert.ok(special.includes(ResultTiles.tile({ label: 'radius', value: '50.123', unit: 'Å', sub: ['貼下限，誤差無意義'] })));
     assert.ok(special.includes(ResultTiles.tile({ label: 'scale', value: '1.2345', sub: '誤差無法計算' })));
+    const upper = both(fitResult({ atBound: { radius: 'upper' } }), { matches: true, fileName: 'a' });
+    assert.ok(upper.includes(ResultTiles.tile({ label: 'radius', value: '50.123', unit: 'Å', sub: ['貼上限，誤差無意義'] })));
 });
 
-test('resultsHtml: units come from the model and the structure factor of the result', () => {
+test('results: units come from the model and the structure factor of the result', () => {
     const r = fitResult({
         params: { scale: 1, background: 0, sld: 9.4, radius: 50, charge: 19, temperature: 318, volfraction: 0.2, lowq_scale: 1 },
-        names: ['sld', 'charge', 'temperature', 'volfraction', 'lowq_scale'],
-        errors: { sld: 0.1, charge: 1, temperature: 2, volfraction: 0.01, lowq_scale: 0.1 },
-        errorsScaled: { sld: 0.1, charge: 1, temperature: 2, volfraction: 0.01, lowq_scale: 0.1 },
+        names: ['sld', 'charge', 'temperature', 'volfraction'],
+        errors: { sld: 0.1, charge: 1, temperature: 2, volfraction: 0.01 },
+        errorsScaled: { sld: 0.1, charge: 1, temperature: 2, volfraction: 0.01 },
         settings: { ...fitResult().settings, modelSpec: { model: 'sphere', structure: 'hayter_msa', lowQPowerLaw: true } },
     });
-    const html = H.resultsHtml(r, { matches: true, fileName: 'a' });
+    const html = H.resultParamsHtml(r, {});
     const units = html.match(/<div class="tile-label">[^<]*<\/div><div class="tile-value">[^<]*(?:<span class="tile-unit">[^<]*)?/g)
         .map((s) => [/tile-label">([^<]*)/.exec(s)[1], (/tile-unit">([^<]*)/.exec(s) || [null, ''])[1]]);
-    assert.deepEqual(units, [['χ²ᵣ', ''], ['sld', '10⁻⁶ Å⁻²'], ['charge', 'e（基本電荷）'], ['temperature', 'K'], ['volfraction', ''], ['lowq_scale', '']]);
+    assert.deepEqual(units, [['sld', '10⁻⁶ Å⁻²'], ['charge', 'e（基本電荷）'], ['temperature', 'K'], ['volfraction', '']]);
 });
 
-test('resultsHtml: background is in cm⁻¹ when the data are on absolute scale, without a unit otherwise', () => {
+test('results: background is in cm⁻¹ when the data are on absolute scale, without a unit otherwise', () => {
     const r = fitResult({ names: ['scale', 'background'], errors: { scale: 0.01, background: 0.0002 }, errorsScaled: { scale: 0.01, background: 0.0002 } });
-    const tileOf = (ctx) => /<div class="tile"><div class="tile-label">background<\/div>.*?<\/div><\/div>/.exec(H.resultsHtml(r, ctx))[0];
-    assert.equal(tileOf({ matches: true, fileName: 'a', absolute: true }),
+    const tileOf = (ctx) => /<div class="tile"><div class="tile-label">background<\/div>.*?<\/div><\/div>/.exec(H.resultParamsHtml(r, ctx))[0];
+    assert.equal(tileOf({ absolute: true }),
         ResultTiles.tile({ label: 'background', value: '0.00100', unit: 'cm⁻¹', sub: ['± 0.00020'] }));
-    assert.equal(tileOf({ matches: true, fileName: 'a' }), ResultTiles.tile({ label: 'background', value: '0.00100', sub: ['± 0.00020'] }));
+    assert.equal(tileOf({}), ResultTiles.tile({ label: 'background', value: '0.00100', sub: ['± 0.00020'] }));
 });
 
-test('resultsHtml: a tile never rounds its value away -- the three cases of the UI review', () => {
+test('results: a tile never rounds its value away -- the three cases of the UI review', () => {
     const r = fitResult({
         params: { scale: 0.04871, background: -0.9626, sld: 1, radius: 50, charge: 72.7417 },
         names: ['scale', 'background', 'charge'],
         errors: { scale: 1.0, background: 3.5, charge: 5700 }, errorsScaled: { scale: 1.0, background: 3.5, charge: 5700 },
         settings: { ...fitResult().settings, modelSpec: { model: 'sphere', structure: 'hayter_msa', lowQPowerLaw: false } },
     });
-    const html = H.resultsHtml(r, { matches: true, fileName: 'a', absolute: true });
-    const NOTE = '誤差大於數值，此參數無法由資料決定';
+    const html = both(r, { matches: true, fileName: 'a', absolute: true });
+    // error >= |value| covers two cases: a value that cannot be told from 0, and a parameter the data do not determine
+    const NOTE = '誤差大於數值：與 0 無法區分，或無法由這組資料決定';
     assert.ok(html.includes(ResultTiles.tile({ label: 'charge', value: '72.7', unit: 'e（基本電荷）', sub: ['± 5700', NOTE] })), html);
     assert.ok(html.includes(ResultTiles.tile({ label: 'scale', value: '0.0487', sub: ['± 1.0', NOTE] })));
     assert.ok(html.includes(ResultTiles.tile({ label: 'background', value: '−0.963', unit: 'cm⁻¹', sub: ['± 3.5', NOTE] })));
     assert.doesNotMatch(html, /-\d/, 'no ASCII minus in front of a digit');
-    const ill = H.resultsHtml({ ...r, illConditioned: true }, { matches: true, fileName: 'a' });
+    const ill = both({ ...r, illConditioned: true }, { matches: true, fileName: 'a' });
     assert.ok(ill.includes(ResultTiles.tile({ label: 'scale', value: '0.0487', sub: ['± 1.0', NOTE] })), '1.0 is not > 1000 x 0.0487');
-    const lost = H.resultsHtml({ ...r, illConditioned: true, errors: { ...r.errors, scale: 1e8 } }, { matches: true, fileName: 'a' });
+    const lost = both({ ...r, illConditioned: true, errors: { ...r.errors, scale: 1e8 } }, { matches: true, fileName: 'a' });
     assert.ok(lost.includes(ResultTiles.tile({ label: 'scale', value: '0.0487', sub: ['誤差無法決定', NOTE] })));
 });
 
-test('resultsHtml: the tile shows the value that is written into the parameter table (same rounding)', () => {
+test('results: the tile shows the value that is written into the parameter table (same rounding)', () => {
     const J = globalThis.SasFitJobs;
     const form = F.create('sphere');
     const exact = { scale: 1.0013090858486413, background: 0.0013628359882335626, radius: 49.99493550916302 };
@@ -109,7 +151,7 @@ test('resultsHtml: the tile shows the value that is written into the parameter t
         settings: { ...fitResult().settings, modelSpec: J.modelSpec(form) },
     });
     const applied = J.applyResult(form, r);
-    const html = H.resultsHtml(r, { matches: true, fileName: 'a' });
+    const html = H.resultParamsHtml(r, {});
     const shown = Object.fromEntries(Object.keys(exact).map((name) => [name,
         new RegExp('tile-label">' + name + '</div><div class="tile-value">([^<]*)').exec(html)[1]]));
     assert.deepEqual(shown, { scale: '1.0013', background: '0.00136', radius: '49.9949' });
@@ -120,16 +162,22 @@ test('resultsHtml: the tile shows the value that is written into the parameter t
     });
 });
 
-test('resultsHtml: a result the form no longer matches is announced above the tiles', () => {
+test('resultsHtml: a result that is not the one of the current parameters says so above the tile (changed since, or a new fit is running)', () => {
+    const STALE = '參數已改動，以下是上一次擬合的結果（不是目前參數的）';
     const html = H.resultsHtml(fitResult(), { matches: false, fileName: 'a.dat' });
     checkMarkup(html, 'stale');
-    assert.ok(html.indexOf('參數已修改，下列為上次擬合的結果') >= 0);
-    assert.ok(html.indexOf('參數已修改，下列為上次擬合的結果') < html.indexOf('class="tiles"'));
+    assert.ok(html.indexOf(STALE) >= 0);
+    assert.ok(html.indexOf(STALE) < html.indexOf('class="tiles'));
     assert.equal(count(html, 'tile--hero'), 1);
-    assert.ok(html.includes('± 0.50'), 'the tiles still show the last fit');
+    assert.equal(H.resultsHtml(fitResult(), { matches: true, fileName: 'a' }).includes('alert'), false);
+    assert.equal(H.resultsHtml(fitResult(), { matches: false, notApplied: true, fileName: 'a' }).includes(STALE), false,
+        'a result that could not be written into the form: the form was not edited');
+    const running = H.resultsHtml(fitResult(), { matches: true, running: true, fileName: 'a' });
+    assert.ok(running.includes('<div class="alert alert--compact alert-warning">擬合進行中，以下是上一次擬合的結果</div>'));
+    assert.equal(H.resultsHtml(fitResult(), { matches: false, running: true, fileName: 'a' }).includes(STALE), false, 'one notice, not two');
 });
 
-test('resultsHtml: stopped has no tiles, a chi2r that is not finite shows a dash, no result is an empty string', () => {
+test('resultsHtml: stopped has no tiles, a chi2r that is not finite shows a dash; no result: the empty state of a dataset, nothing without one', () => {
     const stopped = H.resultsHtml(fitResult({ status: 'stopped', iterations: 7 }), { matches: false, fileName: 'a' });
     checkMarkup(stopped, 'stopped');
     assert.ok(stopped.includes('已停止（第 7 步），參數未變更'));
@@ -139,6 +187,32 @@ test('resultsHtml: stopped has no tiles, a chi2r that is not finite shows a dash
     assert.equal(count(blocked, 'tile--hero'), 1);
     assert.equal(H.resultsHtml(null, { matches: false, fileName: 'a' }), '');
     assert.equal(H.resultsHtml(undefined), '');
+    assert.equal(H.resultsHtml(null, { hasData: true, fileName: 'a.dat' }), '<p class="stat-sub sf-result-empty">此資料尚未擬合</p>');
+});
+
+test('fitBarHtml: the fit measure of the bar that is on every tab -- name by weighting, value, status chip, steps, and a chip when stale', () => {
+    const bar = (view) => { const html = H.fitBarHtml(view); checkMarkup(html, 'fit bar'); return html; };
+    assert.equal(bar({ result: null }), '<span class="sf-fitbar-none">尚未擬合</span>');
+    assert.equal(bar(undefined), '<span class="sf-fitbar-none">尚未擬合</span>');
+    assert.equal(bar({ result: fitResult({ status: 'stopped' }), matches: false }), '<span class="sf-fitbar-none">尚未擬合</span>');
+    const good = bar({ result: fitResult(), matches: true, running: false });
+    assert.equal(good, '<span class="sf-fitbar-name">' + CHI2 + '</span><strong class="sf-fitbar-value">1.10</strong>'
+        + '<span class="tile-chip tile-chip--ok">已收斂</span><span class="sf-fitbar-steps">12 步</span>');
+    const bad = bar({ result: fitResult({ chi2r: 711 }), matches: true });
+    assert.ok(bad.includes('<strong class="sf-fitbar-value">711</strong><span class="tile-chip tile-chip--warn">已收斂・約化 χ² 偏大</span>'));
+    const stale = bar({ result: fitResult(), matches: false, running: false });
+    assert.ok(stale.endsWith('<span class="tile-chip tile-chip--warn">參數已改動</span>'));
+    assert.equal(bar({ result: fitResult(), matches: false, running: true }).includes('參數已改動'), false, 'while a fit runs the progress line speaks');
+    // chi-square only with sigma weighting (decision H-1)
+    ['none', 'sqrtI', 'absI'].forEach((weighting) => {
+        const other = bar({ result: fitResult({ chi2r: 117, settings: { ...fitResult().settings, weighting } }), matches: true });
+        assert.ok(other.startsWith('<span class="sf-fitbar-name">加權殘差均方</span><strong class="sf-fitbar-value">117</strong>'), weighting);
+        assert.equal(/χ/.test(other), false, weighting);
+        assert.ok(other.includes('tile-chip--ok">已收斂<'), weighting + ': a plain chip, 117 is not "too high" here');
+    });
+    assert.equal(H.measureHtml({ isChi2: true, label: 'x' }), CHI2);
+    assert.equal(H.measureHtml({ isChi2: false, label: '<b>' }), '&lt;b&gt;');
+    assert.equal(H.measureHtml(null), '');
 });
 
 // ------------------------------------------------------------------ hints and chips

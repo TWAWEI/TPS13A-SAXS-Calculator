@@ -349,13 +349,13 @@ test('fitReadiness: every reason, in Chinese; nPoints and nFree when ready', asy
         assert.equal(r.ok, false);
         return r.reason;
     };
-    assert.equal(reasonOf(START, null, settings), '請先載入資料並選擇作用中的資料。');
+    assert.equal(reasonOf(START, null, settings), '請先載入資料並選擇擬合對象。');
     assert.equal(reasonOf(run(START, setValue('radius', 'x')), ds, settings), '參數表有不合法的欄位，請先修正。');
     const none = ['scale', 'background', 'radius'].reduce((f, name) => run(f, { type: 'setFit', name, fit: false }),
         run(START, { type: 'setPdFit', name: 'radius', fit: false }));
     assert.equal(reasonOf(none, ds, settings), '請至少勾選一個要擬合的參數。');
-    assert.equal(reasonOf(START, ds, { ...settings, range: null }), '沒有可用的擬合範圍，請設定 Qmin 與 Qmax。');
-    assert.equal(reasonOf(START, ds, { ...settings, range: { qMin: 0.2, qMax: 0.1 } }), 'Qmin 不可大於 Qmax。');
+    assert.equal(reasonOf(START, ds, { ...settings, range: null }), '沒有可用的擬合範圍，請設定 q 下限與 q 上限。');
+    assert.equal(reasonOf(START, ds, { ...settings, range: { qMin: 0.2, qMax: 0.1 } }), 'q 下限不可大於 q 上限。');
     assert.equal(reasonOf(START, dataset(ds.q, ds.I, null), settings), '此資料沒有可用的誤差欄，不能使用「資料 σ」權重。');
     const few = J.fitReadiness(START, ds, { ...settings, range: { qMin: ds.q[0], qMax: ds.q[3] } });
     assert.deepEqual({ ...few }, {
@@ -547,4 +547,41 @@ test('write-back: a value on a bound is written exactly; rounding never leaves t
     assert.equal(J.resultMatchesForm(applied, onBound), true);
     const pd = fullResult(START, { radius_pd: 0.39999951 }, { radius_pd: 0.3 });
     assert.equal(J.applyResult(START, pd).pds.radius.width, '0.4', 'the upper bound of the width (0.4) is respected');
+});
+
+// ------------------------------------------------------------------ fit names (fix pass B: first-fit guidance)
+
+test('sizeNames: the length parameters of a model (unit Ang, no SLD, no orientation); none for models without a size', () => {
+    assert.deepEqual([...J.sizeNames('sphere')], ['radius']);
+    assert.deepEqual([...J.sizeNames('core_shell_cylinder')], ['radius', 'thickness', 'length']);
+    assert.deepEqual([...J.sizeNames('guinier')], ['rg']);
+    assert.deepEqual([...J.sizeNames('power_law')], []);
+    assert.deepEqual([...J.sizeNames('gaussian_peak')], []);
+    assert.deepEqual([...J.sizeNames('no such model')], []);
+    assert.ok(Object.isFrozen(J.sizeNames('sphere')));
+});
+
+test('fitNames: the ticked names in table order (a width as <name>_pd), the size parameters that are not ticked, and how many are', () => {
+    const F = globalThis.SasFitForm;
+    const sphere = F.create('sphere');
+    const fresh = J.fitNames(sphere);
+    assert.deepEqual({ free: [...fresh.free], fixedSize: [...fresh.fixedSize], sizeFitted: fresh.sizeFitted },
+        { free: ['scale', 'background'], fixedSize: ['radius'], sizeFitted: 0 });
+    assert.ok(Object.isFrozen(fresh) && Object.isFrozen(fresh.free));
+    let form = F.reduce(sphere, { type: 'setFit', name: 'radius', fit: true });
+    form = F.reduce(F.reduce(form, { type: 'togglePd', name: 'radius' }), { type: 'setPdFit', name: 'radius', fit: true });
+    const fitted = J.fitNames(form);
+    assert.deepEqual([...fitted.free], ['scale', 'background', 'radius', 'radius_pd']);
+    assert.deepEqual([[...fitted.fixedSize], fitted.sizeFitted], [[], 1]);
+    const csc = J.fitNames(F.reduce(F.create('core_shell_cylinder'), { type: 'setFit', name: 'length', fit: true }));
+    assert.deepEqual([[...csc.fixedSize], csc.sizeFitted], [['radius', 'thickness'], 1]);
+    assert.doesNotThrow(() => J.fitNames(F.reduce(sphere, { type: 'setValue', name: 'radius', value: 'abc' })), 'an invalid form still has names');
+});
+
+test('full-width digits in a field reach the Worker as the same numbers (SasFitForm.parseNumber is the one reading)', () => {
+    const F = globalThis.SasFitForm;
+    let form = F.reduce(F.create('sphere'), { type: 'setValue', name: 'radius', value: '５２．５' });
+    form = F.reduce(form, { type: 'setLower', name: 'radius', value: '１０' });
+    assert.equal(F.validate(form).valid, true);
+    assert.equal(J.params(form).radius, 52.5);
 });

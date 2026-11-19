@@ -50,24 +50,15 @@ test('PD_UI_DEFAULTS: spec 4.3 table; differs from SasFitWeights.DEFAULTS only i
     assert.equal(W.DEFAULTS.lognormal.nsigmas, 8);
 });
 
-test('models(): two groups in meta order, no structure factors; search; keep', () => {
-    const all = F.models('');
+test('models(): two groups in meta order, no structure factors (13 models: no search)', () => {
+    const all = F.models();
     assert.deepEqual(all.map((g) => g.group), ['形狀', '與形狀無關']);
     assert.deepEqual(all[0].items.map((i) => i.name), SHAPES);
     assert.deepEqual(all[1].items.map((i) => i.name), INDEPENDENT);
     assert.equal(all[0].items[0].title, M.models.sphere.title);
-    assert.deepEqual(F.models(), all);
     assert.ok(isDeepFrozen(all));
-    const cyl = F.models('cyl');
-    assert.deepEqual(cyl.map((g) => g.group), ['形狀']);
-    assert.deepEqual(cyl[0].items.map((i) => i.name), ['cylinder', 'core_shell_cylinder', 'flexible_cylinder']);
-    assert.deepEqual(F.models('  CYL '), cyl);
-    assert.deepEqual(F.models('polymer')[0].items.map((i) => i.name), ['mono_gauss_coil']);   // title match
-    assert.deepEqual(F.models('no such model'), []);
-    assert.deepEqual(F.models('cyl', 'sphere')[0].items.map((i) => i.name),
-        ['sphere', 'cylinder', 'core_shell_cylinder', 'flexible_cylinder']);
-    assert.deepEqual(F.models('cyl', 'guinier').map((g) => g.group), ['形狀', '與形狀無關']);
-    assert.deepEqual(F.models('hard'), []);
+    assert.deepEqual(F.models('cyl'), all, 'an argument is ignored: the list is not filtered');
+    assert.equal(all.flatMap((g) => g.items).some((i) => M.models[i.name].isStructureFactor), false);
 });
 
 test('canTakeStructure: exactly the six models of spec 4.1', () => {
@@ -96,8 +87,10 @@ test('create(sphere): rows, defaults, units, fit flags; form is deep frozen', ()
     assert.deepEqual(rows.map((r) => r.fittable), [true, true, true, true, true]);
     assert.deepEqual(rows.map((r) => r.label), rows.map((r) => r.name));
     rows.forEach((r) => assert.deepEqual({ ...r.errors }, {}));
-    assert.deepEqual(Object.keys(rows[4]).sort(), ['derived', 'errors', 'fit', 'fittable', 'group', 'hardMax', 'hardMin',
+    assert.deepEqual(Object.keys(rows[4]).sort(), ['defaults', 'derived', 'errors', 'fit', 'fittable', 'group', 'hardMax', 'hardMin',
         'isSld', 'label', 'lower', 'name', 'note', 'pd', 'unit', 'upper', 'value']);
+    assert.deepEqual(rows.map((r) => ({ ...r.defaults })), [{ lower: '0', upper: '' }, { lower: '', upper: '' }, { lower: '', upper: '' },
+        { lower: '', upper: '' }, { lower: '0', upper: '' }], 'the bounds a row starts with (what the marker of a collapsed row compares with)');
     assert.throws(() => F.create('hardsphere'), /structure factor/);
     assert.throws(() => F.create('nope'), /Unknown model/);
 });
@@ -329,11 +322,11 @@ test('validate: one case per kind of field error; keys are <parameter>.<field>, 
         [setPd('width', 'w'), 'radius_pd.width', /radius.*寬度.*數字/],
         [setPd('lower', '0.5'), 'radius_pd.lower', /寬度.*下限.*小於上限/],
         [setPd('lower', '-0.1'), 'radius_pd.lower', /寬度.*下限.*不可小於.*0/],
-        [setPd('npts', '0'), 'radius_pd.npts', /radius.*點數.*整數/],
+        [setPd('npts', '0'), 'radius_pd.npts', /radius.*取點數.*整數/],
         [setPd('npts', '3.5'), 'radius_pd.npts', /整數/],
         [setPd('npts', String(V.MAX_PD_POINTS + 1)), 'radius_pd.npts', new RegExp(String(V.MAX_PD_POINTS))],
-        [setPd('nsigmas', '0'), 'radius_pd.nsigmas', /radius.*nsigmas.*大於 0/],
-        [setPd('nsigmas', ''), 'radius_pd.nsigmas', /nsigmas/],
+        [setPd('nsigmas', '0'), 'radius_pd.nsigmas', /radius.*範圍（σ 倍數）.*大於 0/],
+        [setPd('nsigmas', ''), 'radius_pd.nsigmas', /範圍（σ 倍數）/],
         [run(setPd('width', '0.5'), { type: 'setPdFit', name: 'radius', fit: true }), 'radius_pd.width', /下限與上限之間/],
     ];
     cases.forEach(([form, key, pattern]) => {
@@ -542,4 +535,33 @@ test('fittable names offered by the form = what SasFitWorkerCore accepts, minus 
         assert.equal(await fitErrorCode(spec, flags, bounds, params), 'TOO_FEW_POINTS', tag);
     }
     assert.equal(seen.size, (13 + 6 * 2) * 2);                      // 50 distinct model / S(Q) / low-Q specs
+});
+
+// ------------------------------------------------------------------ number input (fix pass B)
+
+test('parseNumber: full-width digits, signs and the full-width full stop are folded (NFKC); the Unicode minus is a minus', () => {
+    assert.equal(F.parseNumber('１２３'), 123);
+    assert.equal(F.parseNumber('５２．５'), 52.5);
+    assert.equal(F.parseNumber('－３'), -3);
+    assert.equal(F.parseNumber('\u22125e\u22123'), -0.005);
+    assert.equal(F.parseNumber(' 1.5e3 '), 1500);
+    ['', 'abc', '1,5', '1.5.2', '0x10', '5e', 'NaN', 'Infinity', '1e400', '١٢', '50Å'].forEach((text) => {
+        assert.equal(F.parseNumber(text), undefined, text);
+    });
+});
+
+test('validate: a full-width number is valid; a decimal comma gets a message of its own', () => {
+    const sphere = F.create('sphere');
+    const wide = run(sphere, { type: 'setValue', name: 'radius', value: '５０' }, { type: 'setUpper', name: 'radius', value: '１００' });
+    assert.equal(F.validate(wide).valid, true);
+    assert.equal(wide.fields.radius.value, '５０', 'the field keeps what was typed');
+    const comma = F.validate(run(sphere, { type: 'setValue', name: 'radius', value: '1,5' })).errors['radius.value'];
+    assert.match(comma, /radius.*數值.*小數點請用「\.」/);
+    const word = F.validate(run(sphere, { type: 'setValue', name: 'radius', value: 'abc' })).errors['radius.value'];
+    assert.equal(word, 'radius 的數值必須是數字');
+    const pd = run(openPd(sphere, 'radius'), { type: 'setPdField', name: 'radius', field: 'width', value: '0,1' });
+    assert.match(F.validate(pd).errors['radius_pd.width'], /radius 的多分散寬度.*逗號/);
+    const fitted = run(openPd(sphere, 'radius'), { type: 'setPdField', name: 'radius', field: 'width', value: '０' },
+        { type: 'setPdFit', name: 'radius', fit: true });
+    assert.equal(fitted.pds.radius.width, String(F.PD_FIT_START), 'a full-width zero is zero: the fitted width starts at 0.05');
 });

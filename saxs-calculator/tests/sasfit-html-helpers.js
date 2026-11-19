@@ -16,8 +16,9 @@ const count = (text, needle) => text.split(needle).length - 1;
 const ID_RE = /^sf[A-Z]\w*$/;
 const TAG_RE = /<\/?([a-z][a-z0-9]*)((?:\s+[a-z][a-z-]*(?:="[^"<>]*")?)*)\s*>/g;
 const ATTR_RE = /\s+([a-z][a-z-]*)(?:="([^"<>]*)")?/g;
+// sub / sup: the chi-square of the fit measure; wbr: where a parameter name may wrap (after an underscore)
 const ALLOWED_TAGS = Object.freeze(['a', 'button', 'div', 'input', 'label', 'li', 'optgroup', 'option', 'p', 'select', 'span',
-    'strong', 'td', 'th', 'tr', 'ul']);
+    'strong', 'sub', 'sup', 'td', 'th', 'tr', 'ul', 'wbr']);
 const ALLOWED_ATTRS = Object.freeze(['aria-controls', 'aria-describedby', 'aria-expanded', 'aria-hidden', 'aria-invalid',
     'aria-label', 'aria-labelledby', 'aria-live', 'autocomplete', 'checked', 'class', 'colspan', 'data-action',
     'data-field', 'data-group', 'data-hint', 'data-id', 'data-param', 'data-series', 'data-target', 'disabled', 'for', 'label',
@@ -87,11 +88,13 @@ function tableOf(form, ctx) {
 }
 const fieldOf = (tags, param, field) => tags.find((t) => !t.closing && t.attrs['data-param'] === param && t.attrs['data-field'] === field);
 
-const tileLabels = (html) => (html.match(/<div class="tile-label">[^<]*/g) || []).map((s) => s.replace(/<[^>]*>/, ''));
+const tileLabels = (html) => (html.match(/<div class="tile-label">.*?<\/div>/g) || []).map((s) => s.replace(/<[^>]*>/g, ''));
+/** The fitted values of resultsHtml + resultParamsHtml as one string (the page shows them in two containers). */
+const allResults = (H2, r, ctx) => H2.resultsHtml(r, ctx) + H2.resultParamsHtml(r, ctx);
 
 const sldView = (overrides) => ({ target: 'sld_solvent', formula: 'H2O', density: '0.9982', presetId: '',
     result: Sld.compute('H2O', 0.9982), error: null, ...overrides });
 
 module.exports = {
-    esc, count, ID_RE, TAG_RE, ATTR_RE, ALLOWED_TAGS, ALLOWED_ATTRS, checkMarkup, openTags, byAttr, idsOf, textOf, fitResult, fileRow, tableOf, fieldOf, tileLabels, sldView,
+    esc, count, ID_RE, TAG_RE, ATTR_RE, ALLOWED_TAGS, ALLOWED_ATTRS, checkMarkup, openTags, byAttr, idsOf, textOf, fitResult, fileRow, tableOf, fieldOf, tileLabels, sldView, allResults,
 };

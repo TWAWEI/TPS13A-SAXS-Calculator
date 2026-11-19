@@ -88,7 +88,7 @@ test('5.7-1: chi2r above CHI2R_WARN on a converged fit -> local-minimum', () => 
     assert.equal(ids(H.fitHints(result({ chi2r: 1.1 }))).includes('local-minimum'), false);
     assert.equal(ids(H.fitHints(result({ chi2r: 10 }))).includes('local-minimum'), false, 'exactly 10 does not count');
     const hint = byId(H.fitHints(result({ chi2r: 10.01 })), 'local-minimum');
-    assert.equal(hint.text, 'χ²ᵣ 遠大於 1：模型與資料不符。可能停在局部極小值（請換起始值重試）、模型不適用，或資料誤差被低估。此時參數誤差沒有參考價值');
+    assert.equal(hint.text, '約化 χ² 遠大於 1：模型與資料不符。可能停在局部極小值（請換起始值重試）、模型不適用，或資料誤差被低估。此時參數誤差沒有參考價值');
     assert.equal(hint.tone, 'warn');
     assert.equal(byId(H.fitHints(weighted('none', { chi2r: 1234 })), 'local-minimum'), undefined, 'only a real chi2r can be too large (decision H-1)');
     assert.equal(ids(H.fitHints(result({ chi2r: Infinity, status: 'failed', blockedByNonFinite: true }))).includes('local-minimum'), false);
@@ -98,7 +98,7 @@ test('5.7-1: chi2r above CHI2R_WARN on a converged fit -> local-minimum', () => 
 
 test('5.7-1: chi2r below CHI2R_LOW -> overestimated-errors, ONLY with sigma weighting', () => {
     const hint = byId(H.fitHints(result({ chi2r: 0.09 })), 'overestimated-errors');
-    assert.equal(hint.text, 'χ²ᵣ 遠小於 1：資料的誤差可能被高估，或自由參數過多');
+    assert.equal(hint.text, '約化 χ² 遠小於 1：資料的誤差可能被高估，或自由參數過多');
     assert.equal(hint.tone, 'warn');
     assert.equal(ids(H.fitHints(result({ chi2r: 0.1 }))).includes('overestimated-errors'), false, 'exactly 0.1 does not count');
     ['sqrtI', 'absI', 'none'].forEach((weighting) => {
@@ -108,14 +108,22 @@ test('5.7-1: chi2r below CHI2R_LOW -> overestimated-errors, ONLY with sigma weig
 });
 
 test('5.7-1: statusLabel is one text per status and never "ok" when chi2r says otherwise', () => {
-    assert.deepEqual({ ...H.statusLabel(result()) }, { text: '已收斂', tone: 'ok' });
-    assert.deepEqual({ ...H.statusLabel(result({ status: 'maxiter' })) }, { text: '未收斂（達最大步數）', tone: 'warn' });
-    assert.deepEqual({ ...H.statusLabel(result({ status: 'stopped', chi2r: null })) }, { text: '已停止', tone: 'warn' });
-    assert.deepEqual({ ...H.statusLabel(result({ status: 'failed' })) }, { text: '失敗', tone: 'error' });
-    assert.deepEqual({ ...H.statusLabel(null) }, { text: '未擬合', tone: 'warn' });
+    assert.deepEqual({ ...H.statusLabel(result()) }, { text: '已收斂', tone: 'ok', short: '' });
+    assert.deepEqual({ ...H.statusLabel(result({ status: 'maxiter' })) }, { text: '未收斂（達最大步數）', tone: 'warn', short: '未收斂' });
+    assert.deepEqual({ ...H.statusLabel(result({ status: 'stopped', chi2r: null })) }, { text: '已停止', tone: 'warn', short: '已停止' });
+    assert.deepEqual({ ...H.statusLabel(result({ status: 'failed' })) }, { text: '失敗', tone: 'error', short: '失敗' });
+    assert.deepEqual({ ...H.statusLabel(null) }, { text: '未擬合', tone: 'warn', short: '' });
     assert.equal(new Set(['converged', 'maxiter', 'stopped', 'failed'].map((status) => H.statusLabel(result({ status })).text)).size, 4);
-    assert.deepEqual({ ...H.statusLabel(result({ chi2r: 10.01 })) }, { text: '已收斂', tone: 'warn' });
-    assert.deepEqual({ ...H.statusLabel(result({ chi2r: 0.09 })) }, { text: '已收斂', tone: 'warn' });
+    // a doubtful "converged" says why in words: the tone of the chip is never the only cue (WCAG 1.4.1)
+    assert.deepEqual({ ...H.statusLabel(result({ chi2r: 10.01 })) }, { text: '已收斂・約化 χ² 偏大', tone: 'warn', short: '偏大' });
+    assert.deepEqual({ ...H.statusLabel(result({ chi2r: 0.09 })) }, { text: '已收斂・約化 χ² 偏小', tone: 'warn', short: '偏小' });
+    assert.deepEqual({ ...H.statusLabel(result({ illConditioned: true })) }, { text: '已收斂・有警示', tone: 'warn', short: '有警示' });
+    assert.deepEqual({ ...H.statusLabel(result({ chi2r: NaN })) }, { text: '已收斂・有警示', tone: 'warn', short: '有警示' });
+    ['none', 'sqrtI', 'absI'].forEach((mode) => {
+        assert.deepEqual({ ...H.statusLabel(weighted(mode, { chi2r: 500 })) }, { text: '已收斂', tone: 'ok', short: '' }, mode + ': not a chi-square, so neither high nor low');
+        assert.equal(H.statusLabel(weighted(mode, { chi2r: 500, jacobianNonFinite: true })).text, '已收斂・有警示', mode + ': flags still count');
+    });
+    assert.equal(H.statusLabel(result({ status: 'maxiter', chi2r: 500 })).text, '未收斂（達最大步數）', 'only "converged" is qualified');
     assert.equal(H.statusLabel(weighted('none', { chi2r: 0.09 })).tone, 'ok', 'a small chi2r means nothing without data errors');
     assert.equal(H.statusLabel(result({ chi2r: NaN })).tone, 'warn');
     assert.equal(H.statusLabel(result({ chi2r: 10 })).tone, 'ok');
@@ -249,7 +257,7 @@ test('undetermined: fitted parameters whose DISPLAYED error is >= |value|, witho
     const r = result({ params: { scale: 0.04871, background: 0.001, radius: 72.7417, thickness: 10 }, errors: { scale: 1.0, radius: 5700, thickness: 9.99 } });
     const hint = byId(H.fitHints(r), 'undetermined');
     assert.equal(hint.tone, 'warn');
-    assert.equal(hint.text, '下列參數的誤差大於數值，無法由資料決定：scale、radius');
+    assert.equal(hint.text, '下列參數的誤差大於數值（與 0 無法區分，或無法由這組資料決定）：scale、radius');
     assert.deepEqual([...hint.params], ['scale', 'radius']);
     const bound = result({ params: r.params, errors: r.errors, atBound: { radius: 'upper' } });
     assert.deepEqual([...byId(H.fitHints(bound), 'undetermined').params], ['scale'], 'a parameter on a bound has its own hint');
@@ -342,7 +350,7 @@ test('5.7-13: no-sigma comes from the data itself (SasFitWeighting.defaultMode),
 
 test('suspect-nm from the load notes', () => {
     const hint = byId(pre({ notes: { ...NOTES, suspectNm: true } }), 'suspect-nm');
-    assert.equal(hint.text, 'q 範圍像是 nm⁻¹（一般 SAXS 在 Å⁻¹ 下 q 約 0.003–0.5）：若單位確實是 nm⁻¹，請移除此檔，把 Q 單位改選 nm⁻¹ 後重新載入');
+    assert.equal(hint.text, 'q 範圍像是 nm⁻¹（一般 SAXS 在 Å⁻¹ 下 q 約 0.003–0.5）：若單位確實是 nm⁻¹，請移除此檔，把 q 單位改選 nm⁻¹ 後重新載入');
     assert.equal(hint.tone, 'warn');
 });
 
@@ -352,7 +360,45 @@ test('preFitHints: fixed order', () => {
         modelSpec: { ...SPEC, structure: 'hayter_msa' }, dataset: ds, weighting: 'sqrtI', notes: { ...NOTES, suspectNm: true },
     });
     assert.deepEqual(ids(hints), ['hayter', 'no-sigma', 'nonpositive-weight', 'suspect-nm']);
-    assert.deepEqual([...H.PRE_FIT_HINT_IDS], ['hayter', 'no-sigma', 'invalid-sigma', 'nonpositive-weight', 'suspect-nm']);
+    assert.deepEqual([...H.PRE_FIT_HINT_IDS], ['hayter', 'fixed-size', 'no-sigma', 'invalid-sigma', 'nonpositive-weight', 'suspect-nm']);
+    const all = pre({ modelSpec: { ...SPEC, structure: 'hayter_msa' }, dataset: ds, weighting: 'sqrtI', notes: { ...NOTES, suspectNm: true },
+        fit: { free: ['scale'], fixedSize: ['radius'], sizeFitted: 0 } });
+    assert.deepEqual(ids(all), ['hayter', 'fixed-size', 'no-sigma', 'nonpositive-weight', 'suspect-nm']);
+});
+
+test('first-fit guidance: fixed-size before a fit when the model has size parameters and none is ticked', () => {
+    const fixed = (fit) => byId(pre({ modelSpec: SPEC, fit }), 'fixed-size');
+    const hint = fixed({ free: ['scale', 'background'], fixedSize: ['radius'], sizeFitted: 0 });
+    assert.equal(hint.tone, 'ok');
+    assert.equal(hint.text, '尺寸參數（radius）目前固定，只擬合 scale 與 background；要擬合尺寸請到「模型」勾選');
+    assert.deepEqual([...hint.fixedSize], ['radius']);
+    assert.match(fixed({ free: ['scale'], fixedSize: ['radius', 'length'], sizeFitted: 0 }).text, /尺寸參數（radius、length）目前固定，只擬合 scale；/);
+    assert.equal(fixed({ free: ['scale', 'length'], fixedSize: ['radius'], sizeFitted: 1 }), undefined, 'one size parameter is fitted: no hint');
+    assert.equal(fixed({ free: ['scale'], fixedSize: [], sizeFitted: 0 }), undefined, 'a model without size parameters');
+    assert.equal(fixed({ free: [], fixedSize: ['radius'], sizeFitted: 0 }), undefined, 'nothing is fitted: the fit cannot start anyway');
+    assert.equal(fixed(null), undefined);
+    assert.equal(fixed(undefined), undefined);
+    assert.equal(fixed(globalThis.SasFitJobs.fitNames(globalThis.SasFitForm.create('sphere'))).id, 'fixed-size', 'the defaults tick scale and background only');
+});
+
+test('first-fit guidance: local-minimum names the size parameters that were not fitted (sigma weighting only: the hint needs a chi-square)', () => {
+    const spec = { modelSpec: { model: 'sphere', structure: null, lowQPowerLaw: false } };
+    const settings = (weighting) => ({ ...result().settings, ...spec, weighting });
+    const fixed = byId(H.fitHints(result({ chi2r: 764, names: ['scale', 'background'], settings: settings('sigma') })), 'local-minimum');
+    assert.match(fixed.text, /^約化 χ² 遠大於 1：模型與資料不符。/);
+    assert.match(fixed.text, /也可能是尺寸參數被固定：radius 沒有勾選擬合，請換起始值，或到「模型」勾選要擬合的尺寸參數$/);
+    assert.deepEqual([...fixed.fixedSize], ['radius']);
+    const free = byId(H.fitHints(result({ chi2r: 764, names: ['scale', 'radius'], settings: settings('sigma') })), 'local-minimum');
+    assert.doesNotMatch(free.text, /尺寸參數/);
+    assert.deepEqual([...free.fixedSize], []);
+    assert.equal(byId(H.fitHints(result({ chi2r: 764, names: ['scale'], settings: settings('none') })), 'local-minimum'), undefined);
+});
+
+test('texts of the page states (fix pass B): locked, not fitted yet, whose "revert" it is, the short at-bound texts', () => {
+    assert.equal(H.LOCKED_TEXT, '擬合進行中，參數與資料已鎖定');
+    assert.equal(H.NOT_FITTED_TEXT, '此資料尚未擬合');
+    assert.equal(H.revertOtherText('a.dat'), '可還原的是「a.dat」擬合前的參數；請先把它設為擬合對象');
+    assert.deepEqual({ ...H.AT_BOUND_SHORT }, { lower: '貼下限', upper: '貼上限' });
 });
 
 // ------------------------------------------------------------------ plot status
@@ -362,9 +408,14 @@ test('plotStatus: each part alone', () => {
     assert.deepEqual(one({}), { text: '', live: '' });
     assert.deepEqual(one(), { text: '', live: '' });
     assert.deepEqual(one({ computing: true }), { text: '計算中…', live: '' });
-    assert.deepEqual(one({ paused: true }), {
-        text: '多分散網格過大，即時預覽已暫停，請按「更新曲線」', live: '多分散網格過大，即時預覽已暫停，請按「更新曲線」',
-    });
+    const paused = '即時預覽已暫停（多分散網格過大），曲線尚未更新；按「更新曲線」重算';
+    assert.deepEqual(one({ paused: true }), { text: paused, live: paused });
+    // the three states of a paused preview: not updated, being computed, updated by hand
+    assert.deepEqual(one({ paused: true, computing: true }), { text: '計算中…', live: '' });
+    assert.equal(one({ paused: true, fresh: true }).text, '曲線已更新（手動）；再改參數後需再按「更新曲線」');
+    assert.equal(one({ paused: false, fresh: true }).text, '', 'fresh only matters for a paused preview');
+    assert.equal(one({ stale: true }).text, '參數表有錯誤，曲線尚未更新');
+    assert.equal(one({ zoomed: true }).text, '已縮放');
     assert.equal(one({ previewPoints: 122 }).text, '預覽以 122 點計算');
     assert.equal(one({ hidden: 5 }).text, '5 點無法顯示');
     assert.equal(one({ hidden: 0 }).text, '');
@@ -379,10 +430,11 @@ test('plotStatus: each part alone', () => {
 
 test('plotStatus: combined in a fixed order with full-width semicolons; live leaves out "computing"', () => {
     const s = H.plotStatus({
-        computing: true, paused: true, previewPoints: 50, hidden: 2, displayStride: 4, nonFinite: 3, allNonFinite: false, error: '錯誤',
+        computing: true, paused: true, fresh: true, stale: true, zoomed: true, previewPoints: 50, hidden: 2, displayStride: 4,
+        nonFinite: 3, allNonFinite: false, error: '錯誤',
     });
-    const rest = '多分散網格過大，即時預覽已暫停，請按「更新曲線」；預覽以 50 點計算；點數較多，圖上每 4 點顯示 1 點（擬合仍使用全部點）；'
-        + '2 點無法顯示；模型曲線有 3 點無法計算；錯誤';
+    const rest = '參數表有錯誤，曲線尚未更新；曲線已更新（手動）；再改參數後需再按「更新曲線」；預覽以 50 點計算；已縮放；'
+        + '點數較多，圖上每 4 點顯示 1 點（擬合仍使用全部點）；2 點無法顯示；模型曲線有 3 點無法計算；錯誤';
     assert.equal(s.text, '計算中…；' + rest);
     assert.equal(s.live, rest);
     assert.ok(Object.isFrozen(s));

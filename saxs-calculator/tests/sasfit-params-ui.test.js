@@ -34,6 +34,10 @@ function type(page, name, key, value) {
     return input;
 }
 
+/** 展開（或收合）一個參數的明細列：下限、上限、多分散、化學式都在裡面。 */
+const more = (page, name) => page.$(Html.moreButtonId(name)).fire('click');
+const detailOpen = (page, name) => page.$(Html.moreButtonId(name)).getAttribute('aria-expanded') === 'true';
+
 function choose(page, id, value) {
     const select = page.$(id);
     select.value = value;
@@ -80,31 +84,22 @@ test('[sasfit-params-ui] 啟動：模型選單兩個 optgroup 共 13 項、選�
     assert.equal(select.querySelectorAll('option').length, 13);
     assert.equal(select.value, 'sphere');
     const form = page.Section.getForm();
-    const ctx = { fitResult: null, matches: false, locked: false };
+    const ctx = { fitResult: null, matches: false, locked: false, details: {}, sld: null };
     assert.equal(page.$('sfParamHead').innerHTML, Html.paramTableHeadHtml(ctx));
     assert.equal(page.$('sfParamBody').innerHTML, Html.paramTableHtml(Form.rows(form), ctx));
     assert.equal(page.$('sfModelInfo').innerHTML, Html.modelInfoHtml(globalThis.SasFitMeta.models.sphere));
     assert.match(page.$('sfModelInfo').innerHTML, /href="https:\/\/www\.sasview\.org\/docs\/user\/models\/sphere\.html"/);
-    assert.equal(page.$('sfSldPanel').hidden === true || page.$('sfSldPanel').innerHTML === '', true);
+    assert.equal(page.$('sfSldPreset'), null, '化學式面板沒有開');
+    assert.match(select.querySelectorAll('option')[0].textContent, /^sphere — 均勻球$/, '選項帶中文名稱');
+    assert.equal(page.$('sfModelLock').hidden, true);
+    assert.equal(page.$('sfModelSearch'), null, '13 個模型不需要搜尋框');
 });
 
-// ---------------------------------------------------------------- 搜尋與換模型
-test('[sasfit-params-ui] 搜尋：選單只剩符合者加上目前的模型，value 不變、表單不變、沒有送預覽；change 才換表單', async () => {
+// ---------------------------------------------------------------- 換模型
+test('[sasfit-params-ui] 換模型：change 換表單、參數表與說明，並排一次預覽', async () => {
     const page = boot();
     await answer(page);
-    const form = page.Section.getForm();
     const sent = page.client.evaluations.length;
-    const search = page.$('sfModelSearch');
-    search.value = 'cyl';
-    search.fire('input');
-    const names = page.$('sfModel').querySelectorAll('option').map((o) => o.value);
-    assert.deepEqual(names, Form.models('cyl', 'sphere').flatMap((g) => g.items.map((i) => i.name)));
-    assert.ok(names.includes('sphere') && names.includes('cylinder') && !names.includes('ellipsoid'));
-    assert.equal(page.$('sfModel').value, 'sphere');
-    assert.equal(page.Section.getForm(), form);
-    page.timers.advance(1000);
-    assert.equal(page.client.evaluations.length, sent, '搜尋不送預覽');
-
     choose(page, 'sfModel', 'cylinder');
     assert.equal(page.Section.getForm().model, 'cylinder');
     assert.ok(field(page, 'length', 'value'), '參數表換成 cylinder 的列');
@@ -130,10 +125,10 @@ test('[sasfit-params-ui] S(Q)：不可接的模型停用並說明；可接時顯
     assert.equal(page.$('sfStructureOptions').hidden, false);
     const modes = page.$('sfRadiusMode').querySelectorAll('option');
     assert.deepEqual(modes.map((o) => o.value), ['0', '1', '2']);
-    assert.match(modes[0].textContent, /^unconstrained/);
+    assert.equal(modes[0].textContent, '自行輸入 radius_effective');
     assert.deepEqual(modes.slice(1).map((o) => o.textContent), globalThis.SasFitMeta.models.core_shell_sphere.reffModes);
     assert.equal(page.$('sfRadiusMode').value, '1');
-    assert.equal(page.$('sfStructureNote').textContent, '接 S(Q) 時強度同時乘上 scale 與 volfraction；volfraction 也決定 S(Q) 的形狀。');
+    assert.equal(page.$('sfStructureNote').textContent, '接 S(q) 時強度同時乘上 scale 與 volfraction；volfraction 也決定 S(q) 的形狀。');
 
     choose(page, 'sfRadiusMode', '0');
     assert.equal(page.Section.getForm().radiusMode, 0);
@@ -143,7 +138,7 @@ test('[sasfit-params-ui] S(Q)：不可接的模型停用並說明；可接時顯
 
     choose(page, 'sfModel', 'vesicle');
     assert.equal(page.Section.getForm().structure, 'hardsphere');
-    assert.equal(page.$('sfStructureNote').textContent, '接 S(Q) 時使用模型本身的 volfraction。');
+    assert.equal(page.$('sfStructureNote').textContent, '接 S(q) 時使用模型本身的 volfraction。');
     choose(page, 'sfStructure', '');
     assert.equal(page.Section.getForm().structure, null);
     assert.equal(page.$('sfStructureOptions').hidden, true);
@@ -155,7 +150,10 @@ test('[sasfit-params-ui] hayter_msa：出現 §16 的提示，charge 的下限�
     choose(page, 'sfStructure', 'hayter_msa');
     assert.equal(page.$('sfModelHints').innerHTML, Html.hintsHtml(Hints.preFitHints({ modelSpec: Jobs.modelSpec(page.Section.getForm()) })));
     assert.match(page.$('sfModelHints').innerHTML, /hayter_msa 在低 q 可能出現不連續/);
+    assert.equal(field(page, 'charge', 'lower'), null, '下限在明細列裡，沒展開時不在表格中');
+    more(page, 'charge');
     assert.equal(field(page, 'charge', 'lower').value, '0.5');
+    assert.equal(page.$(Html.markerId('charge')).textContent, '', '預設的下限不標記');
 
     const lowQ = page.$('sfLowQ');
     lowQ.checked = true;
@@ -183,7 +181,7 @@ test('[sasfit-params-ui] 啟動後排一次預覽（沒有資料時用 previewGr
     assert.equal(lastView(page).preview.q, request.q);
     assert.equal(lastView(page).preview.I, I);
     assert.equal(page.ctx.preview.last().I, I);
-    assert.match(page.$('sfMainChart').getAttribute('aria-label'), /模型曲線預覽/);
+    assert.equal(page.$('sfMainChart').getAttribute('aria-label'), '模型 sphere — 均勻球 的曲線預覽，模式 log-log，尚未載入資料');
 });
 
 test('[sasfit-params-ui] 150 ms 內連改三次只送一次，請求是最後的值；作用中資料存在時 q 來自資料', async () => {
@@ -287,6 +285,7 @@ test('[sasfit-params-ui] 頁面分頁不是顯示中的那一個：不排預覽�
 function heavy(page, pds, model = 'cylinder') {
     choose(page, 'sfModel', model);
     pds.forEach((name) => {
+        more(page, name);
         page.$('sfPdToggle_' + name).fire('click');
         type(page, name, 'pd.width', '0.1');
     });
@@ -314,17 +313,24 @@ test('[sasfit-params-ui] 暫停：不自動送出、狀態列說明、「更新�
     const sent = page.client.evaluations.length;
     page.timers.advance(2000);
     assert.equal(page.client.evaluations.length, sent, '暫停時不自動送出');
-    assert.match(page.$('sfPlotStatus').textContent, /即時預覽已暫停/);
+    // 三種狀態（UI 審查 M3）：尚未更新 → 計算中 → 已手動更新
+    assert.equal(page.$('sfPlotStatus').textContent, '即時預覽已暫停（多分散網格過大），曲線尚未更新；按「更新曲線」重算');
+    assert.doesNotMatch(page.$('sfPlotStatus').textContent, /預覽以 \d+ 點計算/, '畫面上還是舊曲線：不報它的點數');
     assert.equal(page.$('sfPreviewNow').hidden, false);
 
     page.$('sfPreviewNow').fire('click');
     assert.equal(page.client.evaluations.length, sent + 1);
     const call = page.client.evaluations[sent];
     assert.deepEqual(call.request.params, Jobs.previewRequest(page.Section.getForm(), null).params);
+    page.timers.advance(300);
+    assert.equal(page.$('sfPlotStatus').textContent, '計算中…', '計算中不再叫使用者按「更新曲線」');
     call.resolve({ I: Float64Array.from(call.request.q, () => 3), extras: {} });
     await ui.flush();
     assert.equal(page.ctx.preview.last().q, call.request.q);
     assert.equal(page.$('sfPreviewNow').hidden, false, '組態沒變：仍是暫停');
+    assert.match(page.$('sfPlotStatus').textContent, /^曲線已更新（手動）；再改參數後需再按「更新曲線」；預覽以 \d+ 點計算$/);
+    type(page, 'radius', 'value', '21');
+    assert.match(page.$('sfPlotStatus').textContent, /^即時預覽已暫停/, '再改參數：曲線又不是最新的');
 
     type(page, 'length', 'pd.width', '0');
     type(page, 'thickness', 'pd.width', '0');
@@ -344,15 +350,19 @@ test('[sasfit-params-ui] 不合法的輸入：aria-invalid、錯誤文字、不�
     assert.equal(input.getAttribute('aria-invalid'), 'true');
     assert.equal(fieldError(page, 'radius', 'value').hidden, false);
     assert.equal(fieldError(page, 'radius', 'value').textContent, Form.validate(page.Section.getForm()).errors['radius.value']);
+    assert.equal(page.$(Html.paramErrorRowId('radius')).hidden, false, '數值的錯誤訊息是該列底下一整行');
     page.timers.advance(1000);
     assert.equal(page.client.evaluations.length, sent);
     assert.equal(page.ctx.preview.last(), curve);
     assert.equal(lastView(page).preview, curve);
+    assert.equal(page.$('sfPlotStatus').textContent, '參數表有錯誤，曲線尚未更新', '圖上是舊曲線，狀態列要說');
 
     type(page, 'radius', 'value', '55');
     assert.equal(input.getAttribute('aria-invalid'), null);
     assert.equal(fieldError(page, 'radius', 'value').hidden, true);
     assert.equal(fieldError(page, 'radius', 'value').textContent, '');
+    assert.equal(page.$(Html.paramErrorRowId('radius')).hidden, true);
+    assert.equal(page.$('sfPlotStatus').textContent, '');
     page.timers.advance(150);
     assert.equal(page.client.evaluations.length, sent + 1);
 });
@@ -360,10 +370,12 @@ test('[sasfit-params-ui] 不合法的輸入：aria-invalid、錯誤文字、不�
 test('[sasfit-params-ui] 打字不重建參數表（innerHTML 賦值次數不變）；跨欄位的錯誤也就地更新', () => {
     const page = boot();
     const body = page.$('sfParamBody');
+    more(page, 'radius');                                   // 展開明細列會重建一次
     const sets = body.htmlSets;
     type(page, 'radius', 'value', '4');
     type(page, 'radius', 'value', '45');
     type(page, 'radius', 'lower', '10');
+    assert.equal(page.$(Html.markerId('radius')).textContent, '≥ 10', '收合時看得到的標記也就地更新');
     type(page, 'radius', 'upper', '5');
     assert.equal(body.htmlSets, sets);
     assert.equal(field(page, 'radius', 'lower').getAttribute('aria-invalid'), 'true', '下限 ≥ 上限的錯誤標在下限欄');
@@ -445,11 +457,14 @@ test('[sasfit-params-ui] 建立 Worker client 就丟例外：sfAlert 顯示一�
 });
 
 // ---------------------------------------------------------------- PD
-test('[sasfit-params-ui] PD：展開重建表格、aria-expanded、預設 gaussian／35／3；勾擬合寬度而寬度為 0 → 0.05；換 schulz → 80／3', () => {
+test('[sasfit-params-ui] 多分散：在明細列裡展開重建表格、aria-expanded、預設 gaussian／35／3；勾擬合寬度而寬度為 0 → 0.05；換 schulz → 80／3', () => {
     const page = boot();
     const body = page.$('sfParamBody');
+    assert.equal(page.$('sfPdToggle_radius'), null, '多分散的開關在明細列裡');
+    more(page, 'radius');
     const sets = body.htmlSets;
     assert.equal(page.$('sfPdToggle_radius').getAttribute('aria-expanded'), 'false');
+    assert.equal(page.$('sfPdRow_radius').hidden, true, 'aria-controls 指到的群組在收合時也存在');
     page.$('sfPdToggle_radius').fire('click');
     assert.equal(body.htmlSets, sets + 1);
     assert.equal(page.$('sfPdToggle_radius').getAttribute('aria-expanded'), 'true');
@@ -477,7 +492,7 @@ test('[sasfit-params-ui] PD：展開重建表格、aria-expanded、預設 gaussi
 
     type(page, 'radius', 'pd.npts', '0');
     assert.equal(field(page, 'radius', 'pd.npts').getAttribute('aria-invalid'), 'true');
-    assert.match(fieldError(page, 'radius', 'pd.npts').textContent, /PD 點數必須是/);
+    assert.match(fieldError(page, 'radius', 'pd.npts').textContent, /多分散取點數必須是/);
 
     page.$('sfPdToggle_radius').fire('click');
     assert.equal(page.$('sfPdToggle_radius').getAttribute('aria-expanded'), 'false');
@@ -485,23 +500,31 @@ test('[sasfit-params-ui] PD：展開重建表格、aria-expanded、預設 gaussi
 });
 
 // ---------------------------------------------------------------- SLD 面板
-test('[sasfit-params-ui] SLD 面板：開啟、即時顯示元素組成、預設物質、錯誤時停用套用、套用與取消的焦點', () => {
+test('[sasfit-params-ui] SLD 面板：在該參數的明細列裡開啟、即時顯示元素組成、預設物質、錯誤時停用套用、取消後焦點回到按鈕', () => {
     const page = boot();
-    const panel = page.$('sfSldPanel');
+    const body = page.$('sfParamBody');
+    assert.equal(page.$('sfSldBtn_sld'), null, '「化學式」在明細列裡');
+    more(page, 'sld');
     const button = page.$('sfSldBtn_sld');
+    assert.deepEqual([button.getAttribute('aria-expanded'), button.getAttribute('aria-controls')], ['false', 'sfSldSlot_sld']);
     button.fire('click');
-    assert.equal(panel.hidden, false);
-    assert.equal(panel.innerHTML, Html.sldPanelHtml({ target: 'sld', formula: '', density: '', presetId: '', result: null, error: null }));
+    const slot = () => page.$('sfSldSlot_sld');
+    assert.equal(slot().hidden, false);
+    assert.equal(page.$('sfSldBtn_sld').getAttribute('aria-expanded'), 'true');
+    assert.ok(body.innerHTML.includes('<div class="sf-sld-slot" id="sfSldSlot_sld">'
+        + Html.sldPanelHtml({ target: 'sld', formula: '', density: '', presetId: '', result: null, error: null }) + '</div>'));
+    assert.equal(page.$(Html.detailRowId('sld')).querySelector('.sf-sld') !== null, true, '面板與按鈕在同一個明細列');
     assert.equal(page.$('sfSldApply').disabled, true);
     assert.equal(page.$('sfSldPreset').focusCount, 1, '焦點進到面板');
 
     const formula = page.$('sfSldFormula');
-    const panelSets = panel.htmlSets;
+    const tableSets = body.htmlSets;
     formula.value = 'H2O';
     formula.fire('input');
     assert.match(page.$('sfSldOutput').innerHTML, /H 2、O 1/);
     assert.equal(page.$('sfSldApply').disabled, true, '還沒有密度');
-    assert.equal(panel.htmlSets, panelSets, '打字時不重建輸入框');
+    assert.equal(body.htmlSets, tableSets, '打字時不重建參數表（輸入框還在）');
+    assert.equal(page.Section.getForm().fields.sld.value, '1', '面板裡的輸入不是參數表的欄位');
 
     formula.value = 'Xx2';
     formula.fire('input');
@@ -521,10 +544,11 @@ test('[sasfit-params-ui] SLD 面板：開啟、即時顯示元素組成、預設
     select.fire('change');
     assert.equal(page.$('sfSldFormula').value, preset.formula);
     assert.equal(page.$('sfSldDensity').value, String(preset.density));
-    // 選預設物質會重建整個面板（stub 的子元素沒有自己的 innerHTML，所以看面板的）
-    assert.ok(panel.innerHTML.includes(window.FormUtils.escapeHtml('出處：' + preset.source)));
-    assert.ok(panel.innerHTML.includes(window.FormUtils.escapeHtml('密度 ' + preset.density + ' g/cm³')));
-    assert.match(panel.innerHTML, /SLD/);
+    // 選預設物質會重建整個面板（寫進它的位置；參數表本身不重建）
+    assert.equal(body.htmlSets, tableSets);
+    assert.ok(slot().innerHTML.includes(window.FormUtils.escapeHtml('出處：' + preset.source)));
+    assert.ok(slot().innerHTML.includes(window.FormUtils.escapeHtml('密度 ' + preset.density + ' g/cm³')));
+    assert.match(slot().innerHTML, /SLD/);
     assert.equal(page.$('sfSldApply').disabled, false);
 
     const density = page.$('sfSldDensity');
@@ -545,15 +569,19 @@ test('[sasfit-params-ui] SLD 面板：開啟、即時顯示元素組成、預設
 
     const before = page.Section.getForm();
     page.$('sfSldCancel').fire('click');
-    assert.equal(panel.hidden, true);
+    assert.equal(page.$('sfSldPreset'), null, '面板關閉');
+    assert.equal(slot().hidden, true);
+    assert.equal(page.$('sfSldBtn_sld').getAttribute('aria-expanded'), 'false');
     assert.equal(page.Section.getForm(), before, '取消不改表單');
     assert.equal(page.$('sfSldBtn_sld').focusCount, 1, '焦點回到「化學式」按鈕');
+    assert.equal(detailOpen(page, 'sld'), true, '明細列仍開著');
 });
 
-test('[sasfit-params-ui] SLD 套用：數值欄填入 6 位有效數字的 SLD、面板關閉、焦點到數值欄、送預覽；Escape 等同取消', () => {
+test('[sasfit-params-ui] SLD 套用：數值欄填入 6 位有效數字的 SLD、面板關閉、焦點到數值欄、送預覽；Escape 等同取消；再按一次按鈕也是關閉', () => {
     const page = boot();
     page.timers.advance(150);
     const sent = page.client.evaluations.length;
+    more(page, 'sld_solvent');
     page.$('sfSldBtn_sld_solvent').fire('click');
     const formula = page.$('sfSldFormula');
     formula.value = 'H2O';
@@ -565,24 +593,85 @@ test('[sasfit-params-ui] SLD 套用：數值欄填入 6 位有效數字的 SLD�
     const expected = String(Number(Sld.compute('H2O', 0.997).sld.toPrecision(6)));
     assert.equal(page.Section.getForm().fields.sld_solvent.value, expected);
     assert.equal(field(page, 'sld_solvent', 'value').value, expected);
-    assert.equal(page.$('sfSldPanel').hidden, true);
+    assert.equal(page.$('sfSldPreset'), null);
     assert.equal(field(page, 'sld_solvent', 'value').focusCount, 1);
     page.timers.advance(150);
     assert.equal(page.client.evaluations.length, sent + 1);
     assert.equal(page.client.evaluations[sent].request.params.sld_solvent, Number(expected));
 
+    more(page, 'sld');
     page.$('sfSldBtn_sld').fire('click');
     page.$('sfSldFormula').fire('keydown', { key: 'Escape' });
-    assert.equal(page.$('sfSldPanel').hidden, true);
+    assert.equal(page.$('sfSldPreset'), null);
     assert.equal(page.$('sfSldBtn_sld').focusCount, 1);
+    page.$('sfSldBtn_sld').fire('click');
+    assert.ok(page.$('sfSldPreset'));
+    page.$('sfSldBtn_sld').fire('click');
+    assert.equal(page.$('sfSldPreset'), null, '同一顆按鈕再按一次：關閉');
+    // 一次只有一個面板：開另一個參數的，原來的就關
+    page.$('sfSldBtn_sld').fire('click');
+    page.$('sfSldBtn_sld_solvent').fire('click');
+    assert.equal(page.$('sfSldSlot_sld').hidden, true);
+    assert.equal(page.$('sfSldSlot_sld_solvent').hidden, false);
+    assert.equal(page.$('sfParamBody').querySelectorAll('.sf-sld').length, 1);
+    // 收合明細列：裡面的面板一起關
+    more(page, 'sld_solvent');
+    assert.equal(page.$('sfSldPreset'), null);
+    assert.equal(page.$('sfParamBody').querySelectorAll('.sf-sld').length, 0);
 });
 
 test('[sasfit-params-ui] 換模型後目標參數不存在：SLD 面板自動關閉', () => {
     const page = boot();
+    more(page, 'sld');
     page.$('sfSldBtn_sld').fire('click');
+    assert.ok(page.$('sfSldPreset'));
     choose(page, 'sfModel', 'guinier');
-    assert.equal(page.$('sfSldPanel').hidden, true);
-    assert.equal(page.$('sfSldPanel').innerHTML, '');
+    assert.equal(page.$('sfSldPreset'), null);
+    assert.equal(page.$('sfParamBody').querySelectorAll('.sf-sld').length, 0);
+});
+
+// ---------------------------------------------------------------- 明細列
+test('[sasfit-params-ui] 明細列：「更多」展開／收合（aria-expanded、焦點留在按鈕上）；欄位出錯時自動展開且收不起來；貼邊界時自動展開', async () => {
+    const page = boot();
+    await load(page);
+    assert.equal(detailOpen(page, 'radius'), false);
+    assert.equal(page.$(Html.detailRowId('radius')).hidden, true);
+    assert.equal(field(page, 'radius', 'lower'), null);
+    more(page, 'radius');
+    assert.equal(detailOpen(page, 'radius'), true);
+    assert.equal(page.$(Html.detailRowId('radius')).hidden, false);
+    assert.equal(page.$(Html.moreButtonId('radius')).getAttribute('aria-controls'), Html.detailRowId('radius'));
+    assert.equal(field(page, 'radius', 'lower').value, '0');
+    assert.equal(detailOpen(page, 'scale'), false, '其他列不受影響');
+
+    type(page, 'radius', 'upper', 'x');
+    assert.match(fieldError(page, 'radius', 'upper').textContent, /radius 的上限必須是數字/);
+    more(page, 'radius');
+    assert.equal(detailOpen(page, 'radius'), true, '裡面有錯誤訊息：不能收起來藏住它');
+    type(page, 'radius', 'upper', '45');
+    more(page, 'radius');
+    assert.equal(detailOpen(page, 'radius'), false);
+    assert.equal(page.$(Html.markerId('radius')).textContent, '0–45', '收合後仍看得到上下限改過');
+    assert.equal(page.Section.getForm().fields.radius.upper, '45', '收合不丟掉設定');
+
+    // 擬合結果把 radius 留在上限：明細列自動展開，± 欄寫「貼上限」
+    type(page, 'radius', 'value', '44');
+    const fit = field(page, 'radius', 'fit');
+    fit.checked = true;
+    fit.fire('change');
+    const form = page.Section.getForm();
+    const result = Object.freeze({
+        status: 'converged', chi2r: 30, iterations: 4, names: ['scale', 'background', 'radius'],
+        params: { ...Jobs.params(form), radius: 45 }, errors: { scale: 0.1, background: 0.1, radius: 0.5 }, errorsScaled: { scale: 0.1, background: 0.1, radius: 0.5 },
+        displayErrorsScaled: false, atBound: { radius: 'upper' }, illConditioned: false, jacobianNonFinite: false, nonFiniteCurvePoints: 0,
+        curve: new Float64Array(page.Section.getState().files[0].dataset.q.length), residuals: null,
+        settings: { modelSpec: Jobs.modelSpec(form), weighting: 'sigma' },
+    });
+    page.ctx.setForm(Jobs.applyResult(form, result));
+    page.ctx.dispatch({ type: 'fitStarted' });
+    page.ctx.dispatch({ type: 'fitSettled', result });
+    assert.equal(page.$(Html.moreButtonId('radius')).getAttribute('aria-expanded'), 'true');
+    assert.equal(page.$('sfPm_radius').textContent, '貼上限');
 });
 
 // ---------------------------------------------------------------- 擬合進行中
@@ -591,17 +680,20 @@ test('[sasfit-params-ui] cancelPreview 取消尚未觸發的計時器；擬合�
     await load(page);
     await answer(page);
     const sent = page.client.evaluations.length;
+    more(page, 'radius');
     type(page, 'radius', 'value', '66');
     page.ctx.preview.cancel();
     page.timers.advance(1000);
     assert.equal(page.client.evaluations.length, sent, '計時器已取消');
 
     page.ctx.dispatch({ type: 'fitStarted' });
-    for (const id of ['sfModel', 'sfModelSearch', 'sfStructure', 'sfLowQ']) assert.equal(page.$(id).disabled, true, id);
+    for (const id of ['sfModel', 'sfStructure', 'sfLowQ']) assert.equal(page.$(id).disabled, true, id);
+    assert.equal(page.$('sfModelLock').hidden, false, '模型分段說明參數已鎖定');
     assert.equal(field(page, 'radius', 'value').disabled, true);
     assert.equal(field(page, 'radius', 'fit').disabled, true);
+    assert.equal(page.$(Html.moreButtonId('radius')).disabled, true);
+    assert.equal(field(page, 'radius', 'lower').disabled, true, '已展開的明細列裡的欄位也停用');
     assert.equal(page.$('sfPdToggle_radius').disabled, true);
-    assert.equal(page.$('sfSldBtn_sld').disabled, true);
     page.ctx.preview.schedule();
     type(page, 'radius', 'value', '67');
     page.timers.advance(1000);
@@ -610,7 +702,21 @@ test('[sasfit-params-ui] cancelPreview 取消尚未觸發的計時器；擬合�
 
     page.ctx.dispatch({ type: 'fitSettled', result: null });
     assert.equal(field(page, 'radius', 'value').disabled, false);
+    assert.equal(page.$('sfModelLock').hidden, true);
     page.timers.advance(150);
     assert.equal(page.client.evaluations.length, sent + 1, '被取消的那次預覽在擬合結束後補送');
     assert.equal(page.client.evaluations[sent].request.params.radius, 66);
+});
+
+test('[sasfit-params-ui] 換模型：明細列全部回到收合（上一個模型同名參數的展開狀態不沿用）', () => {
+    const page = boot();
+    more(page, 'radius');
+    more(page, 'scale');
+    assert.equal(detailOpen(page, 'radius'), true);
+    choose(page, 'sfModel', 'cylinder');
+    assert.equal(detailOpen(page, 'radius'), false);
+    assert.equal(detailOpen(page, 'scale'), false);
+    assert.equal(detailOpen(page, 'length'), false);
+    more(page, 'radius');
+    assert.equal(detailOpen(page, 'radius'), true, '再按一次是展開，不是收合');
 });

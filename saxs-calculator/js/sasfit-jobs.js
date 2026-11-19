@@ -81,19 +81,20 @@
     const RADIUS_MODE_ID = 'radius_effective_mode';
     const SIGMA_MODE = 'sigma';
     const STOPPED = 'stopped';
+    const SIZE_UNIT = 'Ang';
     const REASONS = Object.freeze({
-        noData: '請先載入資料並選擇作用中的資料。',
+        noData: '請先載入資料並選擇擬合對象。',
         invalidForm: '參數表有不合法的欄位，請先修正。',
         nothingFitted: '請至少勾選一個要擬合的參數。',
-        noRange: '沒有可用的擬合範圍，請設定 Qmin 與 Qmax。',
-        invertedRange: 'Qmin 不可大於 Qmax。',
+        noRange: '沒有可用的擬合範圍，請設定 q 下限與 q 上限。',
+        invertedRange: 'q 下限不可大於 q 上限。',
         noSigma: '此資料沒有可用的誤差欄，不能使用「資料 σ」權重。',
         tooFewPoints: (nPoints, nFree) => '範圍內可參與擬合的資料點（' + nPoints + ' 點）必須多於要擬合的參數個數（' + nFree + ' 個）。',
     });
 
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
     const isObject = (v) => v !== null && typeof v === 'object';
-    const numberOf = (text) => Number(text.trim());               // only for fields validate() has accepted
+    const numberOf = (text) => globalThis.SasFitForm.parseNumber(text);      // only for fields validate() has accepted
     const boundOf = (text, unbounded) => (text.trim() === '' ? unbounded : numberOf(text));
 
     function assertValid(form, what) {
@@ -201,6 +202,25 @@
         return items;
     }
 
+    /** Parameters of P that are a length (unit Å) and not a scattering length density: the size of the particle. */
+    function sizeNames(model) {
+        const meta = globalThis.SasFitMeta.models;
+        if (typeof model !== 'string' || !has(meta, model)) return Object.freeze([]);
+        return Object.freeze(meta[model].params.filter((p) => p.units === SIZE_UNIT && p.type !== 'sld' && p.type !== 'orientation')
+            .map((p) => p.name));
+    }
+
+    /**
+     * fitNames(form) -> { free, fixedSize, sizeFitted } (frozen): the names ticked for fitting in table order
+     * (a width as <name>_pd), the size parameters of the model that are NOT ticked, and how many are.
+     */
+    function fitNames(form) {
+        const free = fitItems(form).filter((item) => item.fit).map((item) => item.name);
+        const sizes = sizeNames(form.model);
+        const fixedSize = sizes.filter((name) => free.indexOf(name) < 0);
+        return Object.freeze({ free: Object.freeze(free), fixedSize: Object.freeze(fixedSize), sizeFitted: sizes.length - fixedSize.length });
+    }
+
     const notReady = (reason, nPoints, nFree) => Object.freeze({ ok: false, reason, nPoints, nFree });
 
     function fitReadiness(form, dataset, settings) {
@@ -265,7 +285,8 @@
         const holder = has(form.fields, name) ? form.fields[name]
             : (name.endsWith(PD_SUFFIX) && has(form.pds, base) ? form.pds[base] : null);
         if (holder === null) return null;
-        const read = (text, open) => (typeof text === 'string' && text.trim() !== '' && Number.isFinite(Number(text)) ? Number(text) : open);
+        const parse = globalThis.SasFitForm.parseNumber;
+        const read = (text, open) => (typeof text === 'string' && parse(text) !== undefined ? parse(text) : open);
         return [read(holder.lower, -Infinity), read(holder.upper, Infinity)];
     }
 
@@ -307,6 +328,6 @@
 
     globalThis.SasFitJobs = Object.freeze({
         CUTOFF, PREVIEW_BUDGET, PREVIEW_PAUSE_COST, PREVIEW_MIN_POINTS,
-        modelSpec, params, previewGrid, previewRequest, fitReadiness, fitJob, fullRange, writtenValues, applyResult, resultMatchesForm,
+        modelSpec, params, previewGrid, previewRequest, fitReadiness, fitJob, fitNames, sizeNames, fullRange, writtenValues, applyResult, resultMatchesForm,
     });
 })();

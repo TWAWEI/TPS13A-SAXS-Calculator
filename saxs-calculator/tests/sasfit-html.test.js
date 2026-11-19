@@ -73,9 +73,9 @@ test('formatValueError and formatNumber are SasFitFormat for the screen (one rul
 
 // ------------------------------------------------------------------ file rows
 
-test('fileRowsHtml: one row per file with a colour sample, show, active, name, condition, status and remove', () => {
+test('fileRowsHtml: one row per file with a colour sample, show, fit target, name with its status, condition and remove', () => {
     const html = H.fileRowsHtml([
-        fileRow({ id: 'd1', index: 0, fileName: 'B1216_1_10.dat', active: true, condition: 10, statusText: 'χ²ᵣ 1.10 已收斂' }),
+        fileRow({ id: 'd1', index: 0, fileName: 'B1216_1_10.dat', active: true, condition: 10, statusText: '約化 χ² 1.10 已收斂' }),
         fileRow({ id: 'd2', index: 1, fileName: 'b.dat', shown: false, condition: -2.5 }),
     ]);
     const tags = checkMarkup(html, 'fileRows');
@@ -88,7 +88,7 @@ test('fileRowsHtml: one row per file with a colour sample, show, active, name, c
     const active = byAttr(tags, 'data-action', 'active');
     assert.deepEqual(active.map((t) => [t.attrs.type, t.attrs.name, t.attrs.checked === true]),
         [['radio', 'sfActive', true], ['radio', 'sfActive', false]]);
-    assert.ok(active.every((t) => /作用中/.test(t.attrs['aria-label']) && t.attrs.disabled === undefined));
+    assert.ok(active.every((t) => /^設為擬合對象：/.test(t.attrs['aria-label']) && t.attrs.disabled === undefined));
     const cond = byAttr(tags, 'data-action', 'condition');
     assert.deepEqual(cond.map((t) => [t.attrs.type, t.attrs.value, t.attrs['aria-label']]),
         [['number', '10', 'B1216_1_10.dat 的條件值'], ['number', '-2.5', 'b.dat 的條件值']]);
@@ -97,7 +97,13 @@ test('fileRowsHtml: one row per file with a colour sample, show, active, name, c
         [['button', 'button', '移除 B1216_1_10.dat'], ['button', 'button', '移除 b.dat']]);
     const chips = tags.filter((t) => !t.closing && /\bchannel-chip\b/.test(t.attrs.class || ''));
     assert.deepEqual(chips.map((t) => [t.attrs['data-series'], t.attrs['aria-hidden']]), [['0', 'true'], ['1', 'true']]);
-    assert.ok(/χ²ᵣ 1\.10 已收斂/.test(html) && /未擬合/.test(html));
+    assert.ok(/約化 χ² 1\.10 已收斂/.test(html) && /未擬合/.test(html));
+    assert.equal(count(html, '<span class="sf-file-status">'), 2, 'the status is in the name cell, under the name');
+    assert.equal(count(html.slice(0, html.indexOf('</tr>')), '<td'), 4, 'five columns: show, fit target, name and status, condition, remove');
+    // the column of the condition has the name the user gave it
+    const named = checkMarkup(H.fileRowsHtml([fileRow({ fileName: 'a.dat', conditionName: ' Temperature (K) ' })]), 'named');
+    assert.equal(byAttr(named, 'data-action', 'condition')[0].attrs['aria-label'], 'a.dat 的Temperature (K)');
+    assert.equal(byAttr(checkMarkup(H.fileRowsHtml([fileRow({ conditionName: '  ' })]), 'blank'), 'data-action', 'condition')[0].attrs['aria-label'], 'a.dat 的條件值');
     assert.ok(/class="[^"]*\bis-active\b/.test(html.slice(0, html.indexOf('</tr>'))));
     assert.equal(tags.filter((t) => !t.closing && t.name === 'th').every((t) => t.attrs.scope === 'row'), true);
     assert.equal(H.fileRowsHtml([]), '');
@@ -131,7 +137,7 @@ test('fileRowsHtml: a file that failed has its name, the reasons and remove only
     assert.equal(openTags(html, 'input').length, 0);
     assert.ok(html.includes('a.dat') && html.includes('第 28 行：不是數字') && html.includes('無法載入'));
     assert.ok(!/channel-chip/.test(html));
-    assert.equal(count(html, '<td'), 5, 'the row keeps the six columns of the table');
+    assert.equal(count(html, '<td'), 4, 'the row keeps the five columns of the table');
     assert.ok(/sf-file-row--failed/.test(html));
 });
 
@@ -150,16 +156,48 @@ test('fileRowsHtml: a status tone turns the status into a chip; an unknown tone 
     assert.throws(() => H.fileRowsHtml([fileRow({ statusTone: 'x" onload="1' })]), /tone/);
 });
 
+test('fileRowsHtml: the status of a fitted file is a short chip (measure, value, one word when doubtful) with the full status as title and for screen readers', () => {
+    const full = '約化 χ² 711・已收斂・約化 χ² 偏大';
+    const chi = H.fileRowsHtml([fileRow({ statusText: full, statusTone: 'warn', statusMeasure: { isChi2: true, label: '約化 χ²', value: '711', short: '偏大' } })]);
+    checkMarkup(chi, 'status chip');
+    assert.ok(chi.includes('<span class="tile-chip tile-chip--warn" title="' + full + '">'
+        + '<span aria-hidden="true">χ<sup>2</sup><sub>r</sub> 711 偏大</span><span class="sr-only">' + full + '</span></span>'));
+    const plain = H.fileRowsHtml([fileRow({ statusText: '約化 χ² 1.02・已收斂', statusTone: 'ok', statusMeasure: { isChi2: true, label: '約化 χ²', value: '1.02', short: '' } })]);
+    assert.ok(plain.includes('<span aria-hidden="true">χ<sup>2</sup><sub>r</sub> 1.02</span>'), 'a plain converged fit needs no extra word');
+    const other = H.fileRowsHtml([fileRow({ statusText: '加權殘差均方 117・已收斂', statusTone: 'ok', statusMeasure: { isChi2: false, label: '加權殘差均方', value: '117', short: '' } })]);
+    assert.ok(other.includes('<span aria-hidden="true">加權殘差均方 117</span>'), 'not a chi-square without sigma weighting');
+    assert.equal(/χ/.test(other.replace(/title="[^"]*"/, '')), false);
+    assert.throws(() => H.fileRowsHtml([fileRow({ statusText: 'x', statusTone: 'bad', statusMeasure: { isChi2: true, value: '1', short: '' } })]), /tone/);
+});
+
+test('fileRowsHtml: a long file name loses its middle on screen; the title and every label keep all of it', () => {
+    const long = '20261118_TPS13A_BSA_5mgmL_HEPES_pH7.5_150mMNaCl_run0042_frame0123-0145_avg_sub_buffer_0007.dat';
+    assert.equal(H.middleEllipsis('short.dat'), 'short.dat');
+    const cut = H.middleEllipsis(long);
+    assert.equal(Array.from(cut).length, 44);
+    assert.ok(cut.startsWith(long.slice(0, 26)) && cut.endsWith(long.slice(-17)) && cut.includes('…'));
+    assert.equal(Array.from(H.middleEllipsis('長'.repeat(60))).length, 44, 'counted in characters, not in UTF-16 units');
+    const tags = checkMarkup(H.fileRowsHtml([fileRow({ fileName: long })]), 'long name');
+    const name = tags.find((t) => !t.closing && t.attrs.class === 'sf-file-text');
+    assert.equal(name.attrs.title, long);
+    assert.equal(byAttr(tags, 'data-action', 'remove')[0].attrs['aria-label'], '移除 ' + long);
+    assert.equal(H.fileRowsHtml([fileRow({ fileName: long })]).includes('>' + long + '<'), false);
+});
+
 // ------------------------------------------------------------------ parameter table
 
-const HEAD = ['擬合', '參數', '數值', '±', '下限', '上限', 'PD'];
+const HEAD = ['擬合', '參數', '數值', '±', '範圍與多分散'];
+const trs = (tags) => tags.filter((t) => t.name === 'tr' && !t.closing);
+const cellOf = (html, id) => new RegExp('id="' + id + '">([^<]*)<').exec(html)[1];
+const openAll = (form) => Object.fromEntries(F.rows(form).map((r) => [r.name, true]));
 
-test('paramTableHeadHtml: seven column headers with scope; the error column says when it is multiplied', () => {
+test('paramTableHeadHtml: five column headers with scope (the last one for screen readers); the error column says when it is multiplied', () => {
     const plain = H.paramTableHeadHtml({ fitResult: null, matches: false });
     const ths = openTags(plain, 'th');
-    assert.equal(ths.length, 7);
+    assert.equal(ths.length, 5);
     assert.ok(ths.every((t) => t.attrs.scope === 'col'));
-    assert.deepEqual(plain.match(/<th[^>]*>([^<]*)<\/th>/g).map((s) => s.replace(/<[^>]*>/g, '')), HEAD);
+    assert.deepEqual(plain.match(/<th[^>]*>.*?<\/th>/g).map((s) => s.replace(/<[^>]*>/g, '')), HEAD);
+    assert.ok(plain.includes('<th scope="col"><span class="sr-only">範圍與多分散</span></th>'));
     assert.equal(H.paramTableHeadHtml(undefined), plain);
     assert.equal(H.paramTableHeadHtml({ fitResult: fitResult(), matches: true }), plain);
 
@@ -174,133 +212,213 @@ test('paramTableHeadHtml: seven column headers with scope; the error column says
     assert.equal(H.paramTableHeadHtml({ fitResult: scaled, matches: false }), plain, 'a result that does not match the form shows no errors');
 });
 
-
-test('paramTableHtml: one row of seven cells per parameter, name and unit, labelled inputs', () => {
-    const { rows, html, tags } = tableOf(F.create('sphere'));
-    const trs = tags.filter((t) => t.name === 'tr' && !t.closing);
-    const paramRows = trs.filter((t) => /\bsf-param-row\b/.test(t.attrs.class));
-    assert.deepEqual(paramRows.map((t) => t.attrs['data-param']), rows.map((r) => r.name));
-    html.split('</tr>').filter((s) => /sf-param-row/.test(s)).forEach((row) => {
-        assert.equal(count(row, '<td') + count(row, '<th'), 7, row.slice(0, 80));
-        assert.equal(count(row, '<th scope="row"'), 1);
-    });
-    assert.ok(html.includes('<span class="sf-param-name">radius</span><span class="sf-param-unit">Å</span>'));
-    assert.ok(html.includes('<span class="sf-param-name">sld</span><span class="sf-param-unit">10⁻⁶ Å⁻²</span>'));
-    assert.ok(html.includes('<span class="sf-param-name">scale</span></th>'), 'no empty unit element');
-    const radius = { fit: fieldOf(tags, 'radius', 'fit'), value: fieldOf(tags, 'radius', 'value'),
-        lower: fieldOf(tags, 'radius', 'lower'), upper: fieldOf(tags, 'radius', 'upper') };
-    assert.equal(radius.fit.attrs.type, 'checkbox');
-    assert.equal(radius.fit.attrs.checked, undefined);
-    assert.equal(fieldOf(tags, 'scale', 'fit').attrs.checked, true);
-    assert.deepEqual([radius.fit, radius.value, radius.lower, radius.upper].map((t) => t.attrs['aria-label']),
-        ['擬合 radius', 'radius 數值', 'radius 下限', 'radius 上限']);
-    assert.equal(radius.value.attrs.value, '50');
-    assert.equal(radius.lower.attrs.value, '0');
-    assert.equal(radius.upper.attrs.value, '');
-    assert.equal(radius.upper.attrs.placeholder, '不限');
-    assert.equal(radius.lower.attrs.placeholder, '不限');
-    assert.equal(radius.value.attrs.placeholder, undefined);
-    assert.equal(radius.value.attrs['aria-invalid'], undefined);
-    assert.equal(radius.value.attrs.id, H.paramFieldId('radius', 'value'));
-});
-
-test('paramTableHtml: an SLD parameter has a formula button next to its value; others do not', () => {
-    const { tags } = tableOf(F.create('sphere'));
-    const buttons = byAttr(tags, 'data-action', 'sld');
-    assert.deepEqual(buttons.map((t) => t.attrs['data-param']), ['sld', 'sld_solvent']);
-    assert.ok(buttons.every((t) => t.name === 'button' && t.attrs.type === 'button' && /sld/.test(t.attrs['aria-label'])));
-});
-
-test('paramTableHtml: a row that cannot be fitted has no tick box and shows its note', () => {
-    const form = F.reduce(F.create('sphere'), { type: 'setStructure', structure: 'hardsphere' });
+test('paramTableHtml: per parameter one row of five cells, a line for the message of its value and a detail row (both hidden while not needed)', () => {
+    const form = F.create('sphere');
     const { rows, html, tags } = tableOf(form);
+    const all = trs(tags);
+    assert.equal(all.length, rows.length * 3);
+    rows.forEach((row, i) => {
+        const [main, error, detail] = all.slice(i * 3, i * 3 + 3);
+        assert.equal(main.attrs.class, 'sf-param-row');
+        assert.equal(main.attrs['data-param'], row.name);
+        assert.deepEqual([error.attrs.class, error.attrs.id, error.attrs.hidden], ['sf-param-error', H.paramErrorRowId(row.name), true]);
+        assert.deepEqual([detail.attrs.class, detail.attrs.id, detail.attrs.hidden], ['sf-detail-row', H.detailRowId(row.name), true]);
+    });
+    const firstRow = html.slice(0, html.indexOf('</tr>'));
+    assert.equal(count(firstRow, '<td') + count(firstRow, '<th'), 5);
+    assert.ok(html.includes('<tr class="sf-detail-row" id="sfDetail_radius" data-param="radius" hidden></tr>'), 'closed: an empty row that aria-controls can point to');
+    const value = fieldOf(tags, 'radius', 'value');
+    assert.deepEqual([value.attrs.type, value.attrs.inputmode, value.attrs.value, value.attrs['aria-label'], value.attrs['aria-describedby']],
+        ['text', 'decimal', '50', 'radius 數值', 'sfErr_radius_value']);
+    assert.equal(fieldOf(tags, 'radius', 'fit').attrs['aria-label'], '擬合 radius');
+    assert.equal(fieldOf(tags, 'scale', 'fit').attrs.checked, true);
+    assert.equal(fieldOf(tags, 'radius', 'lower'), undefined, 'the bounds are in the detail row');
+    assert.ok(html.includes('<span class="sf-param-unit">Å</span>') && html.includes('<span class="sf-param-unit">10⁻⁶ Å⁻²</span>'));
+    assert.equal(tags.filter((t) => t.name === 'th' && !t.closing).every((t) => t.attrs.scope === 'row'), true);
+});
+
+test('paramTableHtml: one disclosure button per parameter names what it opens and points at its detail row', () => {
+    const { rows, tags } = tableOf(F.create('sphere'));
+    const more = byAttr(tags, 'data-action', 'toggleDetail');
+    assert.equal(more.length, rows.length);
+    more.forEach((button, i) => {
+        const name = rows[i].name;
+        assert.deepEqual([button.name, button.attrs.type, button.attrs.id, button.attrs['aria-expanded'], button.attrs['aria-controls'], button.attrs['aria-label']],
+            ['button', 'button', H.moreButtonId(name), 'false', H.detailRowId(name), name + ' 的範圍與多分散']);
+    });
+    const ids = idsOf(tags);
+    more.forEach((button) => assert.ok(ids.includes(button.attrs['aria-controls'])));
+    const opened = tableOf(F.create('sphere'), { fitResult: null, matches: false, details: { radius: true } });
+    assert.equal(byAttr(opened.tags, 'data-param', 'radius').find((t) => t.attrs['data-action'] === 'toggleDetail').attrs['aria-expanded'], 'true');
+    assert.ok(/<tr class="sf-param-row is-open" data-param="radius"/.test(opened.html));
+    assert.equal(byAttr(opened.tags, 'data-param', 'scale').find((t) => t.attrs['data-action'] === 'toggleDetail').attrs['aria-expanded'], 'false');
+});
+
+test('paramTableHtml: a parameter name may wrap after an underscore only (<wbr>), and is escaped', () => {
+    const form = F.reduce(F.reduce(F.create('sphere'), { type: 'setStructure', structure: 'hayter_msa' }), { type: 'setRadiusMode', mode: 0 });
+    const { html } = tableOf(form);
+    assert.ok(html.includes('<span class="sf-param-name">concentration_<wbr>salt</span>'));
+    assert.ok(html.includes('<span class="sf-param-name">radius_<wbr>effective</span>'));
+    assert.ok(html.includes('<span class="sf-param-name">scale</span>'));
+    const evil = [{ ...F.rows(F.create('sphere'))[0], name: 'a_<b>', label: 'a_<b>' }];
+    const out = H.paramTableHtml(evil, null);
+    checkMarkup(out, 'evil name');
+    assert.ok(out.includes('<span class="sf-param-name">a_<wbr>&lt;b&gt;</span>'));
+});
+
+test('paramTableHtml: an open detail row holds the bounds with visible labels; a polydisperse parameter also its switch, an SLD its formula button', () => {
+    const form = F.create('sphere');
+    const { html, tags } = tableOf(form, { fitResult: null, matches: false, details: openAll(form) });
+    const lower = fieldOf(tags, 'radius', 'lower');
+    const upper = fieldOf(tags, 'radius', 'upper');
+    assert.deepEqual([lower.attrs.value, lower.attrs['aria-label'], lower.attrs.placeholder], ['0', 'radius 下限', '不限']);
+    assert.deepEqual([upper.attrs.value, upper.attrs['aria-label'], upper.attrs.placeholder], ['', 'radius 上限', '不限']);
+    assert.ok(html.includes('<label for="sfLower_radius">下限</label>') && html.includes('<label for="sfUpper_radius">上限</label>'));
+    assert.ok(html.includes('<div class="sf-detail" role="group" aria-label="radius 的範圍與多分散">'));
+    const pdToggles = byAttr(tags, 'data-action', 'togglePd');
+    assert.deepEqual(pdToggles.map((t) => t.attrs['data-param']), ['radius'], 'only the polydisperse size parameter');
+    assert.deepEqual([pdToggles[0].attrs.id, pdToggles[0].attrs['aria-expanded'], pdToggles[0].attrs['aria-controls'], pdToggles[0].attrs['aria-label']],
+        ['sfPdToggle_radius', 'false', 'sfPdRow_radius', 'radius 的多分散']);
+    assert.ok(html.includes('>多分散</button><div class="sf-pd-fields" id="sfPdRow_radius" role="group" aria-label="radius 的多分散" hidden></div>'));
+    const sld = byAttr(tags, 'data-action', 'sld');
+    assert.deepEqual(sld.map((t) => t.attrs['data-param']), ['sld', 'sld_solvent']);
+    assert.deepEqual([sld[0].attrs.id, sld[0].attrs['aria-expanded'], sld[0].attrs['aria-controls'], sld[0].attrs['aria-label']],
+        ['sfSldBtn_sld', 'false', 'sfSldSlot_sld', '以化學式計算 sld']);
+    assert.ok(html.includes('<div class="sf-sld-slot" id="sfSldSlot_sld" hidden></div>'));
+    const ids = idsOf(tags);
+    [...pdToggles, ...sld].forEach((t) => assert.ok(ids.includes(t.attrs['aria-controls']), t.attrs.id));
+});
+
+test('paramTableHtml: the formula panel is rendered inside the detail row of its parameter (ctx.sld), and only there', () => {
+    const form = F.create('sphere');
+    const { html, tags } = tableOf(form, { fitResult: null, matches: false, details: { sld: true, sld_solvent: true }, sld: sldView({ target: 'sld_solvent' }) });
+    const buttons = byAttr(tags, 'data-action', 'sld');
+    assert.deepEqual(buttons.map((t) => t.attrs['aria-expanded']), ['false', 'true']);
+    assert.ok(html.includes('<div class="sf-sld-slot" id="sfSldSlot_sld_solvent">' + H.sldPanelHtml(sldView({ target: 'sld_solvent' })) + '</div>'));
+    assert.ok(html.includes('<div class="sf-sld-slot" id="sfSldSlot_sld" hidden></div>'));
+    assert.equal(count(html, 'id="sfSldPreset"'), 1);
+    const detail = html.slice(html.indexOf('id="sfDetail_sld_solvent"'), html.indexOf('id="sfErrRow_radius"'));
+    assert.ok(detail.includes('id="sfSldApply"'), 'the panel sits in the same detail row as its trigger');
+    const closed = tableOf(form, { fitResult: null, matches: false, details: {}, sld: sldView({ target: 'sld_solvent' }) }).html;
+    assert.equal(closed.includes('sfSldPreset'), false, 'a closed detail row has no panel');
+});
+
+test('paramTableHtml: a row that cannot be fitted has no tick box, no detail button, shows a dash and its note', () => {
+    const form = F.reduce(F.create('sphere'), { type: 'setStructure', structure: 'hardsphere' });
+    const { rows, html, tags } = tableOf(form, { fitResult: null, matches: false, details: { radius_effective: true } });
     const derived = rows.filter((r) => !r.fittable);
     assert.deepEqual(derived.map((r) => r.name), ['radius_effective']);
     assert.equal(fieldOf(tags, 'radius_effective', 'fit'), undefined);
-    assert.equal(fieldOf(tags, 'radius_effective', 'value').attrs.disabled, true);
+    assert.deepEqual([fieldOf(tags, 'radius_effective', 'value').attrs.disabled, fieldOf(tags, 'radius_effective', 'value').attrs.value], [true, '—']);
+    assert.equal(byAttr(tags, 'data-param', 'radius_effective').some((t) => t.attrs['data-action'] === 'toggleDetail'), false);
+    assert.equal(fieldOf(tags, 'radius_effective', 'lower'), undefined, 'not even when asked to open');
     assert.ok(html.includes('<span class="sf-param-note">' + derived[0].note + '</span>'));
     assert.ok(fieldOf(tags, 'volfraction', 'fit') !== undefined);
-    assert.deepEqual(tags.filter((t) => /\bsf-param-row\b/.test(t.attrs.class || '')).map((t) => t.attrs['data-group']),
-        rows.map((r) => r.group));
+    assert.deepEqual(tags.filter((t) => /\bsf-param-row\b/.test(t.attrs.class || '')).map((t) => t.attrs['data-group']), rows.map((r) => r.group));
 });
 
-test('paramTableHtml: every field has its error element; a field with an error is invalid and describes itself by it', () => {
+test('paramTableHtml: the message of a value is a full-width line under its row; a field with an error is invalid and describes itself by it', () => {
     let form = F.reduce(F.create('sphere'), { type: 'setValue', name: 'radius', value: 'abc' });
-    form = F.reduce(form, { type: 'setLower', name: 'scale', value: '5' });
-    form = F.reduce(form, { type: 'setUpper', name: 'scale', value: '2' });
-    const { rows, html, tags } = tableOf(form);
-    const radiusRow = rows.find((r) => r.name === 'radius');
-    assert.ok(radiusRow.errors.value, 'the form reports the error');
-    const input = fieldOf(tags, 'radius', 'value');
-    assert.equal(input.attrs['aria-invalid'], 'true');
-    assert.equal(input.attrs['aria-describedby'], H.paramErrorId('radius', 'value'));
-    assert.equal(input.attrs.value, 'abc', 'what the user typed stays in the field');
-    assert.ok(html.includes('<p class="sf-field-error" id="' + H.paramErrorId('radius', 'value') + '">' + esc(radiusRow.errors.value) + '</p>'));
-    const scaleRow = rows.find((r) => r.name === 'scale');
-    Object.keys(scaleRow.errors).forEach((field) => {
-        assert.equal(fieldOf(tags, 'scale', field).attrs['aria-invalid'], 'true', field);
-        assert.ok(html.includes(esc(scaleRow.errors[field])));
-    });
-    assert.ok(Object.keys(scaleRow.errors).length > 0);
-    // fields without an error: the element exists, is hidden and empty, and the input is not marked
-    const ok = fieldOf(tags, 'background', 'value');
-    assert.equal(ok.attrs['aria-invalid'], undefined);
-    assert.equal(ok.attrs['aria-describedby'], H.paramErrorId('background', 'value'));
-    assert.ok(html.includes('<p class="sf-field-error" id="' + H.paramErrorId('background', 'value') + '" hidden></p>'));
-    const errorEls = tags.filter((t) => !t.closing && t.attrs.class === 'sf-field-error');
-    const described = tags.filter((t) => !t.closing && t.attrs['aria-describedby']);
-    assert.deepEqual(described.map((t) => t.attrs['aria-describedby']).sort(), errorEls.map((t) => t.attrs.id).sort());
+    form = F.reduce(form, { type: 'setLower', name: 'scale', value: 'x' });
+    const { html, tags } = tableOf(form);
+    const line = tags.find((t) => t.attrs.id === 'sfErrRow_radius');
+    assert.equal(line.attrs.hidden, undefined, 'shown');
+    assert.ok(html.includes('<tr class="sf-param-error" id="sfErrRow_radius"><td colspan="5"><p class="sf-field-error" id="sfErr_radius_value">radius 的數值必須是數字</p></td></tr>'));
+    assert.deepEqual([fieldOf(tags, 'radius', 'value').attrs['aria-invalid'], fieldOf(tags, 'radius', 'value').attrs['aria-describedby']], ['true', 'sfErr_radius_value']);
+    assert.equal(tags.find((t) => t.attrs.id === 'sfErrRow_scale').attrs.hidden, true);
+    assert.ok(html.includes('<p class="sf-field-error" id="sfErr_scale_value" hidden></p>'), 'every value has its (empty) message element');
+    // a bound with an error opens its detail row by itself, and the message is a line of its own inside it
+    assert.equal(fieldOf(tags, 'scale', 'lower').attrs['aria-invalid'], 'true');
+    assert.ok(html.includes('<p class="sf-field-error" id="sfErr_scale_lower">scale 的下限必須是數字（留空表示不設限）</p>'));
+    assert.ok(html.includes('<p class="sf-field-error" id="sfErr_scale_upper" hidden></p>'));
+    const ids = idsOf(tags);
+    tags.filter((t) => !t.closing && t.attrs['aria-describedby']).forEach((t) => assert.ok(ids.includes(t.attrs['aria-describedby']), t.attrs.id));
 });
 
-test('paramTableHtml: a polydisperse parameter has an expand button; its row is filled only when open', () => {
-    const closed = tableOf(F.create('sphere'));
-    const toggles = byAttr(closed.tags, 'data-action', 'togglePd');
-    assert.deepEqual(toggles.map((t) => t.attrs['data-param']), ['radius']);
-    assert.equal(toggles[0].attrs['aria-expanded'], 'false');
-    assert.equal(toggles[0].attrs['aria-controls'], 'sfPdRow_radius');
-    assert.ok(closed.html.includes('<tr class="sf-pd-row" id="sfPdRow_radius" data-param="radius" hidden></tr>'));
-    assert.equal(fieldOf(closed.tags, 'radius', 'pd.width'), undefined);
-
-    const open = tableOf(F.reduce(F.create('sphere'), { type: 'togglePd', name: 'radius' }));
-    const toggle = byAttr(open.tags, 'data-action', 'togglePd')[0];
-    assert.equal(toggle.attrs['aria-expanded'], 'true');
-    const pdRow = open.tags.find((t) => t.attrs.id === toggle.attrs['aria-controls']);
-    assert.equal(pdRow.name, 'tr');
-    assert.equal(pdRow.attrs.hidden, undefined);
-    assert.ok(open.html.includes('<td colspan="7">'));
-    const fields = ['pd.fit', 'pd.width', 'pd.lower', 'pd.upper', 'pd.type', 'pd.npts', 'pd.nsigmas'];
-    const els = fields.map((f) => fieldOf(open.tags, 'radius', f));
-    assert.ok(els.every((t) => t !== undefined));
-    assert.deepEqual(els.map((t) => t.attrs['aria-label']), ['擬合 radius 的 PD 寬度', 'radius 的 PD 寬度', 'radius 的 PD 寬度下限',
-        'radius 的 PD 寬度上限', 'radius 的 PD 分布', 'radius 的 PD 點數', 'radius 的 PD nsigmas']);
-    assert.deepEqual([els[1], els[2], els[3], els[5], els[6]].map((t) => t.attrs.value), ['0', '0', '0.4', '35', '3']);
-    assert.equal(els[4].name, 'select');
-    const options = open.html.slice(open.html.indexOf('<select'), open.html.indexOf('</select>')).match(/<option[^>]*>[^<]*/g);
-    assert.deepEqual(options.map((o) => o.replace(/<[^>]*>/, '')), F.PD_TYPES);
-    assert.equal(options.filter((o) => / selected/.test(o)).length, 1);
-    assert.ok(/value="gaussian" selected/.test(options.find((o) => / selected/.test(o))));
-    assert.equal(els[6].attrs.disabled, undefined);
-    els.forEach((t) => assert.equal(t.attrs.id, H.paramFieldId('radius', t.attrs['data-field'])));
+test('detailOpen: a field error inside always opens the row; else the user\'s choice; else open when the shown fit left the parameter (or its width) on a bound', () => {
+    const sphere = F.create('sphere');
+    const row = (form, name) => F.rows(form).find((r) => r.name === name);
+    assert.equal(H.detailOpen(row(sphere, 'radius'), null, {}), false);
+    assert.equal(H.detailOpen(row(sphere, 'radius'), null, { radius: true }), true);
+    assert.equal(H.detailOpen(row(sphere, 'radius'), null, undefined), false);
+    const badBound = F.reduce(sphere, { type: 'setUpper', name: 'radius', value: 'x' });
+    assert.equal(H.detailOpen(row(badBound, 'radius'), null, { radius: false }), true, 'the user cannot hide a message');
+    const badValue = F.reduce(sphere, { type: 'setValue', name: 'radius', value: 'x' });
+    assert.equal(H.detailOpen(row(badValue, 'radius'), null, {}), false, 'the message of a value is outside the detail row');
+    let pd = F.reduce(sphere, { type: 'togglePd', name: 'radius' });
+    assert.equal(H.detailOpen(row(pd, 'radius'), null, {}), false, 'a dispersity without an error does not open it');
+    pd = F.reduce(pd, { type: 'setPdField', name: 'radius', field: 'npts', value: '0' });
+    assert.equal(H.detailOpen(row(pd, 'radius'), null, { radius: false }), true);
+    const atBound = fitResult({ atBound: { radius: 'upper' } });
+    assert.equal(H.detailOpen(row(sphere, 'radius'), atBound, {}), true);
+    assert.equal(H.detailOpen(row(sphere, 'radius'), atBound, { radius: false }), false, 'the user may close it again');
+    assert.equal(H.detailOpen(row(sphere, 'scale'), atBound, {}), false);
+    assert.equal(H.detailOpen(row(sphere, 'radius'), fitResult({ atBound: { radius_pd: 'lower' } }), {}), true);
+    const derived = F.reduce(sphere, { type: 'setStructure', structure: 'hardsphere' });
+    assert.equal(H.detailOpen(row(derived, 'radius_effective'), null, { radius_effective: true }), false);
+    // openDetails is detailOpen for every row; a result that does not match the form opens nothing
+    assert.deepEqual({ ...H.openDetails(F.rows(sphere), { fitResult: atBound, matches: true, details: { scale: true } }) },
+        { scale: true, background: false, sld: false, sld_solvent: false, radius: true });
+    assert.equal(H.openDetails(F.rows(sphere), { fitResult: atBound, matches: false }).radius, false);
+    assert.ok(Object.isFrozen(H.openDetails(F.rows(sphere), null)));
 });
 
-test('paramTableHtml: nsigmas is disabled for uniform; PD field errors are attached to their fields', () => {
+test('paramTableHtml: a collapsed row still tells the truth: a marker for edited bounds and for a dispersity that takes part', () => {
+    const marker = (form, name) => cellOf(tableOf(form).html, H.markerId(name));
+    const sphere = F.create('sphere');
+    assert.equal(marker(sphere, 'radius'), '');
+    assert.equal(marker(sphere, 'scale'), '', 'default bounds (0, open) are not marked');
+    assert.equal(marker(F.reduce(sphere, { type: 'setUpper', name: 'radius', value: '45' }), 'radius'), '0–45');
+    assert.equal(marker(F.reduce(sphere, { type: 'setLower', name: 'radius', value: '' }), 'radius'), '不限');
+    assert.equal(marker(F.reduce(sphere, { type: 'setLower', name: 'background', value: '0' }), 'background'), '≥ 0');
+    let pd = F.reduce(sphere, { type: 'togglePd', name: 'radius' });
+    assert.equal(marker(pd, 'radius'), '', 'open with width 0: no effect yet');
+    pd = F.reduce(pd, { type: 'setPdField', name: 'radius', field: 'width', value: '0.1' });
+    assert.equal(marker(pd, 'radius'), '多分散 0.1');
+    assert.equal(marker(F.reduce(pd, { type: 'setUpper', name: 'radius', value: '45' }), 'radius'), '0–45 · 多分散 0.1');
+    assert.equal(marker(F.reduce(pd, { type: 'setPdFit', name: 'radius', fit: true }), 'radius'), '多分散（擬合寬度）');
+    assert.equal(marker(F.reduce(pd, { type: 'togglePd', name: 'radius' }), 'radius'), '', 'closed: it does not take part');
+});
+
+test('paramTableHtml: an open dispersity: defaults, labelled fields with the new names, the error of the width next to it', () => {
+    const form = F.reduce(F.create('sphere'), { type: 'togglePd', name: 'radius' });
+    const { html, tags } = tableOf(form, { fitResult: null, matches: false, details: { radius: true } });
+    assert.equal(byAttr(tags, 'data-action', 'togglePd')[0].attrs['aria-expanded'], 'true');
+    const group = tags.find((t) => t.attrs.id === 'sfPdRow_radius');
+    assert.deepEqual([group.attrs.role, group.attrs['aria-label'], group.attrs.hidden], ['group', 'radius 的多分散', undefined]);
+    const pd = (key) => fieldOf(tags, 'radius', 'pd.' + key);
+    assert.deepEqual(['width', 'lower', 'upper', 'npts', 'nsigmas'].map((k) => pd(k).attrs.value), ['0', '0', '0.4', '35', '3']);
+    assert.deepEqual(['width', 'lower', 'upper', 'npts', 'nsigmas'].map((k) => pd(k).attrs['aria-label']),
+        ['radius 的多分散寬度', 'radius 的多分散寬度下限', 'radius 的多分散寬度上限', 'radius 的多分散取點數', 'radius 的多分散範圍（σ 倍數）']);
+    assert.deepEqual([pd('fit').attrs.type, pd('fit').attrs.checked, pd('fit').attrs['aria-label']], ['checkbox', undefined, '擬合 radius 的多分散寬度']);
+    assert.equal(pd('npts').attrs.inputmode, 'numeric');
+    ['寬度', '寬度下限', '寬度上限', '分布', '取點數', '範圍（σ 倍數）'].forEach((label) => assert.ok(html.includes('>' + label + '</label>'), label));
+    assert.equal(/npts|nsigmas|>PD</.test(html.replace(/id="[^"]*"|for="[^"]*"|data-field="[^"]*"|aria-describedby="[^"]*"/g, '')), false, 'no jargon left on screen');
+    const type = pd('type');
+    assert.deepEqual([type.name, type.attrs['aria-label']], ['select', 'radius 的多分散分布']);
+    assert.equal(count(html, '<option'), F.PD_TYPES.length);
+    assert.ok(html.includes('<option value="gaussian" selected>gaussian</option>'));
+    assert.ok(html.includes('<span class="sf-param-pm" id="sfPm_radius_pd"></span>'));
+    const closed = tableOf(form, { fitResult: null, matches: false, details: {} });
+    assert.equal(fieldOf(closed.tags, 'radius', 'pd.width'), undefined, 'the detail row is closed: its fields are not in the table');
+});
+
+test('paramTableHtml: the range of sigmas is disabled for uniform; messages of the dispersity are lines of their own in its group', () => {
     let form = F.reduce(F.create('sphere'), { type: 'togglePd', name: 'radius' });
     form = F.reduce(form, { type: 'setPdField', name: 'radius', field: 'type', value: 'uniform' });
-    form = F.reduce(form, { type: 'setPdField', name: 'radius', field: 'npts', value: '-3' });
-    const { rows, html, tags } = tableOf(form);
+    form = F.reduce(form, { type: 'setPdField', name: 'radius', field: 'npts', value: '0' });
+    const { html, tags } = tableOf(form);
+    assert.equal(tags.find((t) => t.attrs.id === 'sfMore_radius').attrs['aria-expanded'], 'true', 'the error opens the detail row');
     assert.equal(fieldOf(tags, 'radius', 'pd.nsigmas').attrs.disabled, true);
-    const pd = rows.find((r) => r.name === 'radius').pd;
-    assert.ok(pd.errors.npts);
-    const npts = fieldOf(tags, 'radius', 'pd.npts');
-    assert.equal(npts.attrs['aria-invalid'], 'true');
-    assert.equal(npts.attrs['aria-describedby'], H.paramErrorId('radius', 'pd.npts'));
-    assert.ok(html.includes('id="' + H.paramErrorId('radius', 'pd.npts') + '">' + esc(pd.errors.npts) + '</p>'));
-    assert.equal(fieldOf(tags, 'radius', 'pd.width').attrs['aria-invalid'], undefined);
+    assert.equal(fieldOf(tags, 'radius', 'pd.width').attrs.disabled, undefined);
+    assert.equal(fieldOf(tags, 'radius', 'pd.npts').attrs['aria-invalid'], 'true');
+    assert.ok(html.includes('<p class="sf-field-error" id="sfErr_radius_pd_npts">radius 的多分散取點數必須是 1 到 1000 的整數</p>'));
+    assert.ok(html.includes('<p class="sf-field-error" id="sfErr_radius_pd_width" hidden></p>'));
 });
 
 test('paramTableHtml: the error column is empty without a matching result', () => {
     const form = F.reduce(F.create('core_shell_sphere'), { type: 'togglePd', name: 'radius' });
-    const cells = (ctx) => tableOf(form, ctx).html.match(/<(?:td|span) class="sf-param-pm"[^>]*>[^<]*/g).map((s) => s.replace(/<[^>]*>/, ''));
+    const cells = (ctx) => tableOf(form, { details: { radius: true }, ...ctx }).html.match(/<(?:td|span) class="sf-param-pm"[^>]*>[^<]*/g).map((s) => s.replace(/<[^>]*>/, ''));
     const n = F.rows(form).length + 1;
     assert.deepEqual(cells(undefined), Array(n).fill(''));
     assert.deepEqual(cells({ fitResult: null, matches: false }), Array(n).fill(''));
@@ -310,33 +428,35 @@ test('paramTableHtml: the error column is empty without a matching result', () =
 
 test('paramTableHtml: the error column shows the errors the page displays, per parameter (spec 5.7 items 5 and 8)', () => {
     const form = F.reduce(F.create('core_shell_sphere'), { type: 'togglePd', name: 'radius' });
-    const cellOf = (html, id) => new RegExp('id="' + id + '">([^<]*)<').exec(html)[1];
-    const plain = tableOf(form, { fitResult: fitResult(), matches: true }).html;
+    const table = (r) => tableOf(form, { fitResult: r, matches: true, details: { radius: true } }).html;
+    const plain = table(fitResult());
     assert.equal(cellOf(plain, 'sfPm_scale'), '± 0.012');
     assert.equal(cellOf(plain, 'sfPm_radius'), '± 0.50');
     assert.equal(cellOf(plain, 'sfPm_radius_pd'), '± 0.010');
     assert.equal(cellOf(plain, 'sfPm_thickness'), '', 'a fixed parameter has no error');
     assert.equal(cellOf(plain, 'sfPm_background'), '');
 
-    const scaled = tableOf(form, { fitResult: fitResult({ displayErrorsScaled: true }), matches: true }).html;
+    const scaled = table(fitResult({ displayErrorsScaled: true }));
     assert.equal(cellOf(scaled, 'sfPm_scale'), '± 0.025');
     assert.equal(cellOf(scaled, 'sfPm_radius'), '± 1.0');
 
-    const special = fitResult({ atBound: { radius: 'upper' }, errors: { scale: NaN, radius: 0.5, radius_pd: 0 } });
-    const html = tableOf(form, { fitResult: special, matches: true }).html;
-    assert.equal(cellOf(html, 'sfPm_radius'), Hints.AT_BOUND_ERROR_TEXT);
-    assert.equal(cellOf(html, 'sfPm_radius'), '貼邊界，誤差無意義');
-    assert.equal(cellOf(html, 'sfPm_scale'), '無法計算');
+    const special = fitResult({ atBound: { radius: 'upper', scale: 'lower' }, errors: { scale: NaN, radius: 0.5, radius_pd: 0 } });
+    const html = table(special);
+    assert.equal(cellOf(html, 'sfPm_radius'), '貼上限', 'short in the narrow column: the hint and the tile have the sentence');
+    assert.equal(cellOf(html, 'sfPm_scale'), '貼下限');
     assert.equal(cellOf(html, 'sfPm_radius_pd'), '無法計算');
+    assert.equal(cellOf(table(fitResult({ errors: { scale: NaN, radius: 0.5, radius_pd: 0.01 } })), 'sfPm_scale'), '無法計算');
+    // a parameter on a bound opens its detail row, where the bound is
+    assert.equal(tableOf(form, { fitResult: special, matches: true }).tags.find((t) => t.attrs.id === 'sfMore_radius').attrs['aria-expanded'], 'true');
 });
 
 test('paramTableHtml: an error that is >= the value keeps its number; ill-conditioned and far larger says so in words', () => {
     const form = F.reduce(F.create('core_shell_sphere'), { type: 'togglePd', name: 'radius' });
-    const cellOf = (html, id) => new RegExp('id="' + id + '">([^<]*)<').exec(html)[1];
+    const table = (r) => tableOf(form, { fitResult: r, matches: true, details: { radius: true } }).html;
     const big = { errors: { scale: 5700, radius: 1e8, radius_pd: 0.01 } };
-    assert.equal(cellOf(tableOf(form, { fitResult: fitResult(big), matches: true }).html, 'sfPm_scale'), '± 5700');
-    assert.equal(cellOf(tableOf(form, { fitResult: fitResult(big), matches: true }).html, 'sfPm_radius'), '± 1.0e8');
-    const ill = tableOf(form, { fitResult: fitResult({ ...big, illConditioned: true }), matches: true }).html;
+    assert.equal(cellOf(table(fitResult(big)), 'sfPm_scale'), '± 5700');
+    assert.equal(cellOf(table(fitResult(big)), 'sfPm_radius'), '± 1.0e8');
+    const ill = table(fitResult({ ...big, illConditioned: true }));
     assert.equal(cellOf(ill, 'sfPm_radius'), '無法決定');
     assert.equal(cellOf(ill, 'sfPm_scale'), '無法決定', '5700 > 1000 x 1.2345');
     assert.equal(cellOf(ill, 'sfPm_radius_pd'), '± 0.010');
@@ -357,27 +477,34 @@ test('paramTableHtml: background shows cm⁻¹ only for data on absolute scale; 
     assert.equal(unitOfRow(official, 'dielectconst'), '', 'unit None shows nothing');
     assert.equal(fieldOf(checkMarkup(official, 't'), 'radius_effective', 'value').attrs.value, '—');
     assert.equal(fieldOf(checkMarkup(official, 't'), 'radius_effective', 'value').attrs.disabled, true);
+    assert.equal(cellOf(official, 'sfMark_charge'), '', 'the lower bound 0.5 of charge is its default: no marker');
 });
 
 test('paramTableHtml: locked disables every control of the table', () => {
     const form = F.reduce(F.create('sphere'), { type: 'togglePd', name: 'radius' });
-    const { tags } = tableOf(form, { fitResult: null, matches: false, locked: true });
+    const { tags } = tableOf(form, { fitResult: null, matches: false, locked: true, details: openAll(form) });
     const controls = tags.filter((t) => !t.closing && ['input', 'select', 'button'].includes(t.name));
-    assert.ok(controls.length > 20);
+    assert.ok(controls.length > 30);
     assert.ok(controls.every((t) => t.attrs.disabled === true));
     assert.ok(tableOf(form).tags.some((t) => t.name === 'input' && t.attrs.disabled === undefined));
 });
 
-test('paramTableHtml: every model of the page renders, ids are unique and in the sf namespace', () => {
+test('paramTableHtml: every model of the page renders with every detail row open; ids are unique and in the sf namespace', () => {
     Meta.order.filter((name) => !Meta.models[name].isStructureFactor).forEach((model) => {
         let form = F.create(model);
         F.rows(form).filter((r) => r.pd !== null).forEach((r) => { form = F.reduce(form, { type: 'togglePd', name: r.name }); });
         if (F.canTakeStructure(model)) form = F.reduce(form, { type: 'setStructure', structure: 'hayter_msa' });
         form = F.reduce(form, { type: 'setLowQ', on: true });
-        const { tags } = tableOf(form, { fitResult: null, matches: false });
+        const sldName = (F.rows(form).find((r) => r.isSld) || {}).name;
+        const ctx = { fitResult: null, matches: false, details: openAll(form), sld: sldName === undefined ? null : sldView({ target: sldName }) };
+        const { tags } = tableOf(form, ctx);
         const ids = idsOf(tags);
         assert.equal(new Set(ids).size, ids.length, model + ': duplicate ids');
         ids.forEach((id) => assert.match(id, ID_RE, model));
+        tags.filter((t) => !t.closing && (t.attrs['aria-controls'] || t.attrs['aria-describedby'] || t.attrs.for)).forEach((t) => {
+            [t.attrs['aria-controls'], t.attrs['aria-describedby'], t.attrs.for].filter(Boolean).join(' ').split(/\s+/)
+                .forEach((id) => assert.ok(ids.includes(id), model + ': ' + id + ' does not exist'));
+        });
     });
 });
 
@@ -409,8 +536,12 @@ test('weightingOptionsHtml: without a usable sigma the sigma option is disabled;
 
 // ------------------------------------------------------------------ additions for the model segment (plan M3 Task 12)
 
-test('modelOptionsHtml: one optgroup per group, the 13 models, exactly the selected one marked', () => {
-    const html = H.modelOptionsHtml(F.models(''), 'cylinder');
+test('modelOptionsHtml: one optgroup per group, the 13 models with their Chinese names, exactly the selected one marked', () => {
+    const html = H.modelOptionsHtml(F.models(), 'cylinder');
+    assert.ok(html.includes('<option value="sphere">sphere — 均勻球</option>'));
+    assert.ok(html.includes('<option value="cylinder" selected>cylinder — 圓柱</option>'));
+    assert.ok(html.includes('<option value="flexible_cylinder">flexible_cylinder — 柔性圓柱（蠕蟲鏈）</option>'));
+    assert.ok(html.includes('<option value="guinier">Guinier</option>'), 'a name that says nothing new is not repeated');
     const tags = checkMarkup(html, 'modelOptionsHtml');
     const groups = tags.filter((t) => t.name === 'optgroup' && !t.closing);
     assert.deepEqual(groups.map((t) => t.attrs.label), ['形狀', '與形狀無關']);
@@ -438,27 +569,33 @@ test('optionsHtml: values are compared as text, so a numeric mode selects its op
     assert.equal(H.optionsHtml(null, 0), '');
 });
 
-test('paramErrorCells: the same ids and texts as the error cells of paramTableHtml', () => {
+test('paramErrorCells: the same ids and texts as the cells of paramTableHtml that change in place (errors and markers)', () => {
     let form = F.create('core_shell_sphere');
     form = F.reduce(form, { type: 'togglePd', name: 'radius' });
+    form = F.reduce(form, { type: 'setPdField', name: 'radius', field: 'width', value: '0.1' });
     const rows = F.rows(form);
     const result = fitResult({ atBound: { scale: 'lower' } });
-    for (const ctx of [{ fitResult: result, matches: true }, { fitResult: result, matches: false }, { fitResult: null, matches: false }]) {
+    const details = { radius: true };
+    for (const ctx of [{ fitResult: result, matches: true, details }, { fitResult: result, matches: false, details }, { fitResult: null, matches: false, details }]) {
         const cells = H.paramErrorCells(rows, ctx);
         const html = H.paramTableHtml(rows, ctx);
-        assert.equal(cells.length, rows.length + 1, 'one per row and one for the open dispersity');
+        assert.equal(cells.length, rows.length * 2 + 1, 'an error cell and a marker per row, and the error of the open dispersity');
         for (const cell of cells) {
             const m = new RegExp('id="' + cell.id + '">([^<]*)<').exec(html);
             assert.ok(m, cell.id + ' is in the table');
             assert.equal(m[1], esc(cell.text), cell.id);
         }
     }
-    const shown = Object.fromEntries(H.paramErrorCells(rows, { fitResult: result, matches: true }).map((c) => [c.id, c.text]));
+    const shown = Object.fromEntries(H.paramErrorCells(rows, { fitResult: result, matches: true, details }).map((c) => [c.id, c.text]));
     assert.equal(shown.sfPm_radius, '± 0.50');
     assert.equal(shown.sfPm_radius_pd, '± 0.010');
-    assert.equal(shown.sfPm_scale, Hints.AT_BOUND_ERROR_TEXT);
+    assert.equal(shown.sfPm_scale, '貼下限');
     assert.equal(shown.sfPm_thickness, '', 'not fitted: empty');
-    assert.ok(H.paramErrorCells(rows, { fitResult: result, matches: false }).every((c) => c.text === ''));
+    assert.equal(shown.sfMark_radius, '多分散 0.1');
+    assert.equal(shown.sfMark_scale, '');
+    const closed = H.paramErrorCells(rows, { fitResult: result, matches: true, details: { radius: false } });
+    assert.equal(closed.some((c) => c.id === 'sfPm_radius_pd'), false, 'the width\'s error cell exists only while its detail row is open');
+    assert.ok(H.paramErrorCells(rows, { fitResult: result, matches: false }).filter((c) => /^sfPm_/.test(c.id)).every((c) => c.text === ''));
     assert.ok(Object.isFrozen(H.paramErrorCells(rows, null)));
 });
 

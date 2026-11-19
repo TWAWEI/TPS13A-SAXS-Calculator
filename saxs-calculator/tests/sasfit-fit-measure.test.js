@@ -27,12 +27,12 @@ function result(weighting, overrides) {
     return Object.freeze(r);
 }
 const OTHERS = ['sqrtI', 'absI', 'none'];
-const NOTE = '權重不是資料的 σ：這個數值沒有絕對意義（不是 χ²ᵣ），只能比較同一組資料、同一種權重的不同擬合';
+const NOTE = '權重不是資料的 σ：這個數值沒有絕對意義（不是約化 χ²），只能比較同一組資料、同一種權重的不同擬合';
 
 test('measure: label and note by weighting (a FitResult or the name of a weighting)', () => {
-    assert.deepEqual({ ...H.measure('sigma') }, { isChi2: true, label: 'χ²ᵣ', note: '' });
+    assert.deepEqual({ ...H.measure('sigma') }, { isChi2: true, label: '約化 χ²', note: '' });
     OTHERS.forEach((w) => assert.deepEqual({ ...H.measure(w) }, { isChi2: false, label: '加權殘差均方', note: NOTE }, w));
-    assert.equal(H.measure(result('sigma')).label, 'χ²ᵣ');
+    assert.equal(H.measure(result('sigma')).label, '約化 χ²');
     assert.equal(H.measure(result('none')).label, '加權殘差均方');
     assert.equal(H.measure(undefined).isChi2, false, 'unknown: do not claim a chi-square');
     assert.equal(H.measure(null).label, '加權殘差均方');
@@ -44,10 +44,12 @@ test('the four cases of the review: no local-minimum / too-small hint and a plai
         const r = result(weighting, { chi2r });
         const ids = H.fitHints(r).map((h) => h.id);
         assert.deepEqual(ids, ['scaled-errors'], weighting + ' ' + chi2r);
-        assert.deepEqual({ ...H.statusLabel(r) }, { text: '已收斂', tone: 'ok' }, weighting + ' ' + chi2r);
+        assert.deepEqual({ ...H.statusLabel(r) }, { text: '已收斂', tone: 'ok', short: '' }, weighting + ' ' + chi2r);
     }
     assert.deepEqual(H.fitHints(result('sigma', { chi2r: 117 })).map((h) => h.id), ['local-minimum']);
     assert.equal(H.statusLabel(result('sigma', { chi2r: 117 })).tone, 'warn');
+    assert.equal(H.statusLabel(result('sigma', { chi2r: 117 })).text, '已收斂・約化 χ² 偏大');
+    assert.equal(H.statusLabel(result('sigma', { chi2r: 0.0336 })).text, '已收斂・約化 χ² 偏小');
     assert.deepEqual(H.fitHints(result('sigma', { chi2r: 0.0336 })).map((h) => h.id), ['overestimated-errors']);
     assert.equal(H.statusLabel(result('sigma', { chi2r: 0.0336 })).tone, 'warn');
 });
@@ -66,9 +68,9 @@ test('chip: a measure that is not finite and the flags of the fit turn "converge
 
 test('texts of the high / low hints (sigma only)', () => {
     assert.equal(byId(H.fitHints(result('sigma', { chi2r: 50 })), 'local-minimum').text,
-        'χ²ᵣ 遠大於 1：模型與資料不符。可能停在局部極小值（請換起始值重試）、模型不適用，或資料誤差被低估。此時參數誤差沒有參考價值');
+        '約化 χ² 遠大於 1：模型與資料不符。可能停在局部極小值（請換起始值重試）、模型不適用，或資料誤差被低估。此時參數誤差沒有參考價值');
     assert.equal(byId(H.fitHints(result('sigma', { chi2r: 0.01 })), 'overestimated-errors').text,
-        'χ²ᵣ 遠小於 1：資料的誤差可能被高估，或自由參數過多');
+        '約化 χ² 遠小於 1：資料的誤差可能被高估，或自由參數過多');
     assert.equal(byId(H.fitHints(result('sigma', { illConditioned: true })), 'ill-conditioned').text,
         '參數無法由資料獨立決定（彼此高度相關，或某個參數對曲線幾乎沒有影響），誤差不可靠');
 });
@@ -88,7 +90,7 @@ test('scaled errors: the label and the conversion do not speak of chi2r', () => 
 
 test('hero tile: chi2r for sigma; "加權殘差均方" with the note below it otherwise', () => {
     const tile = (r) => /<div class="tile tile--hero">.*?<\/div><\/div>/.exec(Html.resultsHtml(r, { matches: true, fileName: 'a' }))[0];
-    assert.equal(tile(result('sigma')), ResultTiles.tile({ label: 'χ²ᵣ', value: '1.10', hero: true,
+    assert.equal(tile(result('sigma')), ResultTiles.tile({ label: 'χ<sup>2</sup><sub>r</sub>', value: '1.10', hero: true,
         chip: { tone: 'ok', text: '已收斂' }, sub: ['自由度 100・102 點・12 次迭代'] }));
     assert.equal(tile(result('none', { chi2r: 117 })), ResultTiles.tile({ label: '加權殘差均方', value: '117', hero: true,
         chip: { tone: 'ok', text: '已收斂' }, sub: ['自由度 100・102 點・12 次迭代', NOTE] }));

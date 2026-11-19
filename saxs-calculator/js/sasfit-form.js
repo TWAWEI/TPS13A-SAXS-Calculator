@@ -3,7 +3,9 @@
  * (design spec 4.1, 4.3-4.5, 5.3, 5.7 items 10 and 12). Original code.
  *
  * A form is a frozen object; every field holds the STRING the user typed and
- * is turned into a number only by validate():
+ * is turned into a number only by parseNumber() (validate and SasFitJobs read
+ * every field through it; full-width digits of a CJK input method are folded,
+ * a decimal comma is refused with its own message):
  *   { model, structure: null | 'hardsphere' | 'hayter_msa', structureMode: 0 | 1,
  *     radiusMode: 0..n, lowQ: boolean,
  *     fields: { name: { value, lower, upper, fit } },
@@ -75,6 +77,9 @@
     const DERIVED_VALUE = '—';
     const PD_FIELD_KEYS = Object.freeze(['width', 'lower', 'upper', 'type', 'npts', 'nsigmas']);
     const NUMBER_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+    const DECIMAL_COMMA_RE = /^[+-]?\d*,\d+(?:[eE][+-]?\d+)?$/;
+    const NOT_NUMBER = '必須是數字';
+    const NOT_NUMBER_COMMA = '必須是數字（小數點請用「.」，不是逗號）';
 
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
     const freezeMap = (obj) => Object.freeze(Object.fromEntries(
@@ -93,13 +98,10 @@
         return !meta.isStructureFactor && meta.haveFq && meta.reffModes.length > 0;
     }
 
-    /** models(query, keep?) -> [{ group, items: [{ name, title }] }]; empty groups are left out. */
-    function models(query, keep) {
+    /** models() -> [{ group, items: [{ name, title }] }] of every model the page offers; empty groups are left out. */
+    function models() {
         const meta = globalThis.SasFitMeta;
-        const needle = typeof query === 'string' ? query.trim().toLowerCase() : '';
-        const matches = (m) => m.name === keep || m.name.toLowerCase().indexOf(needle) >= 0
-            || m.title.toLowerCase().indexOf(needle) >= 0;
-        const list = meta.order.map((name) => meta.models[name]).filter((m) => !m.isStructureFactor && matches(m));
+        const list = meta.order.map((name) => meta.models[name]).filter((m) => !m.isStructureFactor);
         return Object.freeze(GROUPS.map(({ group, test }) => Object.freeze({
             group,
             items: Object.freeze(list.filter(test).map((m) => Object.freeze({ name: m.name, title: m.title }))),
@@ -139,6 +141,12 @@
             upper: boundText(has(ui, 'upper') ? ui.upper : def.hardMax),
             fit: DEFAULT_FIT.indexOf(def.name) >= 0,
         };
+    }
+
+    /** { lower, upper } a row starts with, as text: what the marker of a collapsed row compares with. */
+    function boundDefaults(def) {
+        const { lower, upper } = defaultField(def);
+        return Object.freeze({ lower, upper });
     }
 
     function defaultPd() {
@@ -281,8 +289,7 @@
     /** Design spec 5.7 item 12: a width fitted from exactly 0 may jump to its upper bound. */
     function setPdFit(form, { name, fit }) {
         const next = patchPd(form, name, { fit: flagOf(fit, 'fit') });
-        const width = next.pds[name].width.trim();
-        const atZero = width === '' || (NUMBER_RE.test(width) && Number(width) === 0);
+        const atZero = next.pds[name].width.trim() === '' || numberOf(next.pds[name].width) === 0;
         return fit && atZero ? patchPd(next, name, { width: String(PD_FIT_START) }) : next;
     }
 
@@ -314,12 +321,25 @@
 
     // ------------------------------------------------------------- validation
 
-    /** The number a field holds, or undefined when the text is not a finite number. */
+    /**
+     * What the user typed as the text of a number: compatibility forms are folded (NFKC: full-width digits, signs
+     * and the full-width full stop of a CJK input method become ASCII) and the Unicode minus becomes '-'.
+     */
+    function normalise(text) {
+        return String(text).normalize('NFKC').replace(/[\u2212\u2010-\u2015]/g, '-').trim();
+    }
+
+    /** parseNumber(text) -> the finite number a field holds, or undefined. The one reading of a field of the form. */
     function numberOf(text) {
-        const t = text.trim();
+        const t = normalise(text);
         if (!NUMBER_RE.test(t)) return undefined;
         const v = Number(t);
         return Number.isFinite(v) ? v : undefined;
+    }
+
+    /** Why a text is not a number, for the field message: a decimal comma gets its own hint. */
+    function notNumberText(text) {
+        return DECIMAL_COMMA_RE.test(normalise(text)) ? NOT_NUMBER_COMMA : NOT_NUMBER;
     }
 
     /**
@@ -334,7 +354,7 @@
         const lower = item.lower.trim() === '' ? -Infinity : numberOf(item.lower);
         const upper = item.upper.trim() === '' ? Infinity : numberOf(item.upper);
         const put = (field, message) => { if (!has(errors, key + '.' + field)) errors[key + '.' + field] = message; };
-        if (value === undefined) put(item.valueKey, item.what + '必須是數字');
+        if (value === undefined) put(item.valueKey, item.what + notNumberText(item.value));
         else if (value < hardMin) put(item.valueKey, item.what + '不可小於 ' + hardMin);
         else if (value > hardMax) put(item.valueKey, item.what + '不可大於 ' + hardMax);
         if (lower === undefined) put('lower', item.bound + '下限必須是數字（留空表示不設限）');
@@ -351,17 +371,17 @@
     function checkPd(name, pd, errors) {
         const key = name + PD_SUFFIX;
         checkTriple({
-            what: name + ' 的 PD 寬度', bound: name + ' 的 PD 寬度', key, value: pd.width, lower: pd.lower, upper: pd.upper, fit: pd.fit,
+            what: name + ' 的多分散寬度', bound: name + ' 的多分散寬度', key, value: pd.width, lower: pd.lower, upper: pd.upper, fit: pd.fit,
             hardMin: 0, hardMax: Infinity, valueKey: 'width',
         }, errors);
         const max = globalThis.SasFitValidate.MAX_PD_POINTS;
         const npts = numberOf(pd.npts);
         if (npts === undefined || !Number.isInteger(npts) || npts < 1 || npts > max) {
-            errors[key + '.npts'] = name + ' 的 PD 點數必須是 1 到 ' + max + ' 的整數';
+            errors[key + '.npts'] = name + ' 的多分散取點數必須是 1 到 ' + max + ' 的整數';
         }
         const nsigmas = numberOf(pd.nsigmas);
         if (PD_UI_DEFAULTS[pd.type].nsigmas !== null && !(nsigmas > 0)) {
-            errors[key + '.nsigmas'] = name + ' 的 PD nsigmas 必須是大於 0 的數字';
+            errors[key + '.nsigmas'] = name + ' 的多分散範圍（σ 倍數）必須是大於 0 的數字';
         }
     }
 
@@ -388,7 +408,7 @@
         const limit = globalThis.SasFitValidate.MAX_EVAL_POINTS;
         if (mesh > limit) {
             errors['form.mesh'] = '多分散網格共 ' + mesh + ' 點（' + factors.map(([name, n]) => name + ' ' + n).join(' × ')
-                + '），超過上限 ' + limit + ' 點；請減少點數';
+                + '），超過上限 ' + limit + ' 點；請減少取點數';
         }
         return Object.freeze({ valid: Object.keys(errors).length === 0, errors: Object.freeze(errors), mesh });
     }
@@ -416,7 +436,7 @@
             ...form.fields[def.name],
             // the model computes this value: the number kept in the form is not the one in use, so none is shown
             ...(def.derived ? { value: DERIVED_VALUE } : {}),
-            hardMin: def.hardMin, hardMax: def.hardMax,
+            hardMin: def.hardMin, hardMax: def.hardMax, defaults: boundDefaults(def),
             fittable: !def.derived, derived: def.derived, note: def.derived ? DERIVED_NOTE : '', isSld: def.isSld,
             pd: def.pdCapable ? pdView(def.name, form.pds[def.name], errors) : null,
             errors: errorsUnder(errors, def.name + '.'),
@@ -433,6 +453,6 @@
     globalThis.SasFitForm = Object.freeze({
         PD_UI_DEFAULTS, PD_TYPES, PD_DEFAULT_TYPE, PD_NSIGMAS_UNUSED, PD_WIDTH_BOUNDS, PD_FIT_START,
         CHARGE_LOWER, LOWQ_POWER_BOUNDS, STRUCTURES,
-        models, canTakeStructure, create, reduce, rows, validate, fittableNames,
+        models, canTakeStructure, create, reduce, rows, validate, fittableNames, parseNumber: numberOf,
     });
 })();

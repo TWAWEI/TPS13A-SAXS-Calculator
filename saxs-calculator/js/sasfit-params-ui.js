@@ -11,16 +11,19 @@
  *     timer and returns true while an evaluation already sent is still being computed;
  *                      debounce timer (a fit is about to start)
  *
- * The form: model select with a search box, S(Q), its two modes, the low-Q
- * power law, the parameter table (SasFitHtml.paramTableHtml; value, bounds,
- * fit ticks, dispersity rows by event delegation on data-param / data-field /
- * data-action) and the formula panel for SLD parameters.
+ * The form: model select, S(q), its two modes, the low-q power law and the
+ * parameter table (SasFitHtml.paramTableHtml: four columns and one detail row
+ * per parameter with its bounds, its dispersity and, for an SLD, the formula
+ * panel; everything by event delegation on data-param / data-field /
+ * data-action). Which detail rows the user opened or closed is kept here
+ * (`details`); SasFitHtml.detailOpen adds the rows that must be open (a field
+ * error inside, a parameter on a bound).
  *
  * Typing never rebuilds the table: the form is replaced, and the values,
  * field errors and error cells are updated in place. The table is rebuilt
- * only when its structure changes (model, S(Q), effective radius mode, low-Q
- * rows, a dispersity row opened / closed or its distribution, the fit lock),
- * through ctx.setHtml, which keeps the focus.
+ * only when its structure changes (model, S(q), effective radius mode, low-q
+ * rows, a detail row or a dispersity opened / closed, a distribution, the
+ * formula panel, the fit lock), through ctx.setHtml, which keeps the focus.
  *
  * Preview policy (plan M3, performance decisions 1-3 and decision 22):
  *   - planned whenever the form, the active dataset or its FitResult changed;
@@ -58,15 +61,19 @@
     const PAGE_ERROR_ID = 'page-error';
     const TEXT_FIELDS = Object.freeze({ value: 'setValue', lower: 'setLower', upper: 'setUpper' });
     const PD_PREFIX = 'pd.';
+    const PD_SUFFIX = '_pd';
     const PD_TEXT_KEYS = Object.freeze(['width', 'lower', 'upper', 'npts', 'nsigmas']);
     const SLD_IDS = Object.freeze({ preset: 'sfSldPreset', formula: 'sfSldFormula', density: 'sfSldDensity',
         output: 'sfSldOutput', apply: 'sfSldApply', cancel: 'sfSldCancel' });
-    const NO_STATUS = Object.freeze({ computing: false, paused: false, previewPoints: 0, allNonFinite: false, error: '' });
+    const NO_STATUS = Object.freeze({
+        computing: false, paused: false, fresh: false, stale: false, previewPoints: 0, allNonFinite: false, error: '',
+    });
+    const SLD_SELECTOR = '.sf-sld';
     const TEXT = Object.freeze({
         noStructure: '此模型不能接結構因子：需要有 F(q) 與有效半徑定義的形狀模型。',
-        structureGeneral: '接 S(Q) 時強度同時乘上 scale 與 volfraction；volfraction 也決定 S(Q) 的形狀。',
-        structureOwnVolfraction: '接 S(Q) 時使用模型本身的 volfraction。',
-        unconstrained: 'unconstrained（自行輸入 radius_effective）',
+        structureGeneral: '接 S(q) 時強度同時乘上 scale 與 volfraction；volfraction 也決定 S(q) 的形狀。',
+        structureOwnVolfraction: '接 S(q) 時使用模型本身的 volfraction。',
+        unconstrained: '自行輸入 radius_effective',
     });
 
     const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
@@ -127,7 +134,7 @@
         const drawable = isObject(result) && isObject(result.I) && countFinite(result.I) > 0;
         if (drawable) ui.store.set({ curve: Object.freeze({ q: request.q, I: result.I }) });
         setStatus(ui, {
-            computing: false, error: '', allNonFinite: !drawable,
+            computing: false, error: '', allNonFinite: !drawable, fresh: drawable, stale: false,
             previewPoints: drawable ? (request.decimated ? request.q.length : 0) : ui.store.get().status.previewPoints,
         });
         clearPageAlert(ui.ctx);
@@ -187,11 +194,12 @@
             return;
         }
         if (!globalThis.SasFitForm.validate(form).valid) {
-            setStatus(ui, { computing: false, paused: false });   // field errors say why; the old curve stays
+            // field errors say why; the old curve stays, and the status line says that it is the old one
+            setStatus(ui, { computing: false, paused: false, fresh: false, stale: true });
             return;
         }
         const paused = globalThis.SasFitJobs.previewRequest(form, dataset).paused;
-        setStatus(ui, { computing: false, paused });
+        setStatus(ui, { computing: false, paused, fresh: false, stale: false });
         if (!paused) store.set({ timer: ui.ctx.deps.timers.setTimeout(() => send(ui), DEBOUNCE_MS) });
     }
 
@@ -233,10 +241,10 @@
         const { ctx } = ui;
         const html = globalThis.SasFitHtml;
         const select = ctx.el('sfModel');
-        ctx.setHtml(select, html.modelOptionsHtml(globalThis.SasFitForm.models(ui.store.get().query, form.model), form.model));
+        ctx.setHtml(select, html.modelOptionsHtml(globalThis.SasFitForm.models(), form.model));
         if (select.value !== form.model) select.value = form.model;
         select.disabled = locked;
-        ctx.el('sfModelSearch').disabled = locked;
+        ctx.el('sfModelLock').hidden = !locked;
         ctx.setHtml(ctx.el('sfModelInfo'), html.modelInfoHtml(metaOf(form.model)));
     }
 
@@ -282,9 +290,13 @@
 
     // ------------------------------------------------------------- parameter table
 
-    /** What decides the rows and controls of the table; while it stays the same the table is updated in place. */
-    function tableKey(form, locked, absolute) {
-        return JSON.stringify([form.model, form.structure, form.radiusMode, form.lowQ, locked, absolute,
+    /**
+     * What decides the rows and controls of the table; while it stays the same the table is updated in place:
+     * the shape of the model, the lock, which detail rows are open (`open`, from SasFitHtml.openDetails), the
+     * dispersities that take part and the SLD parameter whose formula panel is open.
+     */
+    function tableKey(form, locked, absolute, open, sldTarget) {
+        return JSON.stringify([form.model, form.structure, form.radiusMode, form.lowQ, locked, absolute, open, sldTarget,
             Object.keys(form.pds).map((name) => [name, form.pds[name].open, form.pds[name].type])]);
     }
 
@@ -298,6 +310,10 @@
         if (note) {
             if (note.textContent !== message) note.textContent = message;
             note.hidden = message === '';
+        }
+        if (field === 'value') {                                  // its message has a row of its own under the parameter
+            const line = ctx.el(html.paramErrorRowId(name));
+            if (line) line.hidden = message === '';
         }
         if (message === '') input.removeAttribute('aria-invalid'); else input.setAttribute('aria-invalid', 'true');
     }
@@ -315,18 +331,35 @@
         PD_TEXT_KEYS.forEach((key) => syncField(ctx, row.name, PD_PREFIX + key, row.pd[key], row.pd.errors[key]));
     }
 
+    /**
+     * A new FitResult that left parameters on a bound opens their detail rows even when the user closed them
+     * before (the bound is in there); after that the user may close them again.
+     */
+    function forgetChoicesAtBound(ui, result) {
+        const { store } = ui;
+        if (result === store.get().resultSeen) return;
+        store.set({ resultSeen: result });
+        const atBound = isObject(result) && isObject(result.atBound) ? Object.keys(result.atBound) : [];
+        const names = atBound.map((name) => (name.endsWith(PD_SUFFIX) ? name.slice(0, -PD_SUFFIX.length) : name));
+        const details = Object.fromEntries(Object.entries(store.get().details).filter(([name]) => names.indexOf(name) < 0));
+        store.set({ details: Object.freeze(details) });
+    }
+
     function renderTable(ui, state, form, locked) {
         const { ctx, store } = ui;
         const html = globalThis.SasFitHtml;
         const result = activeResult(state);
         const active = globalThis.SasFitState.active(state);
         const absolute = active !== null && active.dataset.kind === 'official';      // background is then in 1/cm
+        forgetChoicesAtBound(ui, result);
+        const { sld, details } = store.get();
         const resultCtx = {
             fitResult: result, matches: result !== null && globalThis.SasFitJobs.resultMatchesForm(form, result), locked, absolute,
+            details, sld: sld === null ? null : sldView(sld).view,
         };
         const rows = globalThis.SasFitForm.rows(form);
         ctx.setHtml(ctx.el('sfParamHead'), html.paramTableHeadHtml(resultCtx));
-        const key = tableKey(form, locked, absolute);
+        const key = tableKey(form, locked, absolute, html.openDetails(rows, resultCtx), sld === null ? null : sld.target);
         if (key !== store.get().tableKey) {
             ctx.setHtml(ctx.el('sfParamBody'), html.paramTableHtml(rows, resultCtx));
             store.set({ tableKey: key });
@@ -392,17 +425,36 @@
         if (target === null || isRunning(ui.ctx.getState())) return;
         const { action, param } = target.dataset;
         if (action === 'togglePd') applyAction(ui, { type: 'togglePd', name: param });
-        else if (action === 'sld') openSld(ui, param, target.id);
+        else if (action === 'toggleDetail') toggleDetail(ui, param, target.getAttribute('aria-expanded') !== 'true');
+        else if (action === 'sld') toggleSld(ui, param, target.id);
+    }
+
+    /** Open or close the detail row of a parameter (bounds, dispersity, formula). A panel inside a row that closes goes with it. */
+    function toggleDetail(ui, name, open) {
+        const { store } = ui;
+        const { sld } = store.get();
+        if (!open) {
+            // a row that a field error keeps open cannot be closed: recording the wish would close it under the
+            // caret the moment the error is corrected
+            const row = globalThis.SasFitForm.rows(ui.ctx.getForm()).find((r) => r.name === name);
+            if (row !== undefined && globalThis.SasFitHtml.detailOpen(row, null, { [name]: false })) return;
+        }
+        if (!open && sld !== null && sld.target === name) store.set({ sld: null });
+        store.set({ details: Object.freeze({ ...store.get().details, [name]: open }) });
+        ui.ctx.refresh();
+    }
+
+    function toggleSld(ui, name, triggerId) {
+        const { sld } = ui.store.get();
+        if (sld !== null && sld.target === name) cancelSld(ui); else openSld(ui, name, triggerId);
     }
 
     function bindForm(ui) {
         const { ctx } = ui;
-        ctx.el('sfModelSearch').addEventListener('input', (event) => {
-            ui.store.set({ query: String(event.target.value) });
-            renderModelPick(ui, ctx.getForm(), isRunning(ctx.getState()));       // the form does not change: no preview
-        });
         ctx.el('sfModel').addEventListener('change', (event) => {
-            if (event.target.value !== ctx.getForm().model) applyAction(ui, { type: 'setModel', model: event.target.value });
+            if (event.target.value === ctx.getForm().model || isRunning(ctx.getState())) return;
+            ui.store.set({ details: Object.freeze({}) });         // the rows of another model: none of them was opened by the user
+            applyAction(ui, { type: 'setModel', model: event.target.value });
         });
         ctx.el('sfStructure').addEventListener('change', (event) => {
             applyAction(ui, { type: 'setStructure', structure: event.target.value === '' ? null : event.target.value });
@@ -457,8 +509,8 @@
         const { sld } = store.get();
         const { view, computed } = sldView(sld);
         const html = globalThis.SasFitHtml;
-        if (whole) ctx.setHtml(ctx.el('sfSldPanel'), html.sldPanelHtml(view));
-        else ctx.setHtml(ctx.el(SLD_IDS.output), html.sldOutputHtml(view));
+        const slot = ctx.el(whole ? html.sldSlotId(sld.target) : SLD_IDS.output);
+        if (slot) ctx.setHtml(slot, whole ? html.sldPanelHtml(view) : html.sldOutputHtml(view));
         const densityBad = computed.error !== null && computed.error.code === 'bad_density';
         markInvalid(ctx.el(SLD_IDS.formula), computed.error !== null && !densityBad);
         markInvalid(ctx.el(SLD_IDS.density), densityBad);
@@ -475,16 +527,13 @@
     function openSld(ui, target, triggerId) {
         const { ctx, store } = ui;
         store.set({ sld: Object.freeze({ target, triggerId, formula: '', density: '', presetId: '', value: null }) });
-        ctx.el('sfSldPanel').hidden = false;
-        renderSld(ui, true);
+        ctx.refresh();                                             // the table is rebuilt with the panel inside the detail row
         focusOn(ctx, SLD_IDS.preset);
     }
 
+    /** The panel is part of the table: the next render leaves it out. */
     function closeSld(ui) {
-        const { ctx, store } = ui;
-        store.set({ sld: null });
-        ctx.setHtml(ctx.el('sfSldPanel'), '');
-        ctx.el('sfSldPanel').hidden = true;
+        ui.store.set({ sld: null });
     }
 
     function applySld(ui) {
@@ -501,6 +550,7 @@
         const { sld } = ui.store.get();
         if (sld === null) return;
         closeSld(ui);
+        ui.ctx.refresh();
         focusOn(ui.ctx, sld.triggerId);
     }
 
@@ -523,22 +573,26 @@
         renderSld(ui, false);
     }
 
+    /** The panel lives inside the parameter table (the detail row of its parameter): its events are delegated from the body. */
     function bindSld(ui) {
-        const panel = ui.ctx.el('sfSldPanel');
-        panel.addEventListener('input', (event) => { if (ui.store.get().sld !== null) onSldInput(ui, event.target); });
-        panel.addEventListener('change', (event) => {
-            if (ui.store.get().sld !== null && event.target.id === SLD_IDS.preset) onSldPreset(ui, event.target.value);
+        const body = ui.ctx.el('sfParamBody');
+        const inPanel = (event) => ui.store.get().sld !== null && typeof event.target.closest === 'function'
+            && event.target.closest(SLD_SELECTOR) !== null;
+        body.addEventListener('input', (event) => { if (inPanel(event)) onSldInput(ui, event.target); });
+        body.addEventListener('change', (event) => {
+            if (inPanel(event) && event.target.id === SLD_IDS.preset) onSldPreset(ui, event.target.value);
         });
-        panel.addEventListener('click', (event) => {
+        body.addEventListener('click', (event) => {
+            if (!inPanel(event)) return;
             if (event.target.id === SLD_IDS.apply) applySld(ui);
             else if (event.target.id === SLD_IDS.cancel) cancelSld(ui);
         });
-        panel.addEventListener('keydown', (event) => { if (event.key === 'Escape') cancelSld(ui); });
+        body.addEventListener('keydown', (event) => { if (event.key === 'Escape' && inPanel(event)) cancelSld(ui); });
     }
 
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
-            tableKey: null, query: '', sld: null, curve: null, status: NO_STATUS, planned: null, timer: null, slowTimer: null, seq: 0, inFlight: null,
+            tableKey: null, details: Object.freeze({}), resultSeen: null, sld: null, curve: null, status: NO_STATUS, planned: null, timer: null, slowTimer: null, seq: 0, inFlight: null,
         }) });
         bindForm(ui);
         bindSld(ui);

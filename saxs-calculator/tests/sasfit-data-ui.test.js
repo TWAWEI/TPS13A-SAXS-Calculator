@@ -106,8 +106,10 @@ test('[sasfit-data-ui] 清單的 HTML 就是 SasFitHtml.fileRowsHtml 的輸出�
     const state = page.Section.getState();
     const [a, b] = state.files;
     const expected = Html.fileRowsHtml([
-        { id: a.id, index: 0, fileName: a.fileName, hasData: true, shown: true, active: true, condition: 10, statusText: '未擬合', issues: a.issues, issueOverflow: 0, locked: false },
-        { id: b.id, index: 1, fileName: b.fileName, hasData: true, shown: true, active: false, condition: b.condition, statusText: '未擬合', issues: b.issues, issueOverflow: 0, locked: false },
+        { id: a.id, index: 0, fileName: a.fileName, hasData: true, shown: true, active: true, condition: 10, statusText: '未擬合', statusMeasure: null,
+            conditionName: '條件', issues: a.issues, issueOverflow: 0, locked: false },
+        { id: b.id, index: 1, fileName: b.fileName, hasData: true, shown: true, active: false, condition: b.condition, statusText: '未擬合', statusMeasure: null,
+            conditionName: '條件', issues: b.issues, issueOverflow: 0, locked: false },
     ]);
     assert.equal(page.$('sfDataBody').innerHTML, expected);
     assert.match(page.$('sfDataBody').innerHTML, /第 \d+ 行：/, '解析不了的行列出行號');
@@ -194,14 +196,15 @@ test('[sasfit-data-ui] 讀檔失敗寫進 console 的訊息不含檔名', async 
     assert.doesNotMatch(warnings.join(' '), /patient-A-secret/);
 });
 
-test('[sasfit-data-ui] 檔名含 HTML：innerHTML 沒有未跳脫的標記；canvas 的 aria-label 說明組數、模式與作用中', async () => {
+test('[sasfit-data-ui] 檔名含 HTML：innerHTML 沒有未跳脫的標記；canvas 的 aria-label 說明組數、模式、擬合對象、模型與擬合範圍', async () => {
     const page = boot();
     const evil = '<img src=x onerror=alert(1)>.dat';
     await load(page, [ui.fileOf(evil, ui.fixtureText(OFFICIAL))]);
     const html = page.$('sfDataBody').innerHTML;
     assert.doesNotMatch(html, /<img/);
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;\.dat/);
-    assert.equal(page.$('sfMainChart').getAttribute('aria-label'), `1 組資料，模式 log-log，作用中：${evil}`);
+    assert.equal(page.$('sfMainChart').getAttribute('aria-label'), `1 組資料，模式 log-log，擬合對象：${evil}，模型 sphere — 均勻球，擬合範圍 q 0.005–0.35 Å⁻¹`);
+    assert.equal(page.$('sfUndoText').textContent, '', 'textContent 寫入，不經 innerHTML');
 });
 
 // ---------------------------------------------------------------- 拖放
@@ -399,7 +402,9 @@ test('[sasfit-data-ui] view：非作用中而有 FitResult 的檔帶 fitCurve；
     assert.equal(sb.fitCurve.I, page.Section.getState().fitResults[b].curve);
     assert.equal(view.series.find((s) => s.id === a).fitCurve, null);
     assert.equal(view.residuals, null);
-    assert.match(page.$('sfDataBody').innerHTML, /χ²ᵣ 1\.04・已收斂/);
+    const list = page.$('sfDataBody').innerHTML;
+    assert.match(list, /title="約化 χ² 1\.04・已收斂"/, '完整狀態在 title 與報讀文字');
+    assert.match(list, /<span aria-hidden="true">χ<sup>2<\/sup><sub>r<\/sub> 1\.04<\/span>/, '窄欄裡的晶片只有量度與數值');
 });
 
 test('[sasfit-data-ui] view：作用中的結果與表單相符時畫全解析度的 fitResult.curve 與殘差，不用預覽', async () => {
@@ -414,7 +419,105 @@ test('[sasfit-data-ui] view：作用中的結果與表單相符時畫全解析�
     assert.equal(view.series.find((s) => s.id === a).fitCurve.I, result.curve);
     assert.equal(view.preview, null);
     assert.deepEqual(view.residuals, { q: dataset.q, r: result.residuals });
-    assert.match(page.$('sfResidualChart').getAttribute('aria-label'), /SYNTH_sphere_10\.dat 的殘差，\d+ 點/);
+    assert.match(page.$('sfResidualChart').getAttribute('aria-label'), /^SYNTH_sphere_10\.dat 的殘差，\d+ 點，範圍 0\.50 至 0\.50，\|殘差\| > 3 的有 0 點$/);
+    assert.match(page.$('sfMainChart').getAttribute('aria-label'),
+        /^3 組資料，模式 log-log，擬合對象：SYNTH_sphere_10\.dat，模型 sphere — 均勻球，約化 χ² 1\.04（已收斂），擬合範圍 q 0\.005–0\.35 Å⁻¹$/,
+        'canvas 的替代文字帶著結果：模型、擬合量度與狀態、擬合範圍');
+    assert.equal(page.$('sfResidualBox').hidden, false);
+    assert.equal(page.$('sfResidualEmpty').hidden, true);
+});
+
+test('[sasfit-data-ui] 沒有殘差時殘差圖收成一行「尚無擬合結果」；圖卡標題跟著圖模式', async () => {
+    const page = boot();
+    assert.equal(page.$('sfResidualBox').hidden, true);
+    assert.equal(page.$('sfResidualEmpty').hidden, false);
+    assert.equal(page.$('sfPlotTitle').textContent, 'I(q)');
+    await threeFiles(page);
+    assert.equal(page.$('sfResidualBox').hidden, true, '載入資料但還沒擬合');
+    page.$('sfModeGuinier').fire('click');
+    assert.equal(page.$('sfPlotTitle').textContent, 'ln I – q²');
+    page.$('sfModeKratky').fire('click');
+    assert.equal(page.$('sfPlotTitle').textContent, 'q²·I – q');
+});
+
+test('[sasfit-data-ui] 縮放狀態：「重設縮放」只有縮放中才可按，狀態列寫「已縮放」；重設後回到停用並把焦點交給圖模式鈕', async () => {
+    const page = boot();
+    await threeFiles(page);
+    assert.equal(page.$('sfResetZoom').disabled, true);
+    assert.doesNotMatch(page.$('sfPlotStatus').textContent, /已縮放/);
+    page.plots.zoom(true);
+    assert.equal(page.$('sfResetZoom').disabled, false);
+    assert.match(page.$('sfPlotStatus').textContent, /已縮放/);
+    const renders = page.plots.views.length;
+    page.plots.zoom(true);
+    assert.equal(page.plots.views.length, renders, '狀態沒變就不重繪');
+    page.$('sfResetZoom').fire('click');
+    assert.equal(page.plots.resets, 1);
+    assert.equal(page.$('sfResetZoom').disabled, true);
+    assert.doesNotMatch(page.$('sfPlotStatus').textContent, /已縮放/);
+    assert.equal(page.$('sfModeLogLog').focusCount, 1, '按鈕停用後焦點不掉到頁面上');
+});
+
+test('[sasfit-data-ui] 移除後出現「復原」列：復原把檔案、勾選與擬合結果放回原位；再載入檔案後不能復原', async () => {
+    const page = boot();
+    const [a, b, c] = await threeFiles(page);
+    const dataset = page.Section.getState().files[1].dataset;
+    page.ctx.dispatch({ type: 'setActive', id: b });
+    page.ctx.dispatch({ type: 'fitStarted' });
+    page.ctx.dispatch({ type: 'fitSettled', result: synthFit(dataset) });
+    assert.equal(page.$('sfUndo').hidden, true);
+    page.$(Html.fileControlId(b, 'remove')).fire('click');
+    assert.deepEqual(page.Section.getState().files.map((f) => f.id), [a, c]);
+    assert.equal(page.$('sfUndo').hidden, false);
+    assert.equal(page.$('sfUndoText').textContent, '已移除 SYNTH_sphere_20.dat');
+    page.$('sfUndoBtn').fire('click');
+    const state = page.Section.getState();
+    assert.deepEqual(state.files.map((f) => f.id), [a, b, c]);
+    assert.equal(state.activeId, b);
+    assert.equal(state.fitResults[b].chi2r, 1.04, '擬合結果一起回來');
+    assert.equal(page.$('sfUndo').hidden, true);
+    assert.equal(page.$('sfUndoText').textContent, '');
+    assert.match(page.$('sfDataBody').innerHTML, /title="約化 χ² 1\.04・已收斂"/);
+    assert.ok(page.$('sfDataWrapper').focusCount >= 2, '復原列消失後焦點回到清單');
+    page.$(Html.fileControlId(c, 'remove')).fire('click');
+    assert.equal(page.$('sfUndo').hidden, false);
+    await load(page, [ui.fixtureFile(OFFICIAL)]);
+    assert.equal(page.$('sfUndo').hidden, true, '清單變動後不再提供復原');
+    page.$('sfUndoBtn').fire('click');
+    assert.equal(page.Section.getState().files.length, 3, '沒有可復原的東西時按了也沒事');
+});
+
+test('[sasfit-data-ui] 條件名稱成為清單那一欄的標題與各條件值輸入框的名稱；空白時用「條件值」', async () => {
+    const page = boot();
+    const [a] = await threeFiles(page);
+    assert.equal(page.$('sfCondHead').textContent, '條件');
+    const name = page.$('sfConditionName');
+    name.value = 'Temperature (K)';
+    name.fire('input');
+    assert.equal(page.$('sfCondHead').textContent, 'Temperature (K)');
+    assert.equal(page.$(Html.fileControlId(a, 'condition')).getAttribute('aria-label'), 'SYNTH_sphere_10.dat 的Temperature (K)');
+    name.value = '<b>';
+    name.fire('input');
+    assert.equal(page.$('sfCondHead').textContent, '<b>', '以 textContent 寫入');
+    assert.doesNotMatch(page.$('sfDataBody').innerHTML, /<b>/);
+    name.value = '   ';
+    name.fire('input');
+    assert.equal(page.$('sfCondHead').textContent, '條件值');
+});
+
+test('[sasfit-data-ui] 載入超過 8 組時說明只自動顯示前 8 組；擬合進行中顯示鎖定提示', async () => {
+    const page = boot();
+    await threeFiles(page);
+    assert.equal(page.$('sfShownNote').hidden, true);
+    assert.equal(page.$('sfDataLock').hidden, true);
+    await load(page, Array.from({ length: 6 }, () => ui.fixtureFile(OFFICIAL)));
+    assert.equal(page.Section.getState().files.length, 9);
+    assert.equal(page.$('sfShownNote').hidden, false);
+    page.ctx.dispatch({ type: 'fitStarted' });
+    assert.equal(page.$('sfDataLock').hidden, false);
+    assert.equal(page.$('sfUndoBtn').disabled, true);
+    page.ctx.dispatch({ type: 'fitSettled', result: null });
+    assert.equal(page.$('sfDataLock').hidden, true);
 });
 
 // ---------------------------------------------------------------- 系列色樣本

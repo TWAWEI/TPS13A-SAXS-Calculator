@@ -51,7 +51,7 @@ test('initial(): empty, idle, deep-frozen, no stale / forced flags', () => {
         range: null, weighting: 'sigma', weightingUserSet: false, maxSteps: 200, plotMode: 'loglog',
         stagger: { on: false, decades: 1 },
         fit: { phase: 'idle', datasetId: null, iteration: 0, chi2r: null, outcome: null },
-        tab: 'data', nextId: 1, notice: null,
+        tab: 'data', nextId: 1, notice: null, removed: null,
     });
     assert.equal('resultStale' in s, false);
     assert.equal('weightingForced' in s, false);
@@ -370,12 +370,14 @@ const ALLOWED_WHILE_RUNNING = [
     { type: 'setConditionName', name: '幀號' },
     { type: 'setCondition', id: 'd1', value: 3 },
     { type: 'clearNotice' },
+    { type: 'dismissRemoved' },
     { type: 'fitProgress', iteration: 1, chi2r: 2 },
     { type: 'fitSettled', result: null },
 ];
 const BLOCKED_WHILE_RUNNING = [
     add(good('c.dat')),
     { type: 'removeFile', id: 'd2' },
+    { type: 'undoRemove' },
     { type: 'setActive', id: 'd2' },
     { type: 'setRange', qMin: 0.02, qMax: 0.03 },
     { type: 'rangeDefault' },
@@ -409,7 +411,7 @@ BLOCKED_WHILE_RUNNING.forEach((action) => {
 });
 
 test('BLOCKED actions all work when no fit is running (the lock is what stops them)', () => {
-    const idle = loaded(good('a.dat'), good('b.dat'));
+    const idle = S.reduce(loaded(good('a.dat'), good('b.dat'), good('z.dat')), { type: 'removeFile', id: 'd3' });      // something to undo
     BLOCKED_WHILE_RUNNING.forEach((action) => assert.ok(S.reduce(idle, action), action.type));
 });
 
@@ -454,7 +456,8 @@ test('every action returns a new deep-frozen state, leaves its input alone and s
         { type: 'setMaxSteps', value: 30 }, { type: 'setPlotMode', mode: 'guinier' },
         { type: 'setStagger', on: true, decades: 1 }, { type: 'setTab', tab: 'model' },
         { type: 'fitStarted' }, { type: 'fitProgress', iteration: 1, chi2r: 3 }, { type: 'fitSettled', result },
-        { type: 'removeFile', id: 'd3' }, { type: 'clearNotice' },
+        { type: 'removeFile', id: 'd3' }, { type: 'undoRemove' }, { type: 'removeFile', id: 'd2' }, { type: 'dismissRemoved' },
+        { type: 'clearNotice' },
     ];
     assert.deepEqual(actions.map((a) => a.type).filter((t, i, all) => all.indexOf(t) === i).sort(), [...S.ACTION_TYPES].sort());
     let state = S.initial();
@@ -469,4 +472,64 @@ test('every action returns a new deep-frozen state, leaves its input alone and s
     assert.equal(state.files[0].dataset, ds);
     assert.equal(state.fitResults.d1, result);
     assert.deepEqual([...ds.q], [...q], 'typed arrays are not written to');
+});
+
+// ------------------------------------------------------------------ undo of a removal (fix pass B)
+
+test('removeFile remembers the file; undoRemove puts it back at its place with its shown tick and its FitResult', () => {
+    const result = RESULT('converged', { curve: Float64Array.from(Q5) });
+    let s = S.reduce(S.initial(), add(good('a.dat'), good('b.dat'), good('c.dat')));
+    s = S.reduce(s, { type: 'setActive', id: 'd2' });
+    s = S.reduce(s, { type: 'setShown', id: 'd2', shown: false });
+    s = S.reduce(S.reduce(s, { type: 'fitStarted' }), { type: 'fitSettled', result });
+    assert.equal(s.removed, null);
+    const before = s;
+    const gone = S.reduce(s, { type: 'removeFile', id: 'd2' });
+    assert.ok(isDeepFrozen(gone));
+    assert.deepEqual(gone.files.map((f) => f.id), ['d1', 'd3']);
+    assert.equal('d2' in gone.fitResults, false);
+    assert.equal(gone.activeId, 'd3', 'the next file takes over');
+    assert.equal(gone.removed.file, before.files[1]);
+    assert.deepEqual([gone.removed.index, gone.removed.shown, gone.removed.wasActive], [1, false, true]);
+    assert.equal(gone.removed.result, result);
+    const back = S.reduce(gone, { type: 'undoRemove' });
+    assert.ok(isDeepFrozen(back));
+    assert.deepEqual(back.files.map((f) => f.id), ['d1', 'd2', 'd3']);
+    assert.equal(back.files[1], before.files[1], 'the same entry (dataset by reference)');
+    assert.equal(back.fitResults.d2, result, 'the fit result is restored');
+    assert.equal(back.shown.d2, false);
+    assert.equal(back.activeId, 'd2', 'it was the active one: it is again');
+    assert.equal(back.removed, null);
+    assert.equal(JSON.stringify(gone.files.map((f) => f.id)), '["d1","d3"]', 'undo did not change its input');
+});
+
+test('undoRemove: a file that was not active stays inactive; the last file of the list returns to the end; a failed file comes back too', () => {
+    let s = S.reduce(S.initial(), add(good('a.dat'), bad('x.dat'), good('c.dat')));
+    const last = S.reduce(S.reduce(s, { type: 'removeFile', id: 'd3' }), { type: 'undoRemove' });
+    assert.deepEqual(last.files.map((f) => f.id), ['d1', 'd2', 'd3']);
+    assert.equal(last.activeId, 'd1');
+    assert.equal(last.shown.d3, true);
+    const failed = S.reduce(S.reduce(s, { type: 'removeFile', id: 'd2' }), { type: 'undoRemove' });
+    assert.deepEqual(failed.files.map((f) => f.id), ['d1', 'd2', 'd3']);
+    assert.equal('d2' in failed.shown, false, 'a file without data has no shown entry');
+    s = S.reduce(S.initial(), add(good('only.dat')));
+    const empty = S.reduce(s, { type: 'removeFile', id: 'd1' });
+    assert.equal(empty.activeId, null);
+    const again = S.reduce(empty, { type: 'undoRemove' });
+    assert.equal(again.activeId, 'd1');
+    assert.notEqual(again.range, null, 'the range follows the restored data');
+});
+
+test('undoRemove: only the last removal, only until the list changes; dismissRemoved forgets it; nothing to undo is an Error', () => {
+    let s = S.reduce(S.initial(), add(good('a.dat'), good('b.dat'), good('c.dat')));
+    assert.throws(() => S.reduce(s, { type: 'undoRemove' }), /nothing to undo/);
+    s = S.reduce(S.reduce(s, { type: 'removeFile', id: 'd1' }), { type: 'removeFile', id: 'd2' });
+    assert.equal(s.removed.file.id, 'd2');
+    assert.deepEqual(S.reduce(s, { type: 'undoRemove' }).files.map((f) => f.id), ['d2', 'd3']);
+    assert.equal(S.reduce(s, add(good('d.dat'))).removed, null, 'loading files forgets the removed one');
+    const dismissed = S.reduce(s, { type: 'dismissRemoved' });
+    assert.equal(dismissed.removed, null);
+    assert.throws(() => S.reduce(dismissed, { type: 'undoRemove' }), /nothing to undo/);
+    const d4 = S.reduce(S.reduce(s, { type: 'undoRemove' }), add(good('e.dat')));
+    assert.deepEqual(d4.files.map((f) => f.id), ['d2', 'd3', 'd4'], 'ids are never reused: the restored id cannot clash');
 });

@@ -9,13 +9,17 @@
  *             weighting, weightingUserSet, maxSteps, plotMode,
  *             stagger: { on, decades },
  *             fit: { phase: 'idle' | 'running', datasetId, iteration, chi2r, outcome },
- *             tab, nextId, notice }
+ *             tab, nextId, notice,
+ *             removed: { file, index, shown, result, wasActive } | null }
  *
  * files     every loaded file in list order, the ones that could not be parsed
  *           included (dataset null: never active, never shown, no `shown` entry).
  *           Ids are 'd1', 'd2', ... from the counter nextId and are never reused.
  *           `condition` starts as dataset.condition and is edited here; the
  *           Dataset itself is never changed.
+ * removed   the file removed last, with what undoRemove needs to put it back
+ *           (its FitResult included). A new removal replaces it; addFiles and
+ *           dismissRemoved clear it. Ids are never reused, so it cannot clash.
  * fitResults  one FitResult per dataset id, shared by single and sequence
  *           fitting (design spec 7). Whether a result still matches the form
  *           is NOT stored: SasFitJobs.resultMatchesForm answers that.
@@ -68,7 +72,7 @@
     const NO_RESULT = 'none';
     const IDLE_FIT = Object.freeze({ phase: 'idle', datasetId: null, iteration: 0, chi2r: null, outcome: null });
     const RUNNING_ACTIONS = Object.freeze(['setShown', 'setPlotMode', 'setStagger', 'setTab', 'setConditionName',
-        'setCondition', 'clearNotice', 'fitProgress', 'fitSettled']);
+        'setCondition', 'clearNotice', 'dismissRemoved', 'fitProgress', 'fitSettled']);
     const TAB_KEYS = Object.freeze({
         ArrowLeft: (i, n) => (i + n - 1) % n, ArrowRight: (i, n) => (i + 1) % n, Home: () => 0, End: (i, n) => n - 1,
     });
@@ -86,7 +90,7 @@
             files: Object.freeze([]), activeId: null, shown: Object.freeze({}), conditionName: DEFAULT_CONDITION_NAME,
             fitResults: Object.freeze({}), range: null, weighting: DEFAULT_WEIGHTING, weightingUserSet: false,
             maxSteps: globalThis.SasFitFitter.DEFAULTS.maxSteps, plotMode: PLOT_MODES[0], stagger: DEFAULT_STAGGER,
-            fit: IDLE_FIT, tab: TABS[0], nextId: 1, notice: null,
+            fit: IDLE_FIT, tab: TABS[0], nextId: 1, notice: null, removed: null,
         });
     }
 
@@ -215,7 +219,7 @@
         });
         const skipped = files.length - taken.length + (unread === undefined ? 0 : unread);
         const next = withFields(state, {
-            files: Object.freeze(state.files.concat(entries)), shown: Object.freeze(shown),
+            files: Object.freeze(state.files.concat(entries)), shown: Object.freeze(shown), removed: null,
             nextId: state.nextId + taken.length, notice: skipped > 0 ? skippedNotice(skipped) : null,
         });
         const first = entries.find((entry) => entry.dataset !== null);
@@ -233,16 +237,47 @@
         return before === undefined ? null : before;
     }
 
+    /** What undoRemove needs to put a removed file back: the entry, its place, and what belonged to it. */
+    function removedOf(state, file, at) {
+        return Object.freeze({
+            file, index: at, shown: has(state.shown, file.id) ? state.shown[file.id] : null,
+            result: has(state.fitResults, file.id) ? state.fitResults[file.id] : null, wasActive: state.activeId === file.id,
+        });
+    }
+
     function removeFile(state, { id }) {
-        const at = state.files.indexOf(fileOf(state, id));
+        const file = fileOf(state, id);
+        const at = state.files.indexOf(file);
         const next = withFields(state, {
             files: Object.freeze(state.files.filter((f) => f.id !== id)),
             shown: without(state.shown, id), fitResults: without(state.fitResults, id), notice: null,
+            removed: removedOf(state, file, at),
         });
         if (state.activeId !== id) return next;
         const successor = successorOf(state.files, at);
         return successor === null ? deactivate(next) : activate(next, successor.id);
     }
+
+    /**
+     * Puts the file removed last back at its place, with its "shown" tick and its FitResult; it is the active one
+     * again when it was (or when there is none now). Only the last removal can be undone, and only until the
+     * list changes again (addFiles and removeFile start anew; dismissRemoved forgets it).
+     */
+    function undoRemove(state) {
+        const { removed } = state;
+        if (removed === null) throw new Error('undoRemove: nothing to undo');
+        const { file, index, shown, result, wasActive } = removed;
+        const files = state.files.slice();
+        files.splice(Math.min(index, files.length), 0, file);
+        const next = withFields(state, {
+            files: Object.freeze(files), removed: null, notice: null,
+            shown: shown === null ? state.shown : Object.freeze({ ...state.shown, [file.id]: shown }),
+            fitResults: result === null ? state.fitResults : Object.freeze({ ...state.fitResults, [file.id]: result }),
+        });
+        return file.dataset !== null && (wasActive || next.activeId === null) ? activate(next, file.id) : next;
+    }
+
+    const dismissRemoved = (state) => withFields(state, { removed: null });
 
     const setActive = (state, { id }) => activate(state, id);
 
@@ -358,7 +393,7 @@
     // ------------------------------------------------------------- reduce
 
     const ACTIONS = Object.freeze({
-        addFiles, removeFile, setActive, setShown, setCondition, setConditionName,
+        addFiles, removeFile, undoRemove, dismissRemoved, setActive, setShown, setCondition, setConditionName,
         setRange, rangeDefault, rangeFull, setWeighting, setMaxSteps, setPlotMode, setStagger, setTab, clearNotice,
         fitStarted, fitProgress, fitSettled,
     });

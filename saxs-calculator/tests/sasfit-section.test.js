@@ -240,13 +240,13 @@ test('[sasfit-section] 其他按鍵不切換分段、不取消預設行為', () 
 });
 
 // ---------------------------------------------------------------- 空狀態、狀態與表單
-test('[sasfit-section] 啟動後的空狀態：sfDataEmpty 有文字、開始擬合停用、sfRangeInfo 說明請先載入資料', () => {
+test('[sasfit-section] 啟動後的空狀態：sfDataEmpty 有文字、開始擬合停用、擬合列的摘要說明請先載入資料', () => {
     const { $ } = boot();
     assert.ok($('sfDataEmpty').textContent.length > 0);
     assert.equal($('sfDataEmpty').hidden, false);
     assert.equal($('sfDataWrapper').hidden, true);
     assert.equal($('sfFitStart').disabled, true);
-    assert.match($('sfRangeInfo').textContent, /請先載入資料/);
+    assert.match($('sfFitSummary').textContent, /請先載入資料/);
 });
 
 test('[sasfit-section] getState 是 SasFitState.initial() 形狀的凍結物件；getForm 是 SasFitForm.create(\'sphere\')', () => {

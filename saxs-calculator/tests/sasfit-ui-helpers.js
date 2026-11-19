@@ -24,7 +24,7 @@ const MODULE_FILES = Object.freeze({
 const ENTITIES = Object.freeze({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#039;': "'" });
 const TAG_RE = /<([a-zA-Z][\w-]*)((?:\s+[\w:-]+(?:="[^"]*")?)*)\s*\/?>([^<]*)|<\/([a-zA-Z][\w-]*)>/g;
 const ATTR_RE = /([\w:-]+)(?:="([^"]*)")?/g;
-const VOID_TAGS = Object.freeze(['input', 'br', 'hr', 'img']);
+const VOID_TAGS = Object.freeze(['input', 'br', 'hr', 'img', 'wbr']);
 
 require(path.join(JS, 'a11y-utils.js'));                    // 掛到 load.js 建立的 window 物件上
 
@@ -202,7 +202,14 @@ function fakeClient() {
 }
 
 function fakePlots() {
-    const plots = { views: [], resets: 0, render(view) { plots.views.push(view); return null; }, resetZoom() { plots.resets += 1; } };
+    const plots = {
+        views: [], resets: 0, listener: null,
+        render(view) { plots.views.push(view); return null; },
+        resetZoom() { plots.resets += 1; plots.zoom(false); },
+        setZoomListener(fn) { plots.listener = fn; },
+        /** What the real module does after a zoom, a pan or a reset of the main chart. */
+        zoom(zoomed) { if (typeof plots.listener === 'function') plots.listener(zoomed); },
+    };
     return plots;
 }
 

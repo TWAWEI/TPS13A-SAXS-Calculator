@@ -85,26 +85,29 @@
         fit: Object.freeze({ tab: 'sfTabFit', panel: 'sfPanelFit' }),
     });
     const TABLIST_ID = 'sfTabs';
+    const WORKSPACE_ID = 'sfWorkspace';       // carries data-tab: the narrow layout keeps the plot in view while the model is edited
     const SEGMENT_MODULES = Object.freeze([
         Object.freeze({ key: 'data', global: 'SasFitDataUi' }),
         Object.freeze({ key: 'model', global: 'SasFitParamsUi' }),
         Object.freeze({ key: 'fit', global: 'SasFitFitUi' }),
     ]);
     const ELEMENT_IDS = Object.freeze([
-        'sfAlert', TABLIST_ID, 'sfTabData', 'sfTabModel', 'sfTabFit', 'sfPanelData', 'sfPanelModel', 'sfPanelFit',
+        'sfAlert', WORKSPACE_ID, TABLIST_ID, 'sfTabData', 'sfTabModel', 'sfTabFit', 'sfPanelData', 'sfPanelModel', 'sfPanelFit',
+        // fit bar (on every tab)
+        'sfFitBar', 'sfFitStart', 'sfFitStop', 'sfFitMeasure', 'sfFitSummary', 'sfFitProgress', 'sfFitLive',
         // data segment
-        'sfDrop', 'sfFileInput', 'sfQUnit', 'sfDataAlert', 'sfDataWrapper', 'sfDataBody', 'sfDataEmpty',
-        'sfConditionName', 'sfStagger', 'sfStaggerDecades',
+        'sfDataLock', 'sfDrop', 'sfFileInput', 'sfQUnit', 'sfDataAlert', 'sfUndo', 'sfUndoText', 'sfUndoBtn',
+        'sfDataWrapper', 'sfCondHead', 'sfDataBody', 'sfDataEmpty', 'sfShownNote', 'sfConditionName', 'sfStagger', 'sfStaggerDecades',
         // model segment
-        'sfModelSearch', 'sfModel', 'sfModelInfo', 'sfStructure', 'sfStructureNote', 'sfStructureOptions',
-        'sfStructureMode', 'sfRadiusMode', 'sfLowQ', 'sfModelHints', 'sfParamWrapper', 'sfParamHead', 'sfParamBody', 'sfSldPanel',
+        'sfModelLock', 'sfModel', 'sfModelInfo', 'sfStructure', 'sfStructureNote', 'sfStructureOptions',
+        'sfStructureMode', 'sfRadiusMode', 'sfLowQ', 'sfModelHints', 'sfParamWrapper', 'sfParamHead', 'sfParamBody',
         // fit segment
         'sfQMin', 'sfQMinError', 'sfQMax', 'sfQMaxError', 'sfRangeFull', 'sfRangeDefault', 'sfRangeInfo', 'sfWeighting',
-        'sfMaxSteps', 'sfMaxStepsError', 'sfPreFitHints', 'sfFitStart', 'sfFitStop', 'sfFitRevert', 'sfFitAlert', 'sfFitProgress', 'sfFitLive',
-        'sfFitResults', 'sfFitHints',
+        'sfMaxSteps', 'sfMaxStepsError', 'sfFitRevert', 'sfFitRevertNote', 'sfPreFitHints', 'sfFitAlert',
+        'sfFitResults', 'sfFitHints', 'sfFitParams',
         // charts
-        'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
-        'sfMainChart', 'sfResidualChart',
+        'sfPlotTitle', 'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
+        'sfMainChart', 'sfResidualEmpty', 'sfResidualBox', 'sfResidualChart',
     ]);
     const TEXT = Object.freeze({
         empty: '尚未載入資料。',
@@ -168,6 +171,7 @@
             tab.setAttribute('tabindex', selected ? '0' : '-1');
             el(TAB_ELEMENTS[key].panel).hidden = !selected;
         });
+        el(WORKSPACE_ID).setAttribute('data-tab', state.tab);
     }
 
     /** The empty state of a segment whose module does not exist yet; the module takes over once it registers. */
@@ -181,7 +185,7 @@
         model() {},
         fit() {
             el('sfFitStart').disabled = true;
-            el('sfRangeInfo').textContent = TEXT.needData;
+            el('sfFitSummary').textContent = TEXT.needData;
         },
     });
 

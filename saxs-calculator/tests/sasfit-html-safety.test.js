@@ -30,10 +30,13 @@ function pageHtml() {
     const r = fitResult({ status: 'maxiter' });
     return [
         H.fileRowsHtml(files), H.paramTableHeadHtml({ fitResult: r, matches: true }),
-        H.paramTableHtml(F.rows(form), { fitResult: r, matches: true }), H.sldPanelHtml(sldView()),
+        // every detail row open, with the formula panel inside the row of its parameter: the fullest table there is
+        H.paramTableHtml(F.rows(form), { fitResult: r, matches: true, sld: sldView({ target: 'sld_solvent' }),
+            details: Object.fromEntries(F.rows(form).map((row) => [row.name, true])) }),
         H.weightingOptionsHtml({ sigma: 0, sqrtI: 0, absI: 0, none: 0 }, true, 'sigma'),
-        H.resultsHtml(r, { matches: true, fileName: 'a.dat' }), H.hintsHtml(Hints.fitHints(r)),
-        H.modelInfoHtml(Meta.models.core_shell_sphere),
+        H.fitBarHtml({ result: r, matches: false, running: false }),
+        H.resultsHtml(r, { matches: true, fileName: 'a.dat' }), H.hintsHtml(Hints.fitHints(r)), H.resultParamsHtml(r, { absolute: true }),
+        H.modelOptionsHtml(F.models(), 'sphere'), H.modelInfoHtml(Meta.models.core_shell_sphere),
     ].join('');
 }
 
@@ -41,7 +44,7 @@ test('ids are unique across every builder for one page state, deterministic, and
     const html = pageHtml();
     const tags = checkMarkup(html, 'page');
     const ids = idsOf(tags);
-    assert.ok(ids.length > 60);
+    assert.ok(ids.length > 120);
     assert.equal(new Set(ids).size, ids.length, 'duplicate: ' + ids.filter((id, i) => ids.indexOf(id) !== i).join(', '));
     ids.forEach((id) => assert.match(id, ID_RE));
     assert.equal(pageHtml(), html, 'the same state gives the same string');
@@ -87,7 +90,7 @@ const PAYLOADS = Object.freeze([
 /** Every string input of every builder set to the payload: [label, () => html, the payload must appear escaped]. */
 function matrix(p) {
     const row = { name: 'radius', label: p, unit: p, group: p, value: p, lower: p, upper: p, hardMin: 0, hardMax: null, fit: true,
-        fittable: true, derived: false, note: p, isSld: true,
+        fittable: true, derived: false, note: p, isSld: true, defaults: { lower: '', upper: '' },
         pd: { open: true, fit: true, width: p, lower: p, upper: p, type: p, npts: p, nsigmas: p, hasNsigmas: true,
             errors: { width: p, lower: p, upper: p, npts: p, nsigmas: p } },
         errors: { value: p, lower: p, upper: p } };
@@ -97,19 +100,38 @@ function matrix(p) {
     const stopped = fitResult({ status: 'stopped', iterations: p });
     return [
         ['fileRowsHtml', () => H.fileRowsHtml([
-            fileRow({ id: p, index: p, fileName: p, condition: p, statusText: p, issues: [{ line: p, message: p }], issueOverflow: p }),
+            fileRow({ id: p, index: p, fileName: p, condition: p, conditionName: p, statusText: p, issues: [{ line: p, message: p }], issueOverflow: p }),
             fileRow({ id: p + '2', fileName: p, hasData: false, statusText: p, issues: [{ line: 3, message: p }] })]), true],
+        ['fileRowsHtml (status chip)', () => H.fileRowsHtml([fileRow({ id: p, fileName: p, statusText: p, statusTone: 'warn', conditionName: p,
+            statusMeasure: { isChi2: false, label: p, value: p, short: p } }),
+        fileRow({ id: p + '3', fileName: p, statusText: p, statusTone: 'ok', statusMeasure: { isChi2: true, label: p, value: p, short: p } })]), true],
         ['paramTableHeadHtml', () => H.paramTableHeadHtml({ fitResult: fitResult({ displayErrorsScaled: true, chi2r: p }), matches: true }), false],
         ['paramTableHtml', () => H.paramTableHtml([row, { ...row, name: p, pd: { ...row.pd, hasNsigmas: false } },
             { ...row, name: 'x', derived: true, fittable: false, pd: null }], { fitResult: evil, matches: true }), true],
+        // every detail row open (bounds, dispersity fields and their messages, markers), the formula panel inside the row named by the payload
+        ['paramTableHtml (detail rows, SLD panel)', () => H.paramTableHtml([row, { ...row, name: p, pd: { ...row.pd, hasNsigmas: false } },
+            { ...row, name: 'y', pd: { ...row.pd, open: false } }],
+        { fitResult: evil, matches: true, absolute: p, locked: p, details: { radius: true, [p]: true, y: true },
+            sld: { target: p, formula: p, density: p, presetId: p, result: { sld: p, electronDensity: p, atoms: { [p]: 1 } }, error: null } }), true],
+        ['paramTableHtml (panel error)', () => H.paramTableHtml([row], { fitResult: null, matches: false, details: { radius: true },
+            sld: { target: 'radius', formula: p, density: p, presetId: p, result: null, error: Object.assign(new Error(p), { code: p }) } }), true],
+        ['paramErrorCells -> text', () => H.paramErrorCells([row, { ...row, name: p }], { fitResult: evil, matches: true, details: { radius: true, [p]: true } })
+            .map((cell) => '<span id="' + (ID_RE.test(cell.id) ? cell.id : 'sfBad') + '">' + esc(cell.text) + '</span>').join(''), false],
         ['sldPanelHtml', () => H.sldPanelHtml({ target: p, formula: p, density: p, presetId: p,
             result: { sld: p, electronDensity: p, molarMass: p, electrons: p, atoms: { [p]: 1, H: p } }, error: null }), true],
         ['sldPanelHtml (error)', () => H.sldPanelHtml({ target: p, formula: p, density: p, presetId: p, result: null,
             error: Object.assign(new Error(p), { code: p, position: p }) }), true],
         ['sldOutputHtml', () => H.sldOutputHtml({ target: p, formula: p, density: p, presetId: 'water', result: null, error: p }), true],
         ['weightingOptionsHtml', () => H.weightingOptionsHtml({ sigma: p, sqrtI: p, absI: p, none: p }, p, p), false],
-        ['resultsHtml', () => H.resultsHtml(evil, { matches: p, fileName: p }), true],
+        ['resultsHtml', () => H.resultsHtml(evil, { matches: p, fileName: p, running: p, notApplied: p, hasData: p }), true],
         ['resultsHtml (stopped)', () => H.resultsHtml(stopped, { matches: false, fileName: p }), false],
+        ['resultParamsHtml (tiles)', () => H.resultParamsHtml(evil, { absolute: p }), true],
+        ['resultParamsHtml (list)', () => H.resultParamsHtml({ ...evil, names: [p, 'radius', p + 'a', p + 'b', p + 'c'] }, { absolute: true }), true],
+        ['fitBarHtml', () => H.fitBarHtml({ result: evil, matches: p, running: p }), false],
+        ['fitBarHtml (other weighting)', () => H.fitBarHtml({ result: { ...evil, settings: { ...evil.settings, weighting: p } }, matches: false }), false],
+        ['measureHtml', () => H.measureHtml({ isChi2: p, label: p }), true],
+        ['modelOptionsHtml', () => H.modelOptionsHtml([{ group: p, items: [{ name: p, title: p }, { name: 'sphere', title: p }] }], p), true],
+        ['optionsHtml', () => H.optionsHtml([{ value: p, label: p }], p), true],
         ['hintsHtml', () => H.hintsHtml([{ id: p, tone: 'warn', text: p, action: 'continue' }, { id: p, tone: 'error', text: p }]), true],
         ['statusChipHtml', () => H.statusChipHtml({ text: p, tone: 'ok' }), true],
         ['modelInfoHtml', () => H.modelInfoHtml({ ...Meta.models.sphere, title: p, category: p }), true],
@@ -135,7 +157,7 @@ test('XSS matrix: every builder escapes every payload in every string input', ()
             cells += 1;
         });
     });
-    assert.equal(cells, PAYLOADS.length * 12);
+    assert.equal(cells, PAYLOADS.length * 23);
 });
 
 test('XSS matrix: text-only inputs come out as text, attribute values stay inside their quotes', () => {

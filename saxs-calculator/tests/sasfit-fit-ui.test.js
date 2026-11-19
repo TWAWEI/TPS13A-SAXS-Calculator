@@ -110,7 +110,10 @@ test('[sasfit-fit-ui] 模組頂層不碰 document；沒有資料時開始停用�
     assert.equal(page.$('sfFitStart').disabled, true);
     assert.equal(page.$('sfFitStop').disabled, true);
     assert.equal(page.$('sfFitRevert').disabled, true);
-    assert.equal(page.$('sfRangeInfo').textContent, '請先載入資料，才能設定擬合範圍並開始擬合。');
+    assert.equal(page.$('sfFitSummary').textContent, '請先載入資料，才能設定擬合範圍並開始擬合。', '擬合列說明為什麼不能開始');
+    assert.equal(page.$('sfRangeInfo').textContent, '');
+    assert.equal(page.$('sfFitMeasure').innerHTML, '<span class="sf-fitbar-none">尚未擬合</span>');
+    assert.equal(page.$('sfFitResults').innerHTML, '', '沒有資料時沒有「尚未擬合」的空狀態');
     for (const id of ['sfQMin', 'sfQMax', 'sfRangeFull', 'sfRangeDefault', 'sfWeighting']) assert.equal(page.$(id).disabled, true, id);
     assert.equal(page.$('sfMaxSteps').disabled, false);
     assert.equal(page.$('sfMaxSteps').value, '200');
@@ -156,9 +159,11 @@ test('[sasfit-fit-ui] 範圍不合法（Qmin ≥ Qmax、非數字）：aria-inva
     assert.equal(page.$('sfFitStart').disabled, false);
     type(page, 'sfQMin', '0.5');
     assert.equal(page.$('sfQMin').getAttribute('aria-invalid'), 'true');
-    assert.equal(page.$('sfQMinError').textContent, 'Q 下限必須小於 Q 上限');
+    assert.equal(page.$('sfQMinError').textContent, 'q 下限必須小於 q 上限');
     assert.equal(page.$('sfQMinError').hidden, false);
     assert.equal(page.$('sfFitStart').disabled, true);
+    assert.equal(page.$('sfRangeInfo').textContent, '', '範圍不合法時不留著上一個範圍的點數');
+    assert.equal(page.$('sfFitSummary').textContent, '擬合範圍或最大步數有不合法的欄位，請先修正。');
     assert.equal(page.Section.getState().range, before, '不合法的範圍不寫入狀態');
     assert.equal(page.$('sfQMin').value, '0.5', '輸入框不被改回');
 
@@ -166,7 +171,7 @@ test('[sasfit-fit-ui] 範圍不合法（Qmin ≥ Qmax、非數字）：aria-inva
     type(page, 'sfQMax', '');
     assert.equal(page.$('sfQMin').getAttribute('aria-invalid'), null);
     assert.equal(page.$('sfQMax').getAttribute('aria-invalid'), 'true');
-    assert.equal(page.$('sfQMaxError').textContent, 'Q 上限必須是大於 0 的數字');
+    assert.equal(page.$('sfQMaxError').textContent, 'q 上限必須是大於 0 的數字');
     assert.equal(page.$('sfFitStart').disabled, true);
     type(page, 'sfQMax', '0.2');
     assert.equal(page.$('sfQMaxError').hidden, true);
@@ -174,17 +179,18 @@ test('[sasfit-fit-ui] 範圍不合法（Qmin ≥ Qmax、非數字）：aria-inva
     assert.deepEqual(page.Section.getState().range, { qMin: 0.01, qMax: 0.2, userEdited: true });
 });
 
-test('[sasfit-fit-ui] sfRangeInfo：範圍內 N 點、自由參數 M 個；N ≤ M 或沒勾參數時停用並說明（規格 §12）', async () => {
+test('[sasfit-fit-ui] 擬合列的摘要：範圍、點數與要擬合的參數名稱；N ≤ M 或沒勾參數時停用並說明（規格 §12）', async () => {
     const page = await ready();
     const state = page.Section.getState();
     const info = Jobs.fitReadiness(page.Section.getForm(), state.files[0].dataset, { range: state.range, weighting: state.weighting });
     assert.equal(info.nFree, 3);
-    assert.equal(page.$('sfRangeInfo').textContent, `範圍內 ${info.nPoints} 點可參與擬合，自由參數 3 個`);
+    assert.equal(page.$('sfRangeInfo').textContent, `範圍內 ${info.nPoints} 點可參與擬合；擬合 3 個參數`);
+    assert.equal(page.$('sfFitSummary').textContent, `q 0.005–0.35 Å⁻¹ · ${info.nPoints} 點 · 擬合 scale、background、radius`, '點名自由參數');
 
     type(page, 'sfQMin', '0.05');
     type(page, 'sfQMax', '0.0502');
     assert.equal(page.$('sfFitStart').disabled, true);
-    assert.match(page.$('sfRangeInfo').textContent, /必須多於要擬合的參數個數（3 個）/);
+    assert.match(page.$('sfFitSummary').textContent, /必須多於要擬合的參數個數（3 個）/);
     page.$('sfRangeDefault').fire('click');
     assert.equal(page.$('sfFitStart').disabled, false);
 
@@ -194,7 +200,7 @@ test('[sasfit-fit-ui] sfRangeInfo：範圍內 N 點、自由參數 M 個；N ≤
         box.fire('change');
     }
     assert.equal(page.$('sfFitStart').disabled, true);
-    assert.equal(page.$('sfRangeInfo').textContent, '請至少勾選一個要擬合的參數。');
+    assert.equal(page.$('sfFitSummary').textContent, '請至少勾選一個要擬合的參數。');
 });
 
 test('[sasfit-fit-ui] 參數表有不合法欄位時不允許擬合', async () => {
@@ -203,7 +209,7 @@ test('[sasfit-fit-ui] 參數表有不合法欄位時不允許擬合', async () =
     input.value = 'x';
     input.fire('input');
     assert.equal(page.$('sfFitStart').disabled, true);
-    assert.equal(page.$('sfRangeInfo').textContent, '參數表有不合法的欄位，請先修正。');
+    assert.equal(page.$('sfFitSummary').textContent, '參數表有不合法的欄位，請先修正。');
 });
 
 // ---------------------------------------------------------------- 權重與擬合前提示
@@ -284,15 +290,20 @@ test('[sasfit-fit-ui] 開始：先取消預覽、送出 fitJob、狀態 running�
     }
     assert.equal(field(page, 'radius', 'value').disabled, true);
     assert.equal(page.$('sfFitResults').getAttribute('aria-busy'), 'true');
-    assert.equal(page.$('sfFitProgress').textContent, '開始擬合…');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 1 s', '第一步還沒到也看得出在跑（上面推進了 1 秒）');
     assert.equal(page.$('sfFitLive').textContent, '開始擬合…');
+    assert.equal(page.$('sfFitStop').focusCount, 1, '「開始」停用了：焦點移到「停止」');
+    assert.equal(page.$('sfModelLock').hidden, false);
+    assert.equal(page.$('sfDataLock').hidden, false);
 
     const { onProgress } = lastFit(page).options;
     const bodySets = page.$('sfParamBody').htmlSets;
     onProgress({ iteration: 1, chi2r: 12.3456 });
-    assert.equal(page.$('sfFitProgress').textContent, '第 1 步，χ²ᵣ＝12.3');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 1 s；第 1 步，約化 χ²＝12.3');
+    page.timers.advance(1000);
+    page.timers.advance(1000);
     onProgress({ iteration: 2, chi2r: 1.5 });
-    assert.equal(page.$('sfFitProgress').textContent, '第 2 步，χ²ᵣ＝1.50');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 3 s；第 2 步，約化 χ²＝1.50');
     assert.deepEqual([page.Section.getState().fit.iteration, page.Section.getState().fit.chi2r], [2, 1.5]);
     assert.equal(page.$('sfFitLive').textContent, '開始擬合…', '每一步不朗讀');
     assert.equal(page.$('sfParamBody').htmlSets, bodySets, '進度不重繪其他分段');
@@ -300,9 +311,15 @@ test('[sasfit-fit-ui] 開始：先取消預覽、送出 fitJob、狀態 running�
     lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.2 } }));
     await ui.flush();
     assert.equal(phase(page), 'idle');
-    assert.equal(page.$('sfFitLive').textContent, '擬合結束：已收斂，χ²ᵣ＝1.04，共 7 步');
-    assert.equal(page.$('sfFitProgress').textContent, page.$('sfFitLive').textContent);
+    assert.equal(page.$('sfFitLive').textContent, '擬合結束：已收斂，約化 χ²＝1.04，共 7 步');
+    assert.equal(page.$('sfFitProgress').textContent, '', '結果已寫在擬合列的量度那一行：進度列留白');
+    assert.match(page.$('sfFitMeasure').innerHTML, /1\.04<\/strong><span class="tile-chip tile-chip--ok">已收斂<\/span><span class="sf-fitbar-steps">7 步/);
     assert.equal(page.$('sfFitResults').getAttribute('aria-busy'), 'false');
+    const pending = page.timers.pendingCount();
+    page.timers.advance(5000);
+    assert.equal(page.$('sfFitProgress').textContent, '', '結束後計時停止');
+    assert.ok(page.timers.pendingCount() <= pending);
+    assert.equal(page.$('sfFitStart').focusCount, 1, '不在擬合分段：焦點回到「開始擬合」');
 });
 
 // ---------------------------------------------------------------- 結束
@@ -319,12 +336,15 @@ test('[sasfit-fit-ui] converged：表單＝applyResult、結果磚與提示、±
     assert.equal(form.fields.radius.value, '50.2');
     assert.equal(Jobs.resultMatchesForm(form, result), true);
     assert.equal(page.Section.getState().fitResults[id], result);
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL, absolute: true }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL, hasData: true }));
     assert.match(page.$('sfFitResults').innerHTML, /tile--hero/);
     assert.equal(page.$('sfFitHints').innerHTML, Html.hintsHtml(Hints.fitHints(result)));
+    assert.equal(page.$('sfFitParams').innerHTML, Html.resultParamsHtml(result, { absolute: true }), '參數磚排在提示之後');
+    assert.equal(page.$('sfFitMeasure').innerHTML, Html.fitBarHtml({ result, matches: true, running: false }));
+    assert.equal(page.$('sfFitResults').classList.contains('is-stale'), false);
     assert.equal(field(page, 'radius', 'value').value, '50.2', '參數表的值更新');
     assert.equal(page.$('sfPm_radius').textContent, '± 0.50');
-    assert.match(page.$('sfDataBody').innerHTML, /χ²ᵣ 1\.04・已收斂/);
+    assert.match(page.$('sfDataBody').innerHTML, /title="約化 χ² 1\.04・已收斂"/);
     assert.deepEqual(lastView(page).residuals, { q: page.Section.getState().files[0].dataset.q, r: result.residuals });
     assert.equal(lastView(page).series[0].fitCurve.I, result.curve, '作用中資料畫 fitResult.curve（全部點）');
     assert.equal(lastView(page).preview, null);
@@ -345,13 +365,15 @@ test('[sasfit-fit-ui] 權重不是資料 σ 時 ± 欄表頭註明已乘 √χ²
     assert.doesNotMatch(page.$('sfParamHead').innerHTML, /χ/);
     assert.match(page.$('sfFitResults').innerHTML, /<div class="tile-label">加權殘差均方<\/div>/);
     assert.match(page.$('sfFitLive').textContent, /^擬合結束：已收斂，加權殘差均方＝/);
-    assert.match(page.$('sfDataBody').innerHTML, /加權殘差均方 [\d.]+・已收斂/);
+    assert.match(page.$('sfDataBody').innerHTML, /title="加權殘差均方 [\d.]+・已收斂"/);
+    assert.match(page.$('sfFitMeasure').innerHTML, /^<span class="sf-fitbar-name">加權殘差均方<\/span>/, '擬合列也不叫它 χ²');
     assert.equal(page.$('sfPm_radius').textContent, '± 1.0');
     assert.equal(page.$('sfFitHints').querySelectorAll('[data-hint="scaled-errors"]').length, 1);
 });
 
-test('[sasfit-fit-ui] 回復擬合前參數：表單回到按開始當時的值（含 PD 寬度），結果變成「參數已修改」、± 清空、送預覽', async () => {
+test('[sasfit-fit-ui] 還原擬合前的參數：表單回到按開始當時的值（含多分散寬度），結果變成「參數已改動」、± 清空、送預覽', async () => {
     const page = await ready();
+    page.$(Html.moreButtonId('radius')).fire('click');
     page.$('sfPdToggle_radius').fire('click');
     const width = field(page, 'radius', 'pd.width');
     width.value = '0.1';
@@ -368,11 +390,11 @@ test('[sasfit-fit-ui] 回復擬合前參數：表單回到按開始當時的值�
     assert.equal(page.Section.getForm(), formBefore);
     assert.equal(field(page, 'radius', 'pd.width').value, '0.1');
     assert.equal(field(page, 'radius', 'value').value, '50');
-    assert.match(page.$('sfFitResults').innerHTML, /參數已修改，下列為上次擬合的結果/);
+    assert.match(page.$('sfFitResults').innerHTML, /參數已改動，以下是上一次擬合的結果/);
     assert.equal(page.$('sfFitHints').innerHTML, '');
     assert.equal(page.$('sfPm_radius').textContent, '');
     assert.equal(page.$('sfFitRevert').disabled, true);
-    assert.equal(page.$('sfFitStart').focusCount, 1);
+    assert.equal(page.$('sfFitStart').focusCount, 2, '擬合結束時一次（不在擬合分段），還原後再一次（還原鈕停用了）');
     page.timers.advance(150);
     assert.equal(page.client.evaluations.length, evaluations + 1, '回復後送預覽');
     assert.equal(lastView(page).residuals, null);
@@ -450,8 +472,11 @@ test('[sasfit-fit-ui] §5.7 其餘提示都出現在結果區：貼邊界、強�
     for (const id of ['zero-steps', 'local-minimum', 'ill-conditioned', 'at-bound', 'strong-correlation', 'non-finite-curve']) {
         assert.ok(ids.includes(id), id);
     }
-    assert.equal(page.$('sfPm_radius').textContent, Hints.AT_BOUND_ERROR_TEXT);
-    assert.match(page.$('sfFitResults').innerHTML, new RegExp(Hints.AT_BOUND_ERROR_TEXT));
+    assert.equal(page.$('sfPm_radius').textContent, '貼上限', '窄欄只寫哪一邊；整句在提示與結果磚');
+    assert.match(page.$('sfFitParams').innerHTML, /貼上限，誤差無意義/);
+    assert.match(page.$('sfFitHints').innerHTML, /下列參數停在邊界上，誤差沒有意義：radius（上限）/);
+    assert.match(page.$('sfFitResults').innerHTML, /已收斂・約化 χ² 偏大/, '晶片用文字說出疑慮，不只靠顏色');
+    assert.equal(page.$(Html.moreButtonId('radius')).getAttribute('aria-expanded'), 'true', '貼邊界的參數自動展開明細列');
     assert.match(page.$('sfFitHints').innerHTML, /模型曲線有 4 點無法計算/);
 
     await fitOnce(page, { chi2r: 0.02, values: { radius: 50.5 } });
@@ -518,7 +543,7 @@ test('[sasfit-fit-ui] onProgress 收到不合格的內容或在擬合結束後�
     assert.doesNotThrow(() => { onProgress(undefined); onProgress({ iteration: -1, chi2r: 1 }); onProgress({ iteration: 1.5 }); });
     assert.equal(page.Section.getState().fit.iteration, 0);
     onProgress({ iteration: 4, chi2r: NaN });
-    assert.equal(page.$('sfFitProgress').textContent, '第 4 步，χ²ᵣ＝—');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 0 s；第 4 步，約化 χ²＝—');
     lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.2 } }));
     await ui.flush();
     assert.equal(phase(page), 'idle');
@@ -557,14 +582,17 @@ test('[sasfit-fit-ui] 開始擬合時還有預覽在 Worker 裡計算：進度�
     assert.equal(page.client.stops, 0, '不中止 Worker（會丟掉已載入的 wasm）');
     assert.equal(page.$('sfFitProgress').textContent, '等待預覽完成…');
     assert.equal(page.$('sfFitLive').textContent, '等待預覽完成…');
+    page.timers.advance(1000);
+    assert.equal(page.$('sfFitProgress').textContent, '等待預覽完成…', '第一步到之前一直是這句');
     lastFit(page).options.onProgress({ iteration: 1, chi2r: 3 });
-    assert.equal(page.$('sfFitProgress').textContent, '第 1 步，χ²ᵣ＝3.00');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 1 s；第 1 步，約化 χ²＝3.00');
     lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.2 } }));
     await ui.flush();
-    assert.match(page.$('sfFitProgress').textContent, /^擬合結束/);
+    assert.match(page.$('sfFitLive').textContent, /^擬合結束/);
+    assert.equal(page.$('sfFitProgress').textContent, '');
 });
 
-test('[sasfit-fit-ui] 預覽已經回來（或只是排在計時器裡）：開始擬合顯示「開始擬合…」', async () => {
+test('[sasfit-fit-ui] 預覽已經回來（或只是排在計時器裡）：開始擬合不必等，進度列直接顯示正在擬合', async () => {
     const page = await ready();
     const input = field(page, 'radius', 'value');
     input.value = '51';
@@ -574,13 +602,14 @@ test('[sasfit-fit-ui] 預覽已經回來（或只是排在計時器裡）：開�
     pending.resolve({ I: Float64Array.from(pending.request.q, () => 1), extras: {} });
     await ui.flush();
     page.$('sfFitStart').fire('click');
-    assert.equal(page.$('sfFitProgress').textContent, '開始擬合…');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 0 s');
+    assert.equal(page.$('sfFitLive').textContent, '開始擬合…');
     lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.2 } }));
     await ui.flush();
     input.value = '52';
     input.fire('input');                                        // 只排了計時器，還沒送出
     page.$('sfFitStart').fire('click');
-    assert.equal(page.$('sfFitProgress').textContent, '開始擬合…');
+    assert.equal(page.$('sfFitProgress').textContent, '正在擬合 sphere…已 0 s');
 });
 
 // ---------------------------------------------------------------- 結果與表單是否相符
@@ -591,8 +620,11 @@ test('[sasfit-fit-ui] 擬合後改參數：結果區出現「參數已修改…�
     const bodySets = page.$('sfParamBody').htmlSets;
     input.value = '50.3';
     input.fire('input');
-    assert.match(page.$('sfFitResults').innerHTML, /參數已修改，下列為上次擬合的結果/);
+    assert.match(page.$('sfFitResults').innerHTML, /參數已改動，以下是上一次擬合的結果/);
     assert.match(page.$('sfFitResults').innerHTML, /tile--hero/, '上次的結果仍看得到');
+    assert.equal(page.$('sfFitResults').classList.contains('is-stale'), true, '不是目前參數的結果：淡化顯示');
+    assert.equal(page.$('sfFitParams').classList.contains('is-stale'), true);
+    assert.match(page.$('sfFitMeasure').innerHTML, /tile-chip--warn">參數已改動</, '擬合列也標出來');
     assert.equal(page.$('sfFitHints').innerHTML, '');
     assert.equal(page.$('sfPm_radius').textContent, '');
     assert.equal(page.$('sfPm_scale').textContent, '');
@@ -609,13 +641,15 @@ test('[sasfit-fit-ui] 擬合後改參數：結果區出現「參數已修改…�
 
     input.value = '50.2';
     input.fire('input');
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL, absolute: true }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(result, { matches: true, fileName: OFFICIAL, hasData: true }));
+    assert.equal(page.$('sfFitResults').classList.contains('is-stale'), false);
+    assert.doesNotMatch(page.$('sfFitMeasure').innerHTML, /參數已改動/);
     assert.equal(page.$('sfPm_radius').textContent, '± 0.50');
     assert.equal(lastView(page).series[0].fitCurve.I, result.curve);
     assert.equal(page.$('sfFitHints').innerHTML, Html.hintsHtml(Hints.fitHints(result)));
 });
 
-test('[sasfit-fit-ui] 換作用中資料：顯示該資料自己的結果（沒有就清空）；表單不變；不相符時 ± 為空並有「參數已修改」', async () => {
+test('[sasfit-fit-ui] 換擬合對象：顯示該資料自己的結果（沒有就說尚未擬合）；表單不變；不相符時 ± 為空並有「參數已改動」；「還原」只屬於它那組資料', async () => {
     const page = await ready(['SYNTH_sphere_10.dat', 'SYNTH_sphere_20.dat'].map(ui.fixtureFile));
     const [a, b] = page.Section.getState().files.map((f) => f.id);
     const fitA = await fitOnce(page, { values: { radius: 50.2 } });
@@ -623,18 +657,28 @@ test('[sasfit-fit-ui] 換作用中資料：顯示該資料自己的結果（沒�
 
     page.$(Html.fileControlId(b, 'active')).fire('change');
     assert.equal(page.Section.getForm(), form, '表單不變');
-    assert.equal(page.$('sfFitResults').innerHTML, '', 'B 沒有結果');
+    assert.equal(page.$('sfFitResults').innerHTML, '<p class="stat-sub sf-result-empty">此資料尚未擬合</p>', 'B 沒有結果：說出來，不留白');
+    assert.equal(page.$('sfFitParams').innerHTML, '');
+    assert.equal(page.$('sfFitMeasure').innerHTML, '<span class="sf-fitbar-none">尚未擬合</span>');
+    assert.equal(page.$('sfFitRevert').disabled, true, '可還原的是 A 的擬合，不是 B 的');
+    assert.equal(page.$('sfFitRevertNote').textContent, '可還原的是「SYNTH_sphere_10.dat」擬合前的參數；請先把它設為擬合對象');
+    page.$('sfFitRevert').fire('click');
+    assert.equal(page.Section.getForm(), form, '停用時按了也不改表單');
     assert.equal(page.$('sfFitHints').innerHTML, '');
     assert.equal(page.$('sfPm_radius').textContent, '', 'A 的誤差不擺在 B 旁邊');
     assert.equal(lastView(page).series.find((s) => s.id === a).fitCurve.I, fitA.result.curve, '非作用中的 A 畫自己的擬合曲線');
 
     const fitB = await fitOnce(page, { values: { radius: 49.7 } });
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitB.result, { matches: true, fileName: 'SYNTH_sphere_20.dat', absolute: true }));
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitB.result, { matches: true, fileName: 'SYNTH_sphere_20.dat', hasData: true }));
+    assert.equal(page.$('sfFitRevert').disabled, false);
+    assert.equal(page.$('sfFitRevertNote').textContent, '');
 
     page.$(Html.fileControlId(a, 'active')).fire('change');
     assert.equal(page.Section.getForm().fields.radius.value, '49.7', '表單是 B 擬合出來的值');
-    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitA.result, { matches: false, fileName: 'SYNTH_sphere_10.dat', absolute: true }));
-    assert.match(page.$('sfFitResults').innerHTML, /參數已修改，下列為上次擬合的結果/);
+    assert.equal(page.$('sfFitResults').innerHTML, Html.resultsHtml(fitA.result, { matches: false, fileName: 'SYNTH_sphere_10.dat', hasData: true }));
+    assert.equal(page.$('sfFitRevert').disabled, true, '現在可還原的是 B 的擬合');
+    assert.match(page.$('sfFitRevertNote').textContent, /「SYNTH_sphere_20\.dat」/);
+    assert.match(page.$('sfFitResults').innerHTML, /參數已改動，以下是上一次擬合的結果/);
     assert.equal(page.$('sfPm_radius').textContent, '');
     assert.equal(page.$('sfFitHints').innerHTML, '');
 });
@@ -676,4 +720,98 @@ test('[sasfit-fit-ui] 處理結果時自己出錯（例：移動焦點失敗）�
     } finally {
         window.A11y = original;
     }
+});
+
+// ---------------------------------------------------------------- 修正批次 B：擬合列、焦點、第一次擬合的引導
+test('[sasfit-fit-ui] 擬合列在三個分段都可用：開始／停止不在分段面板裡；停止後焦點回到「開始擬合」，朗讀區報已停止', async () => {
+    const page = await ready();
+    for (const tab of ['sfTabData', 'sfTabModel', 'sfTabFit']) {
+        page.$(tab).fire('click');
+        assert.equal(page.$('sfFitStart').disabled, false, tab);
+        assert.match(page.$('sfFitSummary').textContent, /擬合 scale、background、radius$/, tab);
+    }
+    page.$('sfTabModel').fire('click');
+    page.$('sfFitStart').fire('click');
+    assert.equal(phase(page), 'running');
+    assert.equal(page.$('sfFitStop').focusCount, 1);
+    page.$('sfFitStop').fire('click');
+    assert.equal(page.client.stops, 1);
+    lastFit(page).resolve(stoppedOf(lastFit(page).job, 0));
+    await ui.flush();
+    assert.equal(phase(page), 'idle');
+    assert.equal(page.$('sfFitStart').focusCount, 1, '「停止」又停用了：焦點回到「開始擬合」');
+    assert.equal(page.$('sfFitProgress').textContent, '已停止，尚未完成第一步；參數未變更');
+    assert.equal(page.$('sfFitLive').textContent, page.$('sfFitProgress').textContent);
+    page.timers.advance(5000);
+    assert.equal(page.$('sfFitProgress').textContent, '已停止，尚未完成第一步；參數未變更', '計時已停');
+});
+
+test('[sasfit-fit-ui] 擬合失敗（Worker 錯誤）：焦點回到「開始擬合」，計時停止', async () => {
+    const page = await ready();
+    page.$('sfFitStart').fire('click');
+    await ui.captureConsole('warn', async () => {
+        lastFit(page).reject(codedError('WORKER_CRASH', '計算執行緒異常結束。', 'worker died'));
+        await ui.flush();
+    });
+    assert.equal(phase(page), 'idle');
+    assert.equal(page.$('sfFitStart').focusCount, 1);
+    assert.equal(page.$('sfFitProgress').textContent, '擬合沒有完成');
+    page.timers.advance(3000);
+    assert.equal(page.$('sfFitProgress').textContent, '擬合沒有完成');
+});
+
+test('[sasfit-fit-ui] 新的擬合進行中，上一次的結果淡化並註明；擬合列顯示進度而不是「參數已改動」', async () => {
+    const page = await ready();
+    await fitOnce(page, { values: { radius: 50.2 } });
+    page.$('sfFitStart').fire('click');
+    assert.match(page.$('sfFitResults').innerHTML, /擬合進行中，以下是上一次擬合的結果/);
+    assert.equal(page.$('sfFitResults').classList.contains('is-stale'), true);
+    assert.doesNotMatch(page.$('sfFitMeasure').innerHTML, /參數已改動/);
+    assert.equal(page.$('sfFitHints').innerHTML, '', '進行中不提供「繼續」');
+    lastFit(page).resolve(resultOf(lastFit(page).job, { values: { radius: 50.3 } }));
+    await ui.flush();
+    assert.equal(page.$('sfFitResults').classList.contains('is-stale'), false);
+});
+
+test('[sasfit-fit-ui] 第一次擬合的引導：預設只勾 scale 與 background 時提示尺寸參數固定；勾了 radius 就不提示；不改預設勾選', async () => {
+    const page = ui.boot();
+    const input = page.$('sfFileInput');
+    input.files = [ui.fixtureFile(OFFICIAL)];
+    input.fire('change');
+    await ui.flush();
+    await ui.flush();
+    assert.deepEqual(Object.keys(page.Section.getForm().fields).filter((name) => page.Section.getForm().fields[name].fit), ['scale', 'background']);
+    const hint = page.$('sfPreFitHints').querySelector('[data-hint="fixed-size"]');
+    assert.ok(hint, '擬合前就說');
+    assert.match(page.$('sfPreFitHints').innerHTML, /尺寸參數（radius）目前固定，只擬合 scale 與 background/);
+    assert.equal(page.$('sfFitSummary').textContent.endsWith('擬合 scale、background'), true);
+    const box = field(page, 'radius', 'fit');
+    box.checked = true;
+    box.fire('change');
+    assert.equal(page.$('sfPreFitHints').querySelector('[data-hint="fixed-size"]'), null);
+    assert.equal(page.$('sfFitSummary').textContent.endsWith('擬合 scale、background、radius'), true);
+    box.checked = false;
+    box.fire('change');
+    const { result } = await fitOnce(page, { chi2r: 764 });
+    assert.deepEqual(result.names, ['scale', 'background']);
+    assert.match(page.$('sfFitHints').innerHTML, /也可能是尺寸參數被固定：radius 沒有勾選擬合，請換起始值，或到「模型」勾選要擬合的尺寸參數/);
+});
+
+test('[sasfit-fit-ui] 超過四個擬合參數時結果改用清單（仍只有一個主角磚）', async () => {
+    const page = await ready();
+    page.$(Html.moreButtonId('radius')).fire('click');
+    page.$('sfPdToggle_radius').fire('click');
+    const width = field(page, 'radius', 'pd.width');
+    width.value = '0.1';
+    width.fire('input');
+    for (const [name, key] of [['radius', 'pd.fit'], ['sld', 'fit']]) {
+        const box = field(page, name, key);
+        box.checked = true;
+        box.fire('change');
+    }
+    const { result } = await fitOnce(page, {});
+    assert.equal(result.names.length, 5);
+    assert.match(page.$('sfFitParams').innerHTML, /result-list/);
+    assert.doesNotMatch(page.$('sfFitParams').innerHTML, /<div class="tile">/);
+    assert.equal((page.$('sfFitResults').innerHTML + page.$('sfFitParams').innerHTML).split('tile--hero').length - 1, 1);
 });

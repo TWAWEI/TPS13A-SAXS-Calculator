@@ -1,0 +1,248 @@
+/* =============================================
+   TPS13A SAXS Calculator — SAS 模型擬合分頁：參數表、明細列與 SLD 化學式面板
+   （css/sasfit.css 的續篇，拆開是為了每檔不超過 800 行；排在它之後載入）。
+   標記來源：js/sasfit-html.js 的 paramTableHtml（四欄＋每個參數一列錯誤訊息、一列明細）。
+   只用 css/tokens.css 的 token（不寫色碼）；選擇器都以 .sf- 開頭。
+   ============================================= */
+
+/* ===== 參數表：四欄（擬合／參數／數值／±）＋每個參數一顆「更多」，展開一列明細 =====
+   明細列放下限、上限、多分散與（SLD 參數的）化學式面板。欄寬固定，名稱欄吃剩下的寬度；
+   左欄最窄 26rem（卡片內約 389px）時不需要橫向捲動。 */
+.sf-param-wrapper {
+    container: sfparams / inline-size;
+}
+
+.sf-param-table {
+    table-layout: fixed;
+}
+
+.sf-param-table thead th:nth-child(1) { width: 2.5rem; }
+.sf-param-table thead th:nth-child(3) { width: 5.75rem; }
+.sf-param-table thead th:nth-child(4) { width: 5.25rem; }
+.sf-param-table thead th:nth-child(5) { width: 3.5rem; }
+
+.sf-param-table th[scope="row"] {
+    padding-top: 0.6875rem;
+    letter-spacing: 0;
+}
+
+.sf-param-name,
+.sf-param-unit,
+.sf-param-note,
+.sf-param-marker {
+    display: block;
+}
+
+/* 名稱只在底線後折行（標記裡的 <wbr>），不在字中間斷開 */
+.sf-param-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    word-break: keep-all;
+    overflow-wrap: normal;
+}
+
+.sf-param-unit,
+.sf-param-note,
+.sf-param-marker {
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+}
+
+/* 收合的列仍要說實話：上下限改過、多分散有作用時，這裡有文字 */
+.sf-param-marker {
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.sf-param-marker:empty {
+    display: none;
+}
+
+.sf-param-table td > .sf-num {
+    width: 100%;
+}
+
+/* ± 欄（表格儲存格）與明細列裡寬度的 ±（span） */
+.sf-param-pm {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+}
+
+.sf-param-table td.sf-param-pm {
+    padding-top: 0.75rem;
+    overflow-wrap: anywhere;
+}
+
+.sf-param-table .sf-more {
+    margin-top: 0.125rem;
+}
+
+/* 參數列之下還有可見的錯誤列或明細列時，分隔線畫在最後那一列之下 */
+.sf-param-table .sf-param-row.is-open > th,
+.sf-param-table .sf-param-row.is-open > td,
+.sf-param-table .sf-param-row:has(+ .sf-param-error:not([hidden])) > th,
+.sf-param-table .sf-param-row:has(+ .sf-param-error:not([hidden])) > td,
+.sf-param-table .sf-param-error:has(+ .sf-detail-row:not([hidden])) > td {
+    border-bottom-color: transparent;
+}
+
+.sf-param-table .sf-param-error > td {
+    padding-top: 0;
+    padding-left: 2.75rem;
+}
+
+.sf-param-table .sf-detail-row > td {
+    padding-top: 0;
+    padding-left: 2.75rem;
+}
+
+/* 明細列：欄位由左到右排，放不下就折行；錯誤訊息各佔一整行 */
+.sf-detail,
+.sf-pd-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--spacing-sm) 0.75rem;
+}
+
+.sf-pd-fields,
+.sf-sld-slot,
+.sf-detail .sf-field-error {
+    flex: 1 0 100%;
+}
+
+.sf-detail .sf-field-error {
+    margin: 0;
+}
+
+.sf-detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.sf-detail-field > label,
+.sf-detail-field--check > span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.sf-detail-field .sf-num {
+    width: 4.25rem;
+}
+
+.sf-detail-field .form-select {
+    width: auto;
+    padding: 0.375rem 0.5rem;
+}
+
+.sf-detail-field--check {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.375rem;
+    padding-bottom: 0.375rem;
+    cursor: pointer;
+}
+
+.sf-detail-field--check input[type="checkbox"] {
+    margin-top: 0;
+}
+
+.sf-pd-fields > .sf-param-pm {
+    padding-bottom: 0.5rem;
+}
+
+.sf-pd-fields > .sf-param-pm:empty {
+    display: none;
+}
+
+/* 很窄（約 345px 以下，例如 320px 的視窗或 400% 縮放）：每個參數改成兩行——
+   第一行 擬合／名稱／更多，第二行 數值／±；表頭只留給報讀軟體。 */
+@container sfparams (max-width: 21.5rem) {
+    .sf-param-table,
+    .sf-param-table tbody {
+        display: block;
+    }
+
+    .sf-param-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .sf-param-table .sf-param-row {
+        display: grid;
+        grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+    }
+
+    .sf-param-table .sf-param-row > th,
+    .sf-param-table .sf-param-row > td {
+        display: block;
+    }
+
+    .sf-param-table .sf-param-row > td:nth-child(3) {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    .sf-param-table .sf-param-row > td:nth-child(4) {
+        grid-column: 3;
+        grid-row: 2;
+    }
+
+    .sf-param-table .sf-param-row > td:nth-child(5) {
+        grid-column: 3;
+        grid-row: 1;
+    }
+
+    .sf-param-table .sf-param-row > td:first-child,
+    .sf-param-table .sf-param-row > th,
+    .sf-param-table .sf-param-row > td:nth-child(5) {
+        border-bottom-color: transparent;
+    }
+
+    .sf-param-table .sf-param-error:not([hidden]),
+    .sf-param-table .sf-detail-row:not([hidden]),
+    .sf-param-table .sf-param-error > td,
+    .sf-param-table .sf-detail-row > td {
+        display: block;
+    }
+
+    .sf-param-table .sf-param-error > td,
+    .sf-param-table .sf-detail-row > td {
+        padding-left: 0.5rem;
+    }
+}
+
+/* ===== SLD 化學式面板（在該參數的明細列裡；輸入框是 tertiary，面板本身用細框而不是灰底） ===== */
+.sf-sld {
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-separator);
+    border-radius: var(--radius-lg);
+}
+
+.sf-sld-title {
+    margin-bottom: var(--spacing-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.sf-sld .form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.sf-sld-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+}

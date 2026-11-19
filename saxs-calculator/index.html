@@ -53,6 +53,7 @@
     <link rel="stylesheet" href="css/tiles.css?v=5.2">
     <link rel="stylesheet" href="css/sections.css?v=5.2">
     <link rel="stylesheet" href="css/sasfit.css?v=5.2">
+    <link rel="stylesheet" href="css/sasfit-params.css?v=5.2">
 </head>
 
 <body>
@@ -476,7 +477,7 @@
 
                 <div id="sfAlert" role="alert"></div>
 
-                <div class="sf-workspace">
+                <div class="sf-workspace" id="sfWorkspace" data-tab="data">
                     <!-- 左欄：操作 -->
                     <div class="sf-controls">
                         <div class="tabs" id="sfTabs" role="tablist" aria-label="擬合步驟">
@@ -485,8 +486,23 @@
                             <button type="button" class="tab" id="sfTabFit" role="tab" data-tab="fit" aria-selected="false" aria-controls="sfPanelFit" tabindex="-1">擬合</button>
                         </div>
 
+                        <!-- 擬合列：三個分段都看得到（開始／停止、擬合量度、範圍與自由參數的摘要、進度） -->
+                        <div class="sf-fitbar" id="sfFitBar" role="group" aria-label="擬合">
+                            <div class="sf-fitbar-actions">
+                                <button type="button" class="btn btn-primary" id="sfFitStart" aria-describedby="sfFitSummary">開始擬合</button>
+                                <button type="button" class="btn btn-secondary" id="sfFitStop" disabled>停止</button>
+                            </div>
+                            <div class="sf-fitbar-info">
+                                <p class="sf-fitbar-measure" id="sfFitMeasure"></p>
+                                <p class="stat-sub sf-fitbar-summary" id="sfFitSummary"></p>
+                                <p class="stat-sub sf-progress" id="sfFitProgress"></p>
+                            </div>
+                            <div class="sr-only" id="sfFitLive" role="status" aria-live="polite"></div>
+                        </div>
+
                         <!-- 分段：資料 -->
                         <div class="card" id="sfPanelData" role="tabpanel" aria-labelledby="sfTabData">
+                            <div class="alert alert--compact alert-info sf-lock" id="sfDataLock" hidden>擬合進行中，參數與資料已鎖定</div>
                             <div class="sf-drop" id="sfDrop">
                                 <label class="sf-drop-label" for="sfFileInput">把資料檔拖放到這裡，或選擇檔案（可多選）</label>
                                 <input type="file" class="form-input" id="sfFileInput" multiple accept=".dat,.txt,.csv" aria-describedby="sfFileNote">
@@ -505,16 +521,19 @@
                             <p class="stat-sub form-list-foot" id="sfQUnitNote">只影響之後載入的一般文字檔；官方 .dat 一律是 Å⁻¹。</p>
 
                             <div id="sfDataAlert" aria-live="polite"></div>
+                            <div class="sf-undo" id="sfUndo" role="status" hidden>
+                                <span class="sf-undo-text" id="sfUndoText"></span>
+                                <button type="button" class="btn btn-secondary btn-sm" id="sfUndoBtn">復原</button>
+                            </div>
 
                             <div class="table-wrapper" id="sfDataWrapper" tabindex="0" role="region" aria-label="已載入的資料檔" hidden>
                                 <table class="table sf-file-table">
                                     <thead>
                                         <tr>
                                             <th scope="col">顯示</th>
-                                            <th scope="col">作用中</th>
-                                            <th scope="col">檔名</th>
-                                            <th scope="col">條件值</th>
-                                            <th scope="col">狀態</th>
+                                            <th scope="col">擬合對象</th>
+                                            <th scope="col">檔名與狀態</th>
+                                            <th scope="col" id="sfCondHead">條件值</th>
                                             <th scope="col"><span class="sr-only">操作</span></th>
                                         </tr>
                                     </thead>
@@ -522,6 +541,7 @@
                                 </table>
                             </div>
                             <p class="stat-sub sf-empty" id="sfDataEmpty">尚未載入資料。</p>
+                            <p class="stat-sub" id="sfShownNote" hidden>一次載入很多檔時只自動顯示前 8 組；其餘請自行勾選「顯示」。</p>
 
                             <div class="section-divider section-divider--compact mt-md"><span>顯示</span></div>
                             <div class="form-list">
@@ -538,34 +558,29 @@
                                     <input type="number" class="form-input" id="sfStaggerDecades" value="1" min="0.1" max="10" step="0.1" aria-describedby="sfDisplayNote">
                                 </div>
                             </div>
-                            <p class="stat-sub form-list-foot" id="sfDisplayNote">條件名稱是清單「條件值」一欄的意義，例如 Temperature (K)、濃度 (mg/mL)、幀號。錯開時第 k 組乘上 10 的 k·n 次方，只影響顯示，不影響擬合。</p>
+                            <p class="stat-sub form-list-foot" id="sfDisplayNote">條件名稱會成為清單那一欄的標題，例如 Temperature (K)、濃度 (mg/mL)、幀號。錯開時第 k 組乘上 10 的 k·n 次方，只影響顯示，不影響擬合。</p>
                         </div>
 
                         <!-- 分段：模型 -->
                         <div class="card" id="sfPanelModel" role="tabpanel" aria-labelledby="sfTabModel" hidden>
-                            <div class="sf-model-pick">
-                                <div class="form-group">
-                                    <label class="form-label" for="sfModelSearch">搜尋模型</label>
-                                    <input type="search" class="form-input" id="sfModelSearch" placeholder="例如 sphere、cylinder" autocomplete="off" spellcheck="false">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label" for="sfModel">模型</label>
-                                    <select class="form-select" id="sfModel"></select>
-                                </div>
+                            <div class="alert alert--compact alert-info sf-lock" id="sfModelLock" hidden>擬合進行中，參數與資料已鎖定</div>
+                            <div class="form-group">
+                                <label class="form-label" for="sfModel">模型</label>
+                                <select class="form-select" id="sfModel"></select>
                             </div>
                             <div class="sf-model-info" id="sfModelInfo"></div>
 
                             <div class="form-list">
                                 <div class="form-group">
-                                    <label class="form-label" for="sfStructure">結構因子 S(Q)</label>
+                                    <label class="form-label" for="sfStructure">結構因子 S(q)</label>
                                     <select class="form-select" id="sfStructure" aria-describedby="sfStructureNote">
                                         <option value="" selected>無</option>
-                                        <option value="hardsphere">hardsphere</option>
-                                        <option value="hayter_msa">hayter_msa</option>
+                                        <option value="hardsphere">hardsphere — 硬球</option>
+                                        <option value="hayter_msa">hayter_msa — Hayter–Penfold MSA（帶電球）</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label" for="sfLowQ">低 Q 冪律附加項</label>
+                                    <label class="form-label" for="sfLowQ">加上低 q 冪律項</label>
                                     <input type="checkbox" id="sfLowQ">
                                 </div>
                             </div>
@@ -575,7 +590,7 @@
                                 <div class="form-group">
                                     <label class="form-label" for="sfStructureMode">組合方式</label>
                                     <select class="form-select" id="sfStructureMode">
-                                        <option value="0" selected>P(Q)·S(Q)</option>
+                                        <option value="0" selected>P(q)·S(q)</option>
                                         <option value="1">β 近似</option>
                                     </select>
                                 </div>
@@ -587,21 +602,20 @@
 
                             <div id="sfModelHints" aria-live="polite"></div>
 
-                            <div class="table-wrapper" id="sfParamWrapper" tabindex="0" role="region" aria-label="模型參數">
+                            <div class="table-wrapper sf-param-wrapper" id="sfParamWrapper" tabindex="0" role="region" aria-label="模型參數">
                                 <table class="table sf-param-table">
                                     <thead id="sfParamHead"></thead>
                                     <tbody id="sfParamBody"></tbody>
                                 </table>
                             </div>
-
-                            <div id="sfSldPanel" hidden></div>
+                            <p class="stat-sub sf-table-foot">「更多」展開該參數的下限、上限與多分散；尺寸參數要勾選「擬合」才會參與擬合。</p>
                         </div>
 
                         <!-- 分段：擬合 -->
                         <div class="card" id="sfPanelFit" role="tabpanel" aria-labelledby="sfTabFit" hidden>
                             <div class="form-list">
                                 <div class="form-group">
-                                    <label class="form-label" for="sfQMin">Q 下限</label>
+                                    <label class="form-label" for="sfQMin">q 下限</label>
                                     <div class="form-input-group">
                                         <input type="number" class="form-input" id="sfQMin" min="0" step="any" aria-describedby="sfQMinError">
                                         <span class="input-unit">Å⁻¹</span>
@@ -609,7 +623,7 @@
                                     <p class="sf-field-error" id="sfQMinError" hidden></p>
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label" for="sfQMax">Q 上限</label>
+                                    <label class="form-label" for="sfQMax">q 上限</label>
                                     <div class="form-input-group">
                                         <input type="number" class="form-input" id="sfQMax" min="0" step="any" aria-describedby="sfQMaxError">
                                         <span class="input-unit">Å⁻¹</span>
@@ -635,35 +649,32 @@
                                 </div>
                             </div>
 
-                            <div id="sfPreFitHints" aria-live="polite"></div>
-
                             <div class="sf-actions sf-actions--fit">
-                                <button type="button" class="btn btn-primary btn-lg" id="sfFitStart">開始擬合</button>
-                                <button type="button" class="btn btn-secondary" id="sfFitStop" disabled>停止</button>
-                                <button type="button" class="btn btn-secondary" id="sfFitRevert" disabled>回復擬合前參數</button>
+                                <button type="button" class="btn btn-secondary" id="sfFitRevert" aria-describedby="sfFitRevertNote" disabled>還原擬合前的參數</button>
+                                <p class="stat-sub" id="sfFitRevertNote"></p>
                             </div>
 
+                            <div id="sfPreFitHints" aria-live="polite"></div>
                             <div id="sfFitAlert" role="alert"></div>
-                            <p class="stat-sub sf-progress" id="sfFitProgress"></p>
-                            <div class="sr-only" id="sfFitLive" role="status" aria-live="polite"></div>
 
                             <div class="sf-results" id="sfFitResults"></div>
-                            <div id="sfFitHints"></div>
+                            <div id="sfFitHints" aria-live="polite"></div>
+                            <div class="sf-results" id="sfFitParams"></div>
                         </div>
                     </div>
 
-                    <!-- 右欄：圖（寬螢幕時捲動固定） -->
+                    <!-- 右欄：圖（寬螢幕時捲動固定；窄螢幕時排在最上面） -->
                     <div class="sf-plots">
                         <div class="card">
                             <div class="card-header sf-plot-header">
-                                <h2 class="card-title">I(q)</h2>
+                                <h2 class="card-title" id="sfPlotTitle">I(q)</h2>
                                 <div class="sf-plot-tools">
                                     <div class="tabs tabs--inline" role="group" aria-label="主圖模式">
                                         <button type="button" class="tab active" id="sfModeLogLog" data-mode="loglog" aria-pressed="true">log-log</button>
                                         <button type="button" class="tab" id="sfModeGuinier" data-mode="guinier" aria-pressed="false">Guinier</button>
                                         <button type="button" class="tab" id="sfModeKratky" data-mode="kratky" aria-pressed="false">Kratky</button>
                                     </div>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfResetZoom">重設縮放</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfResetZoom" disabled>重設縮放</button>
                                 </div>
                             </div>
                             <div class="sf-plot-status">
@@ -674,8 +685,10 @@
                             <div class="chart-container sf-chart--main">
                                 <canvas id="sfMainChart" role="img" aria-label="尚未載入資料"></canvas>
                             </div>
+                            <p class="stat-sub sf-plot-caption">Ctrl＋滾輪縮放、拖曳框選；Shift＋拖曳平移</p>
                             <h3 class="sf-plot-subtitle">殘差</h3>
-                            <div class="chart-container sf-chart--residual">
+                            <p class="stat-sub sf-residual-empty" id="sfResidualEmpty">尚無擬合結果</p>
+                            <div class="chart-container sf-chart--residual" id="sfResidualBox" hidden>
                                 <canvas id="sfResidualChart" role="img" aria-label="尚無擬合結果"></canvas>
                             </div>
                         </div>
@@ -2379,6 +2392,7 @@
     <script src="js/sasfit-form.js?v=5.2"></script>
     <script src="js/sasfit-state.js?v=5.2"></script>
     <script src="js/sasfit-format.js?v=5.2"></script>
+    <script src="js/sasfit-labels.js?v=5.2"></script>
     <script src="js/sasfit-jobs.js?v=5.2"></script>
     <script src="js/sasfit-hints.js?v=5.2"></script>
     <script src="js/sasfit-html.js?v=5.2"></script>

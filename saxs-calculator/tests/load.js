@@ -58,6 +58,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-form.js',             // IIFE，只掛 globalThis.SasFitForm；模型表單與驗證，呼叫時才讀 SasFitMeta／SasFitValidate
     'sasfit-state.js',            // IIFE，只掛 globalThis.SasFitState；頁面狀態 reducer，呼叫時才讀 SasFitWeighting／SasFitFitter／SasFitWorkerCore
     'sasfit-format.js',           // IIFE，只掛 globalThis.SasFitFormat；數值±誤差的文字與回填捨入，純函式、無相依
+    'sasfit-labels.js',           // IIFE，只掛 globalThis.SasFitLabels；組合出來的純文字（模型名、擬合摘要、圖的朗讀文字），呼叫時才讀 SasFitFormat
     'sasfit-jobs.js',             // IIFE，只掛 globalThis.SasFitJobs；Worker 請求的組裝，呼叫時才讀 SasFitForm／SasFitState／SasFitWeighting
     'sasfit-hints.js',            // IIFE，只掛 globalThis.SasFitHints；提示與錯誤訊息的選擇，呼叫時才讀 SasFitWeighting
     'sasfit-html.js',             // IIFE，只掛 globalThis.SasFitHtml；純 HTML 字串，呼叫時才經 host() 讀 FormUtils／ResultTiles／ChartTheme
@@ -106,6 +107,8 @@ module.exports = {
     SasFitWorkerClient: globalThis.SasFitWorkerClient,
     SasFitForm: globalThis.SasFitForm,
     SasFitState: globalThis.SasFitState,
+    SasFitFormat: globalThis.SasFitFormat,
+    SasFitLabels: globalThis.SasFitLabels,
     SasFitJobs: globalThis.SasFitJobs,
     SasFitHints: globalThis.SasFitHints,
     SasFitHtml: globalThis.SasFitHtml,

@@ -1,38 +1,46 @@
 /**
- * sasfit-fit-ui.js -- the fit segment of the SAS fitting page (design spec
- * 5.4, 5.7, 12; plan M3 Task 13). Original code. DOM module: loaded before
- * section-sasfit.js, which calls SasFitFitUi.create(ctx) once.
+ * sasfit-fit-ui.js -- the fit segment of the SAS fitting page and the fit bar
+ * that is on every tab (design spec 5.1, 5.4, 5.7, 12; plan M3 Task 13; fix
+ * pass B after the UI review of 2026-11-19). Original code. DOM module:
+ * loaded before section-sasfit.js, which calls SasFitFitUi.create(ctx) once.
  *
  *   SasFitFitUi.create(ctx) -> { render() }
  *
  * What it owns:
- *   settings  Q range (two inputs, "full range", "default range"), weighting
+ *   fit bar   start / stop, the fit measure of the active dataset
+ *             (SasFitHtml.fitBarHtml), one line that says what a fit would
+ *             use -- range, points, the NAMES of the free parameters
+ *             (SasFitLabels.fitSummary) -- or why it cannot start
+ *             (SasFitJobs.fitReadiness), and the progress line
+ *   settings  q range (two inputs, "full range", "default range"), weighting
  *             (the options say how many points each one leaves out), maximum
- *             number of steps; the line that says how many points and free
- *             parameters there are, or why a fit cannot start
- *             (SasFitJobs.fitReadiness); the hints before a fit
- *             (SasFitHints.preFitHints)
- *   run       start / stop / revert / "continue from the current values".
- *             Start cancels the pending preview, sends SasFitJobs.fitJob and
- *             dispatches fitStarted; every way the fit can end dispatches
- *             fitSettled, so the page never stays locked.
- *   results   the FitResult of the ACTIVE dataset: tiles
- *             (SasFitHtml.resultsHtml, with the "parameters were changed"
- *             notice when the result no longer matches the form) and, only
- *             while it matches, the hints of design spec 5.7
- *             (SasFitHints.fitHints). The error column of the parameter table
- *             follows the same rule in sasfit-params-ui.js.
+ *             number of steps, "revert" (it belongs to the dataset whose fit
+ *             it undoes: for another one it is disabled and says whose it
+ *             is); the hints before a fit (SasFitHints.preFitHints)
+ *   results   the FitResult of the ACTIVE dataset: the hero tile
+ *             (SasFitHtml.resultsHtml), then -- only while the result matches
+ *             the form -- the hints of design spec 5.7 (SasFitHints.fitHints),
+ *             then the fitted parameters (SasFitHtml.resultParamsHtml). A
+ *             result that is not the one of the current parameters (changed
+ *             since, or a new fit is running) is marked and shown subdued.
  *
  * A finished fit writes its values into the form (SasFitJobs.applyResult) and
  * keeps the form from before the fit for "revert". A stopped fit changes
  * nothing. "Continue" starts again from the form as it is and keeps the
  * revert point of the first run.
  *
- * Progress: the visible line (#sfFitProgress) follows every accepted step;
- * the screen reader region (#sfFitLive) is written only when a fit starts
- * and when it ends. Errors go where SasFitHints.errorNotice says (#sfFitAlert
- * or #sfAlert), their detail to console.warn, and both alerts are cleared
- * when the next fit starts or succeeds.
+ * Progress: the visible line (#sfFitProgress) says what is fitted and for how
+ * long (a tick every second through ctx.deps.timers) and follows every
+ * accepted step; after a finished fit it is blank (the measure line of the
+ * bar has the result), after a stop or a failure it says so. The screen
+ * reader region (#sfFitLive) is written only when a fit starts and when it
+ * ends. Errors go where SasFitHints.errorNotice says
+ * (#sfFitAlert or #sfAlert), their detail to console.warn, and both alerts are
+ * cleared when the next fit starts or succeeds.
+ *
+ * Focus: "start" is disabled while a fit runs, so the focus moves to "stop";
+ * when a fit stops or fails it returns to "start"; a finished fit moves it to
+ * the results on the fit tab (A11y.focusResults), else to "start".
  *
  * While a fit runs every control here except "stop" is disabled. render()
  * does not dispatch and writes HTML only through ctx.setHtml, so nothing is
@@ -49,6 +57,9 @@
     const RANGE_DIGITS = 6;
     const CHI2R_DIGITS = 3;
     const RESULTS_ID = 'sfFitResults';
+    const PARAMS_ID = 'sfFitParams';
+    const STALE_CLASS = 'is-stale';
+    const TICK_MS = 1000;
     const FIT_TAB = 'fit';
     const PAGE_ERROR_ID = 'page-error';
     const FIT_ERROR_ID = 'fit-error';
@@ -60,16 +71,17 @@
     const LOCKED_CONTROLS = Object.freeze(['sfQMin', 'sfQMax', 'sfRangeFull', 'sfRangeDefault', 'sfWeighting', 'sfMaxSteps']);
     const TEXT = Object.freeze({
         needData: '請先載入資料，才能設定擬合範圍並開始擬合。',
-        rangeInfo: (points, free) => '範圍內 ' + points + ' 點可參與擬合，自由參數 ' + free + ' 個',
-        qMinNumber: 'Q 下限必須是不小於 0 的數字',
-        qMaxNumber: 'Q 上限必須是大於 0 的數字',
-        qOrder: 'Q 下限必須小於 Q 上限',
+        rangeInfo: (points, free) => '範圍內 ' + points + ' 點可參與擬合；擬合 ' + free + ' 個參數',
+        qMinNumber: 'q 下限必須是不小於 0 的數字',
+        qMaxNumber: 'q 上限必須是大於 0 的數字',
+        qOrder: 'q 下限必須小於 q 上限',
         steps: (max) => '最大步數必須是 1 到 ' + max + ' 的整數',
+        fixFields: '擬合範圍或最大步數有不合法的欄位，請先修正。',
         starting: '開始擬合…',
         waitingPreview: '等待預覽完成…',
         notApplied: '擬合結果無法寫入參數表，參數表仍是擬合前的數值；下列為擬合結果',
         progress: (step, label, value) => '第 ' + step + ' 步，' + label + '＝' + value,
-        stopped: (step) => '已停止（第 ' + step + ' 步），參數未變更',
+        stopped: (step) => (step > 0 ? '已停止（第 ' + step + ' 步），參數未變更' : '已停止，尚未完成第一步；參數未變更'),
         finished: (status, label, value, steps) => '擬合結束：' + status + '，' + label + '＝' + value + '，共 ' + steps + ' 步',
         failed: '擬合沒有完成',
     });
@@ -108,6 +120,41 @@
         ui.store.set({ progress: text, progressFor: ui.ctx.getState().activeId });
         ui.ctx.el('sfFitProgress').textContent = text;
         if (live) ui.ctx.el('sfFitLive').textContent = text;
+    }
+
+    // ------------------------------------------------------------- elapsed time of a running fit
+
+    /** The line of a running fit: what is fitted and for how long, then the latest step (never read out: see setProgress). */
+    function runningText(ui) {
+        const { seconds, waiting, step } = ui.store.get();
+        const head = waiting && step === '' ? TEXT.waitingPreview : globalThis.SasFitLabels.elapsedText(ui.ctx.getForm().model, seconds);
+        return step === '' ? head : head + '；' + step;
+    }
+
+    function stopClock(ui) {
+        const { tick } = ui.store.get();
+        if (tick !== null) ui.ctx.deps.timers.clearTimeout(tick);
+        ui.store.set({ tick: null });
+    }
+
+    /** One second later: count it and show it, as long as this run is still the one that is running. */
+    function onTick(ui, run) {
+        ui.store.set({ tick: null });
+        if (run !== ui.store.get().run || !isRunning(ui.ctx.getState())) return;
+        ui.store.set({ seconds: ui.store.get().seconds + 1 });
+        setProgress(ui, runningText(ui), false);
+        ui.store.set({ tick: ui.ctx.deps.timers.setTimeout(() => onTick(ui, run), TICK_MS) });
+    }
+
+    function startClock(ui, run, waiting) {
+        stopClock(ui);
+        ui.store.set({ seconds: 0, waiting, step: '' });
+        ui.store.set({ tick: ui.ctx.deps.timers.setTimeout(() => onTick(ui, run), TICK_MS) });
+    }
+
+    function focusOn(ctx, id) {
+        const element = ctx.el(id);
+        if (element && typeof element.focus === 'function') element.focus();
     }
 
     // ------------------------------------------------------------- settings
@@ -194,14 +241,32 @@
         markField(ctx, 'sfMaxSteps', 'sfMaxStepsError', stepsError);
     }
 
-    /** { ok, text }: whether a fit can start now, and the line that says so. */
+    /**
+     * { ok, summary, info }: whether a fit can start now; the line of the fit bar (the range, the points and the
+     * names that are fitted, or why a fit cannot start); the line under the range (blank while the range typed is
+     * not valid: it would describe the range before it).
+     */
     function readiness(ui, state) {
         const file = activeFile(state);
-        if (file === null) return { ok: false, text: TEXT.needData };
+        if (file === null) return { ok: false, summary: TEXT.needData, info: '' };
         const { rangeErrors, stepsError } = ui.store.get();
-        const ready = globalThis.SasFitJobs.fitReadiness(ui.ctx.getForm(), file.dataset, { range: state.range, weighting: state.weighting });
-        const text = ready.ok ? TEXT.rangeInfo(ready.nPoints, ready.nFree) : ready.reason;
-        return { ok: ready.ok && rangeErrors.qMin === '' && rangeErrors.qMax === '' && stepsError === '', text };
+        const form = ui.ctx.getForm();
+        const ready = globalThis.SasFitJobs.fitReadiness(form, file.dataset, { range: state.range, weighting: state.weighting });
+        const fieldsOk = rangeErrors.qMin === '' && rangeErrors.qMax === '' && stepsError === '';
+        if (!ready.ok) return { ok: false, summary: ready.reason, info: '' };
+        const names = globalThis.SasFitJobs.fitNames(form).free;
+        const summary = globalThis.SasFitLabels.fitSummary({ range: state.range, nPoints: ready.nPoints, names });
+        const rangeOk = rangeErrors.qMin === '' && rangeErrors.qMax === '';
+        return { ok: fieldsOk, summary: fieldsOk ? summary : TEXT.fixFields, info: rangeOk ? TEXT.rangeInfo(ready.nPoints, ready.nFree) : '' };
+    }
+
+    /** "Revert" belongs to the dataset whose fit it would undo: { enabled, note }. */
+    function revertState(ui, state) {
+        const { before, beforeFor } = ui.store.get();
+        if (before === null) return { enabled: false, note: '' };
+        if (beforeFor === state.activeId) return { enabled: !isRunning(state), note: '' };
+        const owner = state.files.find((file) => file.id === beforeFor);
+        return { enabled: false, note: owner === undefined ? '' : globalThis.SasFitHints.revertOtherText(owner.fileName) };
     }
 
     function renderSettings(ui, state) {
@@ -214,15 +279,19 @@
         renderSteps(ui, state);
         LOCKED_CONTROLS.forEach((id) => { ctx.el(id).disabled = locked || (dataset === null && id !== 'sfMaxSteps'); });
         const ready = readiness(ui, state);
-        ctx.el('sfRangeInfo').textContent = ready.text;
+        ctx.el('sfRangeInfo').textContent = ready.info;
+        ctx.el('sfFitSummary').textContent = ready.summary;
+        const form = ctx.getForm();
         const hints = globalThis.SasFitHints.preFitHints({
-            modelSpec: globalThis.SasFitJobs.modelSpec(ctx.getForm()), dataset, range: state.range, weighting: state.weighting,
-            notes: file === null ? null : file.notes,
+            modelSpec: globalThis.SasFitJobs.modelSpec(form), dataset, range: state.range, weighting: state.weighting,
+            notes: file === null ? null : file.notes, fit: dataset === null ? null : globalThis.SasFitJobs.fitNames(form),
         });
         ctx.setHtml(ctx.el('sfPreFitHints'), globalThis.SasFitHtml.hintsHtml(hints));
         ctx.el('sfFitStart').disabled = locked || !ready.ok;
         ctx.el('sfFitStop').disabled = !locked;
-        ctx.el('sfFitRevert').disabled = locked || ui.store.get().before === null;
+        const revert = revertState(ui, state);
+        ctx.el('sfFitRevert').disabled = !revert.enabled;
+        ctx.el('sfFitRevertNote').textContent = revert.note;
     }
 
     // ------------------------------------------------------------- results
@@ -235,11 +304,17 @@
         const matches = result !== null && globalThis.SasFitJobs.resultMatchesForm(ctx.getForm(), result);
         const locked = isRunning(state);
         const results = ctx.el(RESULTS_ID);
+        const params = ctx.el(PARAMS_ID);
+        const notApplied = result !== null && store.get().unapplied === result;
         ctx.setHtml(results, html.resultsHtml(result, {
-            matches, fileName: file === null ? '' : file.fileName, absolute: file !== null && file.dataset.kind === 'official',
-            notApplied: result !== null && store.get().unapplied === result,
+            matches, notApplied, running: locked, fileName: file === null ? '' : file.fileName, hasData: file !== null,
         }));
+        ctx.setHtml(params, html.resultParamsHtml(result, { absolute: file !== null && file.dataset.kind === 'official' }));
+        // a result that is not the one of the current parameters (changed since, or a new fit is running) is shown subdued
+        const stale = result !== null && (locked || !(matches || notApplied));
+        [results, params].forEach((element) => element.classList.toggle(STALE_CLASS, stale));
         results.setAttribute('aria-busy', String(locked));
+        ctx.setHtml(ctx.el('sfFitMeasure'), html.fitBarHtml({ result, matches: matches || notApplied, running: locked }));
         // the hints describe the result as fitted; "continue" must not be offered for other values or during a run
         ctx.setHtml(ctx.el('sfFitHints'), matches && !locked ? html.hintsHtml(globalThis.SasFitHints.fitHints(result)) : '');
         if (!locked && store.get().progress !== '' && store.get().progressFor !== state.activeId) {
@@ -259,6 +334,7 @@
     /** fitSettled on every path: a page that stays locked could only be reloaded. */
     function settle(ui, result) {
         const { ctx } = ui;
+        stopClock(ui);
         if (!isRunning(ctx.getState())) return;
         try {
             ctx.dispatch({ type: 'fitSettled', result });
@@ -274,7 +350,8 @@
         const { iteration, chi2r } = progress;
         if (!Number.isInteger(iteration) || iteration < 0) return;
         ctx.dispatch({ type: 'fitProgress', iteration, chi2r: typeof chi2r === 'number' ? chi2r : null }, { silent: true });
-        setProgress(ui, TEXT.progress(iteration, globalThis.SasFitHints.measure(ctx.getState().weighting).label, chi2rText(chi2r)), false);
+        store.set({ step: TEXT.progress(iteration, globalThis.SasFitHints.measure(ctx.getState().weighting).label, chi2rText(chi2r)) });
+        setProgress(ui, runningText(ui), false);
     }
 
     /** The fitted values go into the form; a result that cannot be applied is shown without changing it, and said so. */
@@ -301,19 +378,24 @@
             const step = Number.isInteger(result.iterations) ? result.iterations : ctx.getState().fit.iteration;
             settle(ui, result);
             setProgress(ui, TEXT.stopped(step), true);
+            focusOn(ctx, 'sfFitStart');                            // "stop" is disabled again: the focus must not fall to the page
             return;
         }
-        const { pending, keepBefore, before } = store.get();
+        const { pending, keepBefore, before, beforeFor } = store.get();
         const applied = applyToForm(ui, result);
-        if (applied) store.set({ before: keepBefore && before !== null ? before : pending });
+        const fitted = ctx.getState().fit.datasetId;
+        if (applied) store.set({ before: keepBefore && before !== null && beforeFor === fitted ? before : pending, beforeFor: fitted });
         clearAlerts(ctx);
         if (!applied) showAlert(ctx, 'sfFitAlert', FIT_ERROR_ID, TEXT.notApplied);
         settle(ui, result);
         const label = globalThis.SasFitHints.statusLabel(result).text;
-        setProgress(ui, TEXT.finished(label, globalThis.SasFitHints.measure(result).label, chi2rText(result.chi2r),
-            Number.isInteger(result.iterations) ? result.iterations : 0), true);
+        // the bar's measure line shows the result: the progress line is cleared, the screen reader region is told
+        setProgress(ui, '', false);
+        ctx.el('sfFitLive').textContent = TEXT.finished(label, globalThis.SasFitHints.measure(result).label, chi2rText(result.chi2r),
+            Number.isInteger(result.iterations) ? result.iterations : 0);
         const a11y = host().A11y;
         if (ctx.getState().tab === FIT_TAB && isObject(a11y)) a11y.focusResults(RESULTS_ID);
+        else focusOn(ctx, 'sfFitStart');                           // on the other tabs the results are not on screen
     }
 
     function onFailure(ui, run, err) {
@@ -321,6 +403,7 @@
         if (run !== store.get().run) return;
         const notice = globalThis.SasFitHints.errorNotice(err, 'fit');
         settle(ui, null);
+        focusOn(ctx, 'sfFitStart');
         if (notice.where === 'ignore') {
             setProgress(ui, '', false);
             return;
@@ -345,7 +428,10 @@
         const run = store.get().run + 1;
         store.set({ run, pending: form, keepBefore, unapplied: null });
         ctx.dispatch({ type: 'fitStarted' });
-        setProgress(ui, waiting ? TEXT.waitingPreview : TEXT.starting, true);
+        startClock(ui, run, waiting);
+        setProgress(ui, runningText(ui), false);
+        ctx.el('sfFitLive').textContent = waiting ? TEXT.waitingPreview : TEXT.starting;
+        focusOn(ctx, 'sfFitStop');                                 // "start" is disabled now: the focus goes to what can be done
         let promise;
         try {
             promise = ctx.client.fit(job, { onProgress: (progress) => onProgress(ui, run, progress) });
@@ -355,6 +441,7 @@
         promise.then((result) => onResult(ui, run, result), (err) => onFailure(ui, run, err)).catch((err) => {
             console.error(LOG + ' 處理擬合結果時發生未預期的錯誤', err);       // a bug here must not leave the page locked
             settle(ui, null);
+            focusOn(ctx, 'sfFitStart');
         });
     }
 
@@ -372,8 +459,8 @@
     function revert(ui) {
         const { ctx, store } = ui;
         const { before } = store.get();
-        if (before === null || isRunning(ctx.getState())) return;
-        store.set({ before: null });
+        if (!revertState(ui, ctx.getState()).enabled) return;
+        store.set({ before: null, beforeFor: null });
         ctx.setForm(before);
         ctx.refresh();                                             // the model segment plans the preview of the old values
         ctx.el('sfFitStart').focus();                              // the revert button is disabled now
@@ -411,7 +498,7 @@
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
             rangeSeen: undefined, rangeErrors: NO_ERRORS, stepsError: '', before: null, pending: null, keepBefore: false,
-            run: 0, progress: '', progressFor: null, unapplied: null,
+            beforeFor: null, run: 0, progress: '', progressFor: null, unapplied: null, tick: null, seconds: 0, waiting: false, step: '',
         }) });
         bind(ui);
         return Object.freeze({ render: () => render(ui) });
