@@ -84,6 +84,12 @@ test('[sasfit-export] cell：RFC 4180 引號', () => {
     [null, undefined, NaN, Infinity].forEach((v) => assert.equal(E.cell(v), '', String(v)));
 });
 
+test('[sasfit-export] cell：含「#」的文字一律加引號——pandas.read_csv(comment="#") 會在未加引號的 # 處截斷該列', () => {
+    assert.equal(E.cell('sample#1.dat'), '"sample#1.dat"');
+    assert.equal(E.cell('#1'), '"#1"');
+    assert.equal(E.cell('=#1'), '"\'=#1"');
+});
+
 test('[sasfit-export] cell：文字型以 = + - @ TAB CR 開頭時前置單引號；數字型不處理（負數仍是數字）', () => {
     assert.equal(E.cell('=1+1'), "'=1+1");
     assert.equal(E.cell('+1'), "'+1");

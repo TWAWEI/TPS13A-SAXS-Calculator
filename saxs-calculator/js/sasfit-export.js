@@ -12,7 +12,8 @@
  *   cell(value)            one CSV cell (RFC 4180). A number is num(x) and stays
  *                          a number (a negative one too). A TEXT that starts
  *                          with = + - @ TAB or CR gets a leading apostrophe
- *                          (formula injection, OWASP), then the RFC quoting.
+ *                          (formula injection, OWASP), then the RFC quoting; a
+ *                          text with the comment character is quoted as well.
  *   commentLine(key, value)  '# key: value' for a value that may hold text of the
  *                          user (file and condition names) -- never quoted (a quoted line would
  *                          not start with the comment prefix); in the value
@@ -96,7 +97,8 @@
     const PNG_SIGNATURE = Object.freeze([137, 80, 78, 71, 13, 10, 26, 10]);
     const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
     const FORMULA_START_RE = /^[=+\-@\t\r]/;
-    const NEEDS_QUOTES_RE = /[",\r\n]/;
+    // '#' too: pandas.read_csv(comment="#") cuts a row at an unquoted one (verified with pandas 2.3.3 and 3.0.2)
+    const NEEDS_QUOTES_RE = /[",\r\n#]/;
     const COMMENT_UNSAFE_RE = /[,;"\u0000-\u001F\u007F\u2028\u2029]/g;
     const NAME_UNSAFE_RE = /[\\/:*?"<>|\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g;
     const CONTROL_RE = /[\u0000-\u001F\u007F\u2028\u2029]/g;
