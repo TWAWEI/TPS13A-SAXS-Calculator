@@ -287,7 +287,7 @@ function seqPage({ script = [], files = seqEntries(), ticks = ['radius'], module
     return {
         ...page, client, body,
         refreshes: () => counts.refreshes,
-        rowIds: () => body().querySelectorAll('tr').map((row) => row.dataset.id),
+        rowIds: () => body().querySelectorAll('tr').filter((row) => row.dataset.id !== undefined).map((row) => row.dataset.id),   // 註記列沒有 data-id
         pick: (id) => page.$(globalThis.SasFitSeqView.pickId(id)),
         load: (id) => page.$(globalThis.SasFitSeqView.loadId(id)),
     };

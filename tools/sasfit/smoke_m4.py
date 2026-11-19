@@ -43,7 +43,7 @@ TWO_COLUMN = VIEWPORTS[:3]
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 WHITE = [255, 255, 255, 255]
 BOM = b'\xef\xbb\xbf'
-IUCR_HEADING = 'Model fitting (analytical form factor)'
+IUCR_HEADING = 'Model fitting (analytical scattering model)'
 
 # ----------------------------------------------------------------- helpers
 
@@ -575,7 +575,7 @@ def check_stop(ctx):
         page.wait_for_function("() => !document.getElementById('sfSeqRun').disabled", timeout=20_000)
         jobs0 = page.evaluate('() => window.__jobs.length')
         page.click('#sfSeqRun')
-        page.wait_for_function("() => /第 1／3 筆/.test(document.getElementById('sfFitBar').textContent) && !document.getElementById('sfFitStop').disabled", timeout=20_000)
+        page.wait_for_function("() => /序列 1／3/.test(document.getElementById('sfFitProgress').textContent) && !document.getElementById('sfFitStop').disabled", timeout=20_000)
         page.wait_for_timeout(600)
         during = page.evaluate("() => [document.getElementById('sfFitProgress').textContent, SasFitSection.getState().seq.phase, document.getElementById('sfModel').disabled]")
         t0 = time.time()
@@ -597,7 +597,7 @@ def check_stop(ctx):
         su.tab(page, 'sequence')
         page.wait_for_function("() => !document.getElementById('sfSeqRun').disabled", timeout=20_000)
         page.click('#sfSeqRun')
-        page.wait_for_function("() => /第 1／3 筆/.test(document.getElementById('sfFitBar').textContent) && SasFitSection.getState().seq.phase === 'running'", timeout=20_000)
+        page.wait_for_function("() => /序列 1／3/.test(document.getElementById('sfFitProgress').textContent) && SasFitSection.getState().seq.phase === 'running'", timeout=20_000)
         jobs1 = page.evaluate('() => window.__jobs.length')
         page.click('#sfFitStop')
         page.wait_for_function(js.JS_IDLE, timeout=5_000)
@@ -643,7 +643,7 @@ def print_measurements(measured):
     else:
         print('      3D redraw time: NOT MEASURED (check 8a did not get that far)')
     if t:
-        print(f"      sequence table of {t['rows']} synthetic rows x {t['columns']} columns: SasFitSeqView.bodyHtml median {t['html']:.2f} ms "
+        print(f"      sequence table of {t['rows']} synthetic files ({t['trs']} <tr> with their note rows) x {t['columns']} columns: SasFitSeqView.bodyHtml median {t['html']:.2f} ms "
               f"({t['chars']} chars), innerHTML into a detached tbody median {t['dom']:.2f} ms (7 runs)")
     else:
         print(f"      500-row table: NOT MEASURED ({measured.get('table_error', 'not run')})")

@@ -14,7 +14,7 @@ JS_SEQ = """() => {
   const rows = (s.seq.order || []).map((id) => { const r = s.seq.rows[id], res = r.result, f = s.files.find((x) => x.id === id);
     return { id, state: r.state, from: r.startedFrom, status: res ? res.status : null, radius: res ? res.params.radius : null,
              chi2r: res ? res.chi2r : null, name: f.fileName }; });
-  const chips = [...document.querySelectorAll('#sfSeqBody tr.sf-seq-row .sf-seq-status .tile-chip')].map((e) => e.textContent.trim());
+  const chips = [...document.querySelectorAll('#sfSeqBody tr.sf-seq-row .sf-seq-fit .tile-chip')].map((e) => e.textContent.trim());
   const c = Chart.getChart('sfSeqTrend'), d = c ? c.data.datasets[0] : null;
   return { rows, chips, outcome: s.seq.outcome, phase: s.seq.phase, activeId: s.activeId, jobs: window.__jobs.map((j) => j.radius),
            condition: document.getElementById('sfConditionName').value,
@@ -26,10 +26,9 @@ JS_IDLE = "() => { const s = SasFitSection.getState(); return s.fit.phase === 'i
 
 JS_ACTIVE = """() => {
   const s = SasFitSection.getState(), r = s.fitResults[s.activeId], row = document.querySelector('#sfSeqBody tr[data-id="' + s.activeId + '"]');
-  const nums = row ? [...row.querySelectorAll('td.sf-seq-num')] : [];
   return { activeId: s.activeId, result: r ? r.params.radius : null, input: parseFloat(document.getElementById('sfValue_radius').value),
            bar: document.getElementById('sfFitBar').innerText, results: document.getElementById('sfFitResults').innerText,
-           measure: document.getElementById('sfFitMeasure').innerText.replace(/\\s+/g, ' '), rowMeasure: nums.length ? nums[nums.length - 1].textContent.trim() : null,
+           measure: document.getElementById('sfFitMeasure').innerText.replace(/\\s+/g, ' '), rowMeasure: row && row.querySelector('td.sf-seq-fit .sf-seq-value') ? row.querySelector('td.sf-seq-fit .sf-seq-value').textContent.trim() : null,
            curve: Chart.getChart('sfMainChart').data.datasets.filter((d) => d.sfKind === 'curve' && d.sfId === s.activeId && d.data.length > 0).length,
            focus: document.activeElement ? document.activeElement.id : null };
 }"""
@@ -123,5 +122,5 @@ JS_TABLE_TIME = """() => {
     dom.push(performance.now() - t1); html.push(t1 - t0); chars = text.length;
   }
   const median = (xs) => [...xs].sort((a, b) => a - b)[3];
-  return { rows: body.children.length, columns: body.children[0].children.length, chars, html: median(html), dom: median(dom) };
+  return { rows: rows.length, trs: body.children.length, columns: body.children[0].children.length, chars, html: median(html), dom: median(dom) };
 }"""

@@ -24,13 +24,21 @@
  *                        than free parameters, an invalid form. The texts are
  *                        SasFitJobs.fitReadiness's, except the empty range.
  *   isUsableStart(fitResult) -> boolean
- *       converged, not blockedByNonFinite and -- when the measure is a real
+ *       converged, not blockedByNonFinite, not illConditioned, not
+ *       jacobianNonFinite (any weighting) and -- when the measure is a real
  *       chi-square -- chi2r <= SasFitHints.CHI2R_WARN. A value on a bound does
  *       not disqualify it.
+ *   heldBack(fitResult) -> [name]
+ *       The fitted names of a usable result that are NOT carried to the next
+ *       file (project owner, 2026-11-19): those the data did not determine --
+ *       the error the page shows is not finite, or not smaller than |value|.
+ *       A value on a bound is carried (the page does not class it as
+ *       undetermined either: it shows no error for it).
  *   startForm(form0, lastUsable | null, chain) -> form
- *       form0 itself, or form0 with the fitted values of lastUsable written in
- *       through SasFitJobs.applyResult (the rounding of a single fit). Bounds,
- *       fit ticks, dispersity settings and the model always come from form0.
+ *       form0 itself, or form0 with the DETERMINED fitted values of lastUsable
+ *       written in (SasFitJobs.writtenValues: the rounding of a single fit).
+ *       Held-back names keep the value of form0. Bounds, fit ticks, dispersity
+ *       settings and the model always come from form0.
  *   run({ plan, form, settings: { weighting, maxSteps }, chain, datasetOf(id),
  *         fitOne(job, onProgress) -> Promise<FitResult>, onEvent })
  *       -> Promise<{ outcome: 'finished' | 'stopped' | 'aborted', error? }>
@@ -42,7 +50,8 @@
  *         { type: 'row', id, row: { state: 'done' | 'error' | 'pending', ... }, next }
  *       { type: 'end', outcome, error? }
  *     row = { id, state, result, range, note, startedFrom } (the row of
- *     SasFitState); next = the id fitted after this one, or null.
+ *     SasFitState); next = the id fitted after this one, or null. The note
+ *     names the parameters that were not carried from startedFrom.
  *     - a result with status 'stopped' ends the run: that row is 'pending'
  *       again and nothing more is sent. There is no resume.
  *     - fitOne rejecting (or throwing): SasFitHints.errorNotice decides. An
@@ -71,15 +80,18 @@
     const CONVERGED = 'converged';
     const NAMES_LISTED = 3;
     const LIST_SEPARATOR = '、';
+    const NOTE_SEPARATOR = '；';
     const ANY_RANGE = Object.freeze({ qMin: 0, qMax: Infinity });      // lets fitReadiness reach its checks of the data
     const ABORT_ROUTES = Object.freeze(['page', 'ignore']);
     const TEXT = Object.freeze({
         noCondition: (count, names, more) => count + ' 個檔沒有條件值，排在最後：' + names + (more ? '…' : ''),
         clipped: (actual, wanted) => '擬合範圍截為 ' + actual + '（要求 ' + wanted + '）',
         emptyRange: '要求的擬合範圍內沒有可參與擬合的資料點',
+        held: (names) => '未沿用上一筆的 ' + names + '（上一筆未能決定，改用原始設定值）',
     });
 
     const isObject = (v) => v !== null && typeof v === 'object';
+    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
     const rangeText = (range) => globalThis.SasFitLabels.rangeText(range);
 
     // ------------------------------------------------------------- order
@@ -159,14 +171,32 @@
 
     function isUsableStart(fitResult) {
         if (!isObject(fitResult) || fitResult.status !== CONVERGED || fitResult.blockedByNonFinite === true) return false;
+        if (fitResult.illConditioned === true || fitResult.jacobianNonFinite === true) return false;
         const hints = globalThis.SasFitHints;
         if (!hints.measure(fitResult).isChi2) return true;        // not a chi-square: its size says nothing
         return Number.isFinite(fitResult.chi2r) && fitResult.chi2r <= hints.CHI2R_WARN;
     }
 
+    function heldBack(fitResult) {
+        if (!isObject(fitResult) || !Array.isArray(fitResult.names)) return Object.freeze([]);
+        const errors = globalThis.SasFitWorkerCore.displayErrors(fitResult);
+        const atBound = isObject(fitResult.atBound) ? fitResult.atBound : {};
+        const determined = (name) => {
+            const error = isObject(errors) ? errors[name] : NaN;
+            return Number.isFinite(error) && error < Math.abs(fitResult.params[name]);
+        };
+        return Object.freeze(fitResult.names.filter((name) => !has(atBound, name) && !determined(name)));
+    }
+
     function startForm(form0, lastUsable, chain) {
         if (chain !== true || !isObject(lastUsable)) return form0;
-        return globalThis.SasFitJobs.applyResult(form0, lastUsable);
+        const jobs = globalThis.SasFitJobs;
+        const all = jobs.applyResult(form0, lastUsable);          // also refuses a result of another model
+        const held = heldBack(lastUsable);
+        if (held.length === 0) return all;
+        const written = jobs.writtenValues(form0, lastUsable);
+        const values = Object.fromEntries(Object.keys(written).filter((name) => held.indexOf(name) < 0).map((name) => [name, written[name]]));
+        return Object.keys(values).length === 0 ? form0 : globalThis.SasFitForm.reduce(form0, { type: 'applyValues', values });
     }
 
     // ------------------------------------------------------------- the runner
@@ -196,7 +226,9 @@
     /** One fit: -> { end: { outcome, error? } | null, usable: FitResult | null }. onEvent may throw out of here. */
     async function fitItem(run, item, last, next) {
         const startedFrom = run.chain && last !== null ? last.id : null;
-        const base = Object.freeze({ id: item.id, state: 'running', result: null, range: item.range, note: item.note, startedFrom });
+        const held = startedFrom === null ? [] : heldBack(last.result);
+        const note = [item.note, held.length === 0 ? '' : TEXT.held(held.join(LIST_SEPARATOR))].filter((part) => part !== '').join(NOTE_SEPARATOR);
+        const base = Object.freeze({ id: item.id, state: 'running', result: null, range: item.range, note, startedFrom });
         run.onEvent(rowEvent(base, next));
         const guard = { error: null };
         let result;
@@ -255,5 +287,5 @@
         return Object.freeze(end);
     }
 
-    globalThis.SasFitSequence = Object.freeze({ plan, isUsableStart, startForm, run });
+    globalThis.SasFitSequence = Object.freeze({ plan, isUsableStart, heldBack, startForm, run });
 })();

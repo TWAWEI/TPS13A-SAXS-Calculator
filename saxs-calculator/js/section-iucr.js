@@ -33,30 +33,57 @@ function initIUCrSection() {
                 copyBtn.textContent = '複製表格';
             }, 2000);
         } catch (err) {
-            // Fallback for older browsers：選取的同樣是處理過的複本，複製完（或失敗）一定移除
+            // Fallback for older browsers：內容與上面完全相同（copy 事件直接寫入處理過的 HTML 與純文字），
+            // 暫時的複本複製完（或失敗）一定移除；execCommand 回報成功才顯示「已複製」
             let source = null;
+            let copied = false;
             try {
                 source = iucrCopySource(table);
-                const range = document.createRange();
-                range.selectNode(source.node);
-                window.getSelection().removeAllRanges();
-                window.getSelection().addRange(range);
-                document.execCommand('copy');
-                copyBtn.textContent = '✓ 已複製';
-                setTimeout(() => {
-                    copyBtn.textContent = '複製表格';
-                }, 2000);
+                copied = iucrExecCopy(source.node, source.html, source.text);
             } catch (fallbackErr) {
-                copyBtn.textContent = '複製失敗';
-                setTimeout(() => {
-                    copyBtn.textContent = '複製表格';
-                }, 2000);
+                console.warn('[iucr] 複製表格失敗', fallbackErr);
             } finally {
                 if (source) source.release();
             }
-            window.getSelection().removeAllRanges();
+            copyBtn.textContent = copied ? '✓ 已複製' : '複製失敗';
+            setTimeout(() => {
+                copyBtn.textContent = '複製表格';
+            }, 2000);
         }
     });
+}
+
+/**
+ * 舊瀏覽器（或 Clipboard API 被拒）的複製：選取節點後執行 execCommand('copy')，並以一次性的 copy 監聽器
+ * 把剪貼簿內容直接設成給定的 HTML 與純文字——不讓瀏覽器自己序列化選取範圍（那會帶進 .sr-only 容器的樣式，
+ * 純文字的 Tab 與換行也與 Clipboard API 那條路不同）。監聽器與選取範圍在任何情況下都會清掉。
+ *
+ * @param {Node} node - 要選取的節點（已掛在文件裡）
+ * @param {string} html - 寫進 text/html 的內容
+ * @param {string} text - 寫進 text/plain 的內容
+ * @returns {boolean} execCommand 是否回報成功，且內容確實由監聽器寫入
+ */
+function iucrExecCopy(node, html, text) {
+    let written = false;
+    const onCopy = (event) => {
+        if (!event.clipboardData) return;
+        event.clipboardData.setData('text/html', html);
+        event.clipboardData.setData('text/plain', text);
+        event.preventDefault();
+        written = true;
+    };
+    const selection = window.getSelection();
+    document.addEventListener('copy', onCopy);
+    try {
+        const range = document.createRange();
+        range.selectNode(node);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return document.execCommand('copy') === true && written;
+    } finally {
+        document.removeEventListener('copy', onCopy);
+        selection.removeAllRanges();
+    }
 }
 
 /**

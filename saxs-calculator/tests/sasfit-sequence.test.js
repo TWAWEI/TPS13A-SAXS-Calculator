@@ -167,3 +167,38 @@ test('[sasfit-sequence] startForm：沒有可用結果或 chain 關 → form0 �
     assert.equal(next.pds.radius.fit, true);
     assert.equal(Number(form0.fields.radius.value), 50, 'form0 沒被改');
 });
+
+// ---------------------------------------------------------------- 審查後修正（2026-11-19：使用者決定 D1、工程決定 E1）
+test('[sasfit-sequence] isUsableStart：illConditioned 或 jacobianNonFinite 的結果不當初值（任何權重）', () => {
+    for (const weighting of ['sigma', 'none']) {
+        assert.equal(Seq.isUsableStart(fakeResult({ weighting, illConditioned: true })), false, weighting + ' illConditioned');
+        assert.equal(Seq.isUsableStart(fakeResult({ weighting, jacobianNonFinite: true })), false, weighting + ' jacobianNonFinite');
+        assert.equal(Seq.isUsableStart(fakeResult({ weighting })), true, weighting);
+    }
+});
+
+test('[sasfit-sequence] heldBack：誤差不是有限值或 ≥ |值| 的參數不沿用；貼邊界的值照舊沿用；看的是畫面顯示的誤差', () => {
+    const values = { scale: 1.02, background: 0.001, radius: 51.25 };
+    assert.deepEqual(Seq.heldBack(fakeResult({ values, errors: { scale: 0.01, background: 0.0001, radius: 0.3 } })), []);
+    assert.deepEqual(Seq.heldBack(fakeResult({ values, errors: { scale: 0.01, background: 0.001, radius: 80 } })), ['background', 'radius']);
+    assert.deepEqual(Seq.heldBack(fakeResult({ values, errors: { scale: NaN, background: 0.0001, radius: Infinity } })), ['scale', 'radius']);
+    const onBound = fakeResult({ values: { ...values, radius: 80 }, errors: { scale: 0.01, background: 0.0001, radius: 900 }, atBound: { radius: 'upper' } });
+    assert.deepEqual(Seq.heldBack(onBound), [], '貼邊界的值不算「未能決定」（與畫面的分類相同）');
+    // 非 σ 權重：畫面顯示的是乘過 √均方 的誤差
+    const scaled = fakeResult({ values, weighting: 'none', chi2r: 400, errors: { scale: 0.01, background: 0.00001, radius: 3 } });
+    assert.deepEqual(Seq.heldBack(scaled), ['radius']);
+    assert.ok(Object.isFrozen(Seq.heldBack(scaled)));
+});
+
+test('[sasfit-sequence] startForm：未能決定的參數留在 form0 的原始值，其餘沿用上一筆', () => {
+    const F = globalThis.SasFitForm;
+    const form0 = F.reduce(F.reduce(sphereForm(), { type: 'togglePd', name: 'radius' }), { type: 'setPdFit', name: 'radius', fit: true });
+    const job = globalThis.SasFitJobs.fitJob(form0, seqFiles()[0].dataset, { range: { qMin: 0.005, qMax: 0.35 }, weighting: 'sigma', maxSteps: 50 });
+    const result = fakeResult({ job, values: { scale: 1.02, background: 0.0011, radius: 51.25, radius_pd: 0.3 }, errors: { radius_pd: 4 } });
+    assert.deepEqual(Seq.heldBack(result), ['radius_pd']);
+    const next = Seq.startForm(form0, result, true);
+    assert.equal(Number(next.fields.radius.value), 51.25);
+    assert.equal(next.pds.radius.width, form0.pds.radius.width, '寬度沒被上一筆定不出來的值帶走');
+    const none = fakeResult({ job, values: { radius: 51.25 }, errors: { scale: 9, background: 9, radius: 900, radius_pd: 9 } });
+    assert.equal(Seq.startForm(form0, none, true), form0, '全部未能決定 → form0 本身');
+});

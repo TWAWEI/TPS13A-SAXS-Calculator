@@ -36,7 +36,7 @@
  *   #sfShapePng                   ctx.shape.exportBlob() of the 3D sketch
  *   #sfSendIucr                   not a file: SasFitIucr.data of the fit target's result goes to
  *       ctx.deps.sendIucr (the IUCr table page's setIUCrModelFit) as a NEW frozen object on every
- *       click. It is enabled only while SasFitIucr.canSend says so (converged, not blocked, still
+ *       click. It is enabled only while SasFitIucr.canSend says so (converged, sigma weighting, not blocked, still
  *       the parameters on the page) and no fit runs; #sfSendIucrNote says why not, or that it was
  *       sent. The table keeps what was sent: editing a parameter afterwards changes only the note.
  * Text files start with a BOM (Excel then reads UTF-8).

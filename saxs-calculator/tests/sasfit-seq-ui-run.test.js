@@ -61,8 +61,8 @@ test('[seq-ui] 執行三個檔：依排程順序擬合；執行前取消預覽�
     for (const id of ['sfDataLock', 'sfModelLock', 'sfSeqLock']) assert.equal(page.$(id).hidden, true, id);
     assert.equal(page.$('sfSeqRun').disabled, false);
     assert.equal(page.$('sfSeqRun').focusCount, 1, '在序列分段：焦點回執行鈕');
-    assert.equal(page.$('sfSeqLive').textContent, '序列擬合完成，共 3／3 筆');
-    assert.equal(page.$('sfSeqProgress').textContent, '序列擬合完成，共 3／3 筆');
+    assert.equal(page.$('sfSeqLive').textContent, '完成 3／3 筆：收斂 3、未收斂 0、跳過 0');
+    assert.equal(page.$('sfSeqProgress').textContent, '完成 3／3 筆：收斂 3、未收斂 0、跳過 0');
     assert.equal(page.ctx.sequence.running(), false);
     assert.equal(page.ctx.sequence.barText(), '');
 });
@@ -80,15 +80,23 @@ test('[seq-ui] 不逐次整頁重繪：三筆、每筆 5 個進度事件，計�
     const page = m4.seqPage({ script: RADII.map((step) => ({ ...step, progress: 5 })) });
     const before = page.refreshes();
     const seen = [];
-    const progress = page.$('sfFitProgress');
-    let text = progress.textContent;
-    Object.defineProperty(progress, 'textContent', { get: () => text, set(value) { text = value; seen.push(value); } });
+    const barSeen = [];
+    const watch = (id, into) => {
+        const element = page.$(id);
+        let text = element.textContent;
+        Object.defineProperty(element, 'textContent', { get: () => text, set(value) { text = value; into.push(value); } });
+    };
+    watch('sfSeqProgress', seen);            // 完整文字（含檔名）在序列分段
+    watch('sfFitProgress', barSeen);         // 擬合列只放不含檔名的短字串（審查修正 E8）
     run(page);
     await settle();
     assert.equal(page.refreshes() - before, 2, '開始一次＋結束一次');
     assert.equal(seen.filter((line) => /^序列擬合 第 \d／3 筆/.test(line)).length, 3 * (1 + 5), '進度行每個事件都更新');
     for (const k of [1, 2, 3]) assert.ok(seen.some((line) => line.startsWith('序列擬合 第 ' + k + '／3 筆：SYNTH_sphere_' + k + '0.dat')), '第 ' + k + ' 筆');
     assert.ok(seen.includes('序列擬合 第 2／3 筆：SYNTH_sphere_20.dat；第 5 步，約化 χ²＝2.00'));
+    assert.equal(barSeen.filter((line) => /^序列 \d／3/.test(line)).length, 3 * (1 + 5));
+    assert.ok(barSeen.includes('序列 2／3 · 第 5 步 · 約化 χ² 2.00'));
+    assert.ok(barSeen.every((line) => !/SYNTH|\.dat/.test(line)), '擬合列不放檔名');
     assert.equal(page.timers.pendingCount(), 0, '結束後沒有留下計時器');
 });
 
@@ -122,7 +130,7 @@ test('[seq-ui] 500 個檔、每筆立刻結束：整頁重繪 2 次，全部入�
     assert.equal(Object.keys(page.Section.getState().fitResults).length, 500);
     assert.equal(page.refreshes() - before, 2);
     assert.equal(page.rowIds().length, 500);
-    assert.equal(page.$('sfSeqLive').textContent, '序列擬合完成，共 500／500 筆');
+    assert.equal(page.$('sfSeqLive').textContent, '完成 500／500 筆：收斂 500、未收斂 0、跳過 0');
 });
 
 // ---------------------------------------------------------------- 擬合列
@@ -132,9 +140,9 @@ test('[seq-ui] 擬合列：序列進行中進度行是 barText、量度行留白
     await settle();
     page.timers.advance(250);
     const bar = page.ctx.sequence.barText();
-    assert.equal(bar, '序列擬合 第 2／3 筆：SYNTH_sphere_20.dat；第 2 步，約化 χ²＝5.00');
+    assert.equal(bar, '序列 2／3 · 第 2 步 · 約化 χ² 5.00');
     assert.equal(page.$('sfFitProgress').textContent, bar);
-    assert.equal(page.$('sfSeqProgress').textContent, bar);
+    assert.equal(page.$('sfSeqProgress').textContent, '序列擬合 第 2／3 筆：SYNTH_sphere_20.dat；第 2 步，約化 χ²＝5.00');
     assert.equal(page.$('sfFitMeasure').innerHTML, '');
     assert.equal(page.$('sfFitStart').disabled, true);
     assert.equal(page.$('sfFitStop').disabled, false);
@@ -151,7 +159,9 @@ test('[seq-ui] 權重不是 σ 時進度行的量度名稱是「加權殘差均�
     page.ctx.dispatch({ type: 'setWeighting', mode: 'none' });
     run(page);
     await settle();
-    assert.match(page.$('sfFitProgress').textContent, /第 1 步，加權殘差均方＝10\.0$/);
+    assert.match(page.$('sfFitProgress').textContent, /第 1 步 · 加權殘差均方 10\.0$/);
+    assert.match(page.$('sfSeqProgress').textContent, /第 1 步，加權殘差均方＝10\.0$/);
+    assert.doesNotMatch(page.$('sfSeqProgress').textContent, /χ/);
     assert.doesNotMatch(page.$('sfFitProgress').textContent, /χ/);
     page.$('sfFitStop').fire('click');
     await settle();
@@ -171,8 +181,8 @@ test('[seq-ui] 停止：擬合列的「停止」→ client.stop 一次；已完�
     assert.deepEqual(['d1', 'd2', 'd3'].map((id) => state.seq.rows[id].state), ['done', 'pending', 'pending']);
     assert.deepEqual(Object.keys(state.fitResults), ['d1']);
     assert.equal(page.client.jobs.length, 2, '第 3 筆沒被送出');
-    assert.equal(page.$('sfFitProgress').textContent, '序列已停止，完成 1／3 筆');
-    assert.equal(page.$('sfSeqLive').textContent, '序列已停止，完成 1／3 筆');
+    assert.equal(page.$('sfFitProgress').textContent, '序列已停止，完成 1／3 筆', '擬合列是短字串');
+    assert.equal(page.$('sfSeqLive').textContent, '序列已停止，完成 1／3 筆：收斂 1、未收斂 0、跳過 0');
     assert.equal(page.$('sfModelLock').hidden, true);
     assert.equal(page.timers.pendingCount(), 0, '停止的保險計時器已取消');
     // 可改參數
@@ -210,7 +220,7 @@ test('[seq-ui] 解鎖：WASM_LOAD → 中止、頁面層級訊息、detail 進 c
     assert.match(alertText(page), /錯誤 WASM_LOAD/);
     assert.ok(warned.some((line) => line.includes('detail of WASM_LOAD')));
     assert.equal(page.$('sfFitProgress').textContent, '序列中止');
-    assert.equal(page.$('sfSeqProgress').textContent, '序列中止，完成 1／3 筆');
+    assert.equal(page.$('sfSeqProgress').textContent, '序列中止，完成 1／3 筆：收斂 1、未收斂 0、跳過 0');
     assert.deepEqual(Object.keys(page.Section.getState().fitResults), ['d1'], '中止前的結果保留');
     assert.equal(page.$('sfSeqRun').disabled, false);
 });
@@ -246,7 +256,7 @@ test('[seq-ui] 其他錯誤（BAD_PARAMS）只標記該列，序列繼續', asyn
     assert.deepEqual(['d1', 'd2', 'd3'].map((id) => state.seq.rows[id].state), ['done', 'error', 'done']);
     assert.equal(state.seq.rows.d2.note, '錯誤 BAD_PARAMS');
     assert.equal(alertText(page), '');
-    assert.equal(page.$('sfSeqLive').textContent, '序列擬合完成，共 3／3 筆');
+    assert.equal(page.$('sfSeqLive').textContent, '完成 3／3 筆：收斂 2、未收斂 1、跳過 0');
 });
 
 test('[seq-ui] 解鎖：ctx.client 的 getter 丟例外（Worker 建不起來）', async () => {
@@ -364,10 +374,39 @@ test('[seq-ui] 結束後：擬合對象沒勾選 → 表單不變，提示可逐
     assert.equal(page.client.jobs.length, 2);
     const hints = page.$('sfSeqHints').descendants().map((node) => node.textContent).join(' ');
     assert.match(hints, /序列結果可由下表逐列載入/);
-    // 換了選取（rows 沒變）提示還在；重新執行並中止後提示消失
+    // 中止的序列不提示載入；結束註記改成中止的原因（錯誤色）
     const aborted = m4.seqPage({ script: [{ reject: 'WASM_LOAD' }] });
     await ui.captureConsole('warn', async () => { run(aborted); await settle(); });
-    assert.equal(aborted.$('sfSeqHints').querySelector('[data-hint="seq-end"]'), null);
+    const end = aborted.$('sfSeqHints').descendants().map((node) => node.textContent).join(' ');
+    assert.doesNotMatch(end, /逐列載入/);
+    assert.match(end, /錯誤 WASM_LOAD/);
+});
+
+test('[seq-ui] 中止的原因留在序列分段：之後一次成功的預覽清掉共用的 #sfAlert，#sfSeqHints 的說明還在（審查修正 E13）', async () => {
+    const hintsText = (page) => page.$('sfSeqHints').descendants().map((node) => node.textContent).join(' ');
+    const page = m4.seqPage({ script: [RADII[0], { reject: 'WASM_LOAD' }] });
+    await ui.captureConsole('warn', async () => { run(page); await settle(); });
+    assert.match(alertText(page), /錯誤 WASM_LOAD/);
+    assert.match(hintsText(page), /錯誤 WASM_LOAD/);
+    assert.match(page.$('sfSeqHints').innerHTML, /data-hint="seq-end"/);
+    assert.match(page.$('sfSeqHints').innerHTML, /error/, '錯誤色');
+    const sent = page.client.evaluations.length;
+    page.ctx.preview.schedule();
+    page.timers.advance(1000);
+    assert.equal(page.client.evaluations.length, sent + 1, '預覽送出了');
+    const { request, resolve } = page.client.evaluations[sent];
+    resolve({ I: new Float64Array(request.q.length).fill(1), extras: {} });
+    await settle();
+    assert.equal(alertText(page), '', '共用的頁面訊息被成功的預覽清掉');
+    assert.match(hintsText(page), /錯誤 WASM_LOAD/, '序列自己的說明還在');
+    // 放棄（停止失敗）的訊息也一樣留著
+    const stuck = m4.seqPage({ script: [RADII[0], { wait: true }, RADII[2]] });
+    stuck.client.stopThrows = true;
+    run(stuck);
+    await settle();
+    await ui.captureConsole('warn', async () => { stuck.$('sfFitStop').fire('click'); });
+    stuck.timers.advance(1000);
+    assert.match(hintsText(stuck), /停止沒有成功，序列已中止/);
 });
 
 test('[seq-ui] 再執行一次：進行中只顯示這次排程的警告，上一次留下的說明不再顯示', async () => {

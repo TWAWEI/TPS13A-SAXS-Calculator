@@ -66,21 +66,22 @@ test('[sasfit-iucr] data：sphere → params 5 列（表格順序），fitted �
     assert.equal(dataOf(h.sphereResult(), { absolute: true }).params[1].unit, 'cm⁻¹');
 });
 
-test('[sasfit-iucr] data：sigma 權重 → 顯示未乘的誤差、Reduced χ²；none → 顯示已乘的、量度名稱不含 χ 且含權重名稱', () => {
+test('[sasfit-iucr] data：只收 σ 權重的擬合 → 顯示未乘的誤差、Reduced χ²；其他權重不能送出（使用者決定 2026-11-19）', () => {
     const sigma = dataOf();
     assert.equal(sigma.errorsScaled, false);
     assert.deepEqual({ ...sigma.measure }, { isChi2: true, label: 'Reduced χ²', value: 2.25 });
     assert.equal(sigma.params[4].errorShown, sigma.params[4].error);
-    const none = dataOf(h.sphereResult({ weighting: 'none', chi2r: 4 }));
-    assert.equal(none.errorsScaled, true);
-    assert.equal(none.params[4].errorShown, none.params[4].errorScaled);
-    assert.equal(none.measure.isChi2, false);
-    assert.equal(none.measure.label, 'Weighted mean-square residual (weighting: none)');
-    assert.doesNotMatch(none.measure.label, /χ/);
-    assert.equal(none.measure.value, 4);
-    assert.equal(none.chi2r, 4);
-    assert.ok(none.notes.includes('Errors are multiplied by sqrt(weighted mean-square residual); SasView shows them unmultiplied'));
     assert.equal(sigma.notes.some((n) => /multiplied/.test(n)), false);
+    for (const weighting of ['none', 'sqrtI', 'absI']) {
+        const result = h.sphereResult({ weighting, chi2r: 4 });
+        const form = h.formOf(result);
+        assert.deepEqual({ ...U.canSend(form, result) },
+            { ok: false, reason: '只有以資料 σ 加權的擬合可以送進 IUCr 表格（其他權重沒有公認的適合度統計量）' }, weighting);
+        assert.throws(() => U.data({ fileName: 'a.dat', fitResult: result, form, version: '9.9' }), /σ 加權/, weighting);
+    }
+    // 未收斂的原因排在權重之前：先說最根本的
+    const bad = h.sphereResult({ weighting: 'none', status: 'maxiter' });
+    assert.equal(U.canSend(h.formOf(bad), bad).reason, '擬合未收斂，不能送進表格');
 });
 
 test('[sasfit-iucr] data：core_shell_sphere@hardsphere＋radius_pd 擬合', () => {
@@ -91,7 +92,7 @@ test('[sasfit-iucr] data：core_shell_sphere@hardsphere＋radius_pd 擬合', () 
     const width = data.params.find((p) => p.name === 'radius_pd');
     assert.equal(width.unit, 'schulz');
     assert.equal(width.fitted, true);
-    assert.ok(data.assumptions.includes('radius: schulz distribution, fitted width (radius_pd), 80 points, ±3σ'));
+    assert.ok(data.assumptions.includes('radius: schulz distribution, fitted width (radius_pd), 80 points, ±3σ; width = σ/centre (relative standard deviation; the centre is the mean)'));
     assert.ok(data.assumptions.includes('Structure factor hardsphere combined as P*S; effective radius: outer radius'));
     assert.equal(dataOf(h.coreShellResult({ beta: true })).structureFactorMode, 'P*(1+beta*(S-1))');
     assert.equal(dataOf(h.coreShellResult({ lowQ: true })).model, 'core_shell_sphere@hardsphere+power_law');
@@ -103,7 +104,7 @@ test('[sasfit-iucr] data：固定寬度的多分散寫出寬度；hayter_msa 的
     const base = h.coreShellResult();
     const fixedWidth = { ...base, names: ['scale', 'radius'], errors: { scale: 0.02, radius: 0.5 }, errorsScaled: { scale: 0.03, radius: 0.75 },
         covariance: [[1, 0], [0, 1]], correlation: [[1, 0], [0, 1]] };
-    assert.ok(dataOf(fixedWidth).assumptions.includes('radius: schulz distribution, width 0.1 (fixed), 80 points, ±3σ'));
+    assert.ok(dataOf(fixedWidth).assumptions.includes('radius: schulz distribution, width 0.1 (fixed), 80 points, ±3σ; width = σ/centre (relative standard deviation; the centre is the mean)'));
     const hayter = /hayter_msa .* low q/;
     assert.ok(dataOf(h.coreShellResult({ structure: 'hayter_msa' })).assumptions.some((a) => hayter.test(a)));
     assert.equal(dataOf(base).assumptions.some((a) => hayter.test(a)), false);
@@ -153,7 +154,7 @@ test('[sasfit-iucr] converged＋每一種警示仍可送出，Notes 有對應的
         const { notes } = U.data({ fileName: 'a.dat', fitResult: result, form, version: '9.9' });
         assert.ok(notes.some((note) => pattern.test(note)), String(pattern) + ' / ' + notes.join(' | '));
     });
-    assert.deepEqual([...dataOf().notes], []);
+    assert.deepEqual([...dataOf().notes], [U.FIXED_NOTE], '沒有警示時只有固定的那一句');
     // 貼邊界的參數不重複列在「誤差大於數值」
     const bound = h.sphereResult({ atUpper: true, errors: { scale: 0.012, radius: 500 } });
     assert.equal(dataOf(bound).notes.some((note) => /radius: error larger/.test(note)), false);
@@ -172,12 +173,39 @@ test('[sasfit-iucr] data：不能送出就丟 Error；version 缺就丟 Error；
     assert.doesNotMatch(source, /toFixed|toPrecision|toLocaleString|\bDate\b/);
 });
 
-test('[sasfit-iucr] 資料物件與表格都不含 CorMap、P-value', () => {
-    [dataOf(), dataOf(h.coreShellResult({ structure: 'hayter_msa', lowQ: true, weighting: 'none' }))].forEach((data) => {
-        assert.doesNotMatch(JSON.stringify(data), /CorMap|P-value/i);
-        assert.doesNotMatch(U.rowsHtml(data), /CorMap|P-value/i);
+test('[sasfit-iucr] 沒有 CorMap P-value 的列或鍵；Notes 的第一句固定說明「補充段落、未計算 CorMap」（使用者決定 2026-11-19）', () => {
+    assert.equal(U.FIXED_NOTE, 'Supplementary to the IUCr template; applies to the data file named here. CorMap P-value not computed.');
+    const noted = { ...h.sphereResult({ atUpper: true }), illConditioned: true };
+    [dataOf(), dataOf(h.coreShellResult({ structure: 'hayter_msa', lowQ: true })), dataOf(noted)].forEach((data) => {
+        assert.equal(data.notes[0], U.FIXED_NOTE, '固定句在其他註記之前');
+        assert.equal(data.notes.filter((note) => note === U.FIXED_NOTE).length, 1);
+        const rest = { ...data, notes: data.notes.slice(1) };
+        assert.doesNotMatch(JSON.stringify(rest), /CorMap|P-value/i, '除了那一句，物件沒有 CorMap');
+        const html = U.rowsHtml(data);
+        assert.equal(rowById(html, 'iucr-sf-n-0').cells[2].text, U.FIXED_NOTE);
+        assert.equal(rowById(html, 'iucr-sf-n-0').cells[1].text, 'Notes');
+        assert.equal(html.split('CorMap').length - 1, 1);
     });
+    assert.ok(dataOf(noted).notes.length >= 3);
     assert.doesNotMatch(U.rowsHtml(null), /CorMap|P-value/i);
+});
+
+test('[sasfit-iucr] Assumptions：每種分布都寫明寬度的定義（對照 sasmodels weights.py）', () => {
+    const base = h.coreShellResult();
+    const expected = {
+        gaussian: 'width = σ/centre (relative standard deviation)',
+        schulz: 'width = σ/centre (relative standard deviation; the centre is the mean)',
+        rectangle: 'width = σ/centre (relative standard deviation; half-width √3 σ)',
+        lognormal: 'width = σ of ln x; the centre is the median',
+        uniform: 'width = half-width/centre',
+        boltzmann: 'width = e-folding length/centre',
+    };
+    Object.keys(expected).forEach((type) => {
+        const result = { ...base, params: { ...base.params, radius_pd_type: type } };
+        const line = dataOf(result).assumptions.find((a) => a.startsWith('radius: '));
+        assert.ok(line.startsWith('radius: ' + type + ' distribution, fitted width (radius_pd), '), type + ' / ' + line);
+        assert.ok(line.endsWith('; ' + expected[type]), type + ' / ' + line);
+    });
 });
 
 test('[sasfit-iucr] 不修改傳入的物件', () => {
@@ -198,7 +226,7 @@ test('[sasfit-iucr] rowsHtml(null)：恰好兩列——標題與「尚未送入�
     assert.equal(rows[0].cells.length, 1);
     assert.equal(rows[0].cells[0].colspan, 5);
     assert.equal(rows[0].cells[0].text, U.HEADING);
-    assert.equal(U.HEADING, 'Model fitting (analytical form factor)');
+    assert.equal(U.HEADING, 'Model fitting (analytical scattering model)');
     assert.equal(rows[1].id, 'iucr-sf-empty');
     assert.deepEqual(texts(rows[1]), ['', '尚未送入擬合結果']);
     assert.equal(rows[1].cells[1].colspan, 4);
@@ -211,7 +239,7 @@ test('[sasfit-iucr] rowsHtml：sphere 的列（順序、五欄、文字）', () 
     assert.equal(html.includes('iucr-sf-empty'), false);
     assert.deepEqual(rows.map((row) => row.id), ['iucr-sf-heading', 'iucr-sf-file', 'iucr-sf-model', 'iucr-sf-p-0', 'iucr-sf-p-1', 'iucr-sf-p-2', 'iucr-sf-p-3',
         'iucr-sf-p-4', 'iucr-sf-qrange', 'iucr-sf-npoints', 'iucr-sf-weighting', 'iucr-sf-measure', 'iucr-sf-status', 'iucr-sf-errors', 'iucr-sf-a-0',
-        'iucr-sf-software']);
+        'iucr-sf-n-0', 'iucr-sf-software']);
     rows.forEach((row) => assert.equal(row.cells.reduce((sum, cell) => sum + cell.colspan, 0), 5, row.id));
     assert.deepEqual(texts(rowById(html, 'iucr-sf-file')), ['', 'Data file', 'SYNTH_tiny.dat', '', '']);
     assert.deepEqual(texts(rowById(html, 'iucr-sf-model')), ['', 'Model', 'sphere', '', '']);
@@ -222,7 +250,8 @@ test('[sasfit-iucr] rowsHtml：sphere 的列（順序、五欄、文字）', () 
     assert.deepEqual(texts(rowById(html, 'iucr-sf-qrange')), ['', 'q-range for fitting', '0.015–0.05', '', 'Å⁻¹']);
     assert.deepEqual(texts(rowById(html, 'iucr-sf-npoints')), ['', 'Number of points', '4', '', '']);
     assert.deepEqual(texts(rowById(html, 'iucr-sf-weighting')), ['', 'Weighting', '1/σ² (data errors)', '', '']);
-    assert.deepEqual(texts(rowById(html, 'iucr-sf-measure')), ['', 'Reduced χ²', '2.25', '', '']);
+    assert.deepEqual(texts(rowById(html, 'iucr-sf-measure')), ['', 'Reduced χ²', '2.25 (dof ' + dataOf().dof + ')', '', '']);
+    assert.deepEqual(texts(rowById(html, 'iucr-sf-n-0')), ['', 'Notes', U.FIXED_NOTE]);
     assert.deepEqual(texts(rowById(html, 'iucr-sf-status')), ['', 'Status', 'converged', '', '']);
     assert.deepEqual(texts(rowById(html, 'iucr-sf-errors')), ['', 'Parameter errors (±)', '1 s.d., not scaled']);
     assert.deepEqual(texts(rowById(html, 'iucr-sf-a-0')).slice(0, 2), ['', 'Assumptions']);
@@ -241,18 +270,16 @@ test('[sasfit-iucr] rowsHtml：畫面格式與結果磚相同（回填後的值�
     assert.deepEqual(texts(rowById(html, 'iucr-sf-p-4')).slice(2, 4), [shown.value, shown.error]);
     const bound = U.rowsHtml(dataOf(h.sphereResult({ atUpper: true })));
     assert.deepEqual(texts(rowById(bound, 'iucr-sf-p-4')), ['', 'radius', '60.000', 'at upper bound', 'Å']);
-    assert.deepEqual(texts(rowById(bound, 'iucr-sf-n-0')).slice(0, 3), ['', 'Notes', 'radius at upper bound; its error is not meaningful']);
-    const none = U.rowsHtml(dataOf(h.sphereResult({ weighting: 'none', chi2r: 4 })));
-    assert.deepEqual(texts(rowById(none, 'iucr-sf-measure')), ['', 'Weighted mean-square residual (weighting: none)', '4.00', '', 'not χ²']);
-    assert.deepEqual(texts(rowById(none, 'iucr-sf-errors')), ['', 'Parameter errors (±)', '1 s.d. multiplied by √(weighted mean-square residual)']);
-    assert.deepEqual(texts(rowById(none, 'iucr-sf-weighting')), ['', 'Weighting', 'none (unweighted)', '', '']);
-    assert.equal(rowById(none, 'iucr-sf-p-4').cells[3].text, '0.25');
+    assert.deepEqual(texts(rowById(bound, 'iucr-sf-n-0')).slice(0, 3), ['', 'Notes', U.FIXED_NOTE]);
+    assert.deepEqual(texts(rowById(bound, 'iucr-sf-n-1')).slice(0, 3), ['', '', 'radius at upper bound; its error is not meaningful']);
+    // dof 不是整數（不完整的物件）時只寫量度
+    assert.deepEqual(texts(rowById(U.rowsHtml({ ...dataOf(), dof: undefined }), 'iucr-sf-measure')), ['', 'Reduced χ²', '2.25', '', '']);
 });
 
 test('[sasfit-iucr] rowsHtml：有 S(Q) 才有組合列；Assumptions 與 Notes 每則一列，第一列才有標題', () => {
     const plain = U.rowsHtml(dataOf());
     assert.equal(rowById(plain, 'iucr-sf-sfmode'), undefined);
-    assert.equal(rowById(plain, 'iucr-sf-n-0'), undefined);
+    assert.equal(rowById(plain, 'iucr-sf-n-1'), undefined, '沒有警示：Notes 只有固定句');
     const result = { ...h.coreShellResult({ structure: 'hayter_msa' }), illConditioned: true, nonFiniteCurvePoints: 2 };
     const html = U.rowsHtml(dataOf(result));
     assert.deepEqual(texts(rowById(html, 'iucr-sf-sfmode')), ['', 'Structure-factor combination', 'P*S', '', '']);

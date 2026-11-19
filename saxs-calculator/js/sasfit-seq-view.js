@@ -16,26 +16,31 @@
  *                          status: { text, tone | null }, note, stale }]
  *       One row per file WITH DATA: those of the last run in its order, then
  *       the others in list order. Texts only (display form, not escaped).
- *       Numbers are shown for a row the run finished ('done'): the values of
- *       state.fitResults[id] as it is NOW (single and sequence fits share
- *       that store). stale: a single fit has replaced the sequence's result
- *       since. A result of another model than the run's form shows no numbers
- *       and cannot be loaded. Skipped, failed and unfinished rows say why.
- *       canLoad: the row shows a result that can be put on top of the run's
- *       form snapshot (loadForm is not null).
+ *       Numbers are shown for a row the run finished ('done'), and they are
+ *       ALWAYS the run's own result (state.seq.rows[id].result): one table,
+ *       one chart and one CSV never mix the fit measures or weightings of two
+ *       fits (fix pass after the M4 reviews). stale: a single fit has replaced
+ *       that file's entry in state.fitResults since -- said in the note row,
+ *       the numbers stay the run's. Skipped, failed and unfinished rows say why.
+ *       canLoad: the row shows a result (loadForm is not null).
+ *   shownResult(state, id) -> FitResult | null   the result those numbers come from
  *   loadForm(state, id) -> form | null
  *       The form that loading the row of file `id` gives: the form the last
- *       run started from with the fitted values of state.fitResults[id]
- *       written in. The snapshot is the base because a FitResult carries
- *       neither bounds nor fit ticks, and SasFitJobs.applyResult refuses a
- *       form of another model spec -- the form on the page may be anything by
- *       now. null when the row shows no result, or when the result does not
- *       describe the form so made (a later single fit with other fixed values).
- *   headHtml(columns, conditionName) -> the <tr> of the table head
+ *       run started from with the fitted values of the run's result written
+ *       in. The snapshot is the base because a FitResult carries neither
+ *       bounds nor fit ticks -- the form on the page may be anything by now.
+ *       null when the row shows no result.
+ *   headHtml(columns, conditionName) -> the <tr> of the table head: tick,
+ *       file, condition, the fit measure (its cell also carries the status),
+ *       then the fitted names
  *   bodyHtml(rows, { locked })       -> the <tr>s of the body. The checkbox
  *       (sfSeqPick_<id>) and the load button (sfSeqLoad_<id>) carry ids, so
- *       ctx.setHtml can give the focus back after a rebuild.
- *   pickId(id), loadId(id)           those ids
+ *       ctx.setHtml can give the focus back after a rebuild. A row with
+ *       something to say (where its start values came from, why it was
+ *       skipped, a later single fit) is followed by ONE note row whose cell
+ *       spans the table and names the file's row header in `headers`.
+ *   pickId(id), loadId(id), nameId(id)   those ids
+ *   counts(state) -> { converged, other, skipped }   of the rows of the last run
  *   yOptions(state) -> [{ value, label }]: the fitted names, then the measure
  *   yOptionsHtml(options, selected)  -> <option>s
  *   trend(state, yName) -> { points: [{ x, y, yMin, yMax, id, style }], xTitle,
@@ -74,9 +79,10 @@
     const POINT_STYLES = Object.freeze({ converged: 'circle', maxiter: 'triangle' });
     const POINT_RADIUS = 4;
     const LINE_WIDTH = 1.5;
+    const FIXED_COLUMNS = 4;                     // tick, file, condition, fit measure
     const AXIS_ROLE = 'grid';                    // as SasFitPlotData: only the axis line takes the colour
     const TEXT = Object.freeze({
-        pick: '納入', file: '檔名', status: '狀態與註記', load: '載入',
+        pick: '納入', file: '檔名', status: '狀態', load: '載入',
         pickLabel: (name) => '將 ' + name + ' 納入序列擬合',
         loadLabel: (name) => '載入 ' + name + ' 的擬合參數',
         scaledError: '± 已乘 √均方',
@@ -98,6 +104,7 @@
     const numberText = (value, digits) => globalThis.SasFitFormat.display(globalThis.SasFitFormat.number(value, digits));
     const pickId = (id) => 'sfSeqPick_' + id;
     const loadId = (id) => 'sfSeqLoad_' + id;
+    const nameId = (id) => 'sfSeqName_' + id;
 
     /** ' name="value"' for every entry; true -> a bare attribute; false, null and undefined -> nothing. */
     function attrs(map) {
@@ -110,31 +117,23 @@
 
     // ------------------------------------------------------------- what a row shows
 
-    function sameSpec(form, result) {
-        const theirs = isObject(result.settings) ? result.settings.modelSpec : null;
-        if (!isObject(form) || !isObject(theirs)) return false;
-        const mine = globalThis.SasFitJobs.modelSpec(form);
-        return Object.keys(mine).every((key) => mine[key] === theirs[key]);
-    }
-
-    /** { seqRow, result, stale }: the row of the last run for a file and the FitResult its numbers come from (or null). */
+    /** { seqRow, result, stale }: the row of the last run for a file and the run's own FitResult its numbers come from (or null). */
     function shownOf(state, id) {
         const { seq } = state;
         const seqRow = has(seq.rows, id) ? seq.rows[id] : null;
+        if (seqRow === null || seqRow.state !== 'done' || !isObject(seqRow.result)) return { seqRow, result: null, stale: false };
         const current = has(state.fitResults, id) ? state.fitResults[id] : null;
-        if (seqRow === null || seqRow.state !== 'done' || current === null) return { seqRow, result: null, stale: false, current: null };
-        return { seqRow, result: sameSpec(seq.form, current) ? current : null, stale: current !== seqRow.result, current };
+        return { seqRow, result: seqRow.result, stale: current !== seqRow.result };
     }
+
+    const shownResult = (state, id) => shownOf(state, id).result;
 
     /** See the header. */
     function loadForm(state, id) {
-        const shown = shownOf(state, id);
-        if (shown.result === null) return null;
-        const jobs = globalThis.SasFitJobs;
+        const { result } = shownOf(state, id);
+        if (result === null) return null;
         try {
-            const form = jobs.applyResult(state.seq.form, shown.result);
-            // a result of the run itself fits its own snapshot by construction: only a replaced one needs the full comparison
-            return !shown.stale || jobs.resultMatchesForm(form, shown.result) ? form : null;
+            return globalThis.SasFitJobs.applyResult(state.seq.form, result);
         } catch (err) {
             return null;                      // the values cannot be written into that form: nothing to load
         }
@@ -186,17 +185,17 @@
     }
 
     function statusOf(state, id, shown) {
-        const { seqRow, current } = shown;
+        const { seqRow, result } = shown;
         const { seq } = state;
         const plain = (label) => Object.freeze({ text: label, tone: null });
         if (seqRow === null) return plain(seq.order === null ? TEXT.notRun : TEXT.notIncluded);
         if (seqRow.state === 'skipped') return plain(TEXT.skipped);
         if (seqRow.state === 'error') return Object.freeze({ text: TEXT.error, tone: 'error' });
-        if (seqRow.state !== 'done' || current === null) {
+        if (result === null) {
             if (seq.phase !== 'running') return plain(TEXT.pending);
             return plain(state.fit.datasetId === id ? TEXT.running : TEXT.waiting);
         }
-        const label = globalThis.SasFitHints.statusLabel(current);
+        const label = globalThis.SasFitHints.statusLabel(result);
         return Object.freeze({ text: label.text, tone: label.tone });
     }
 
@@ -225,14 +224,26 @@
 
     // ------------------------------------------------------------- html
 
+    /** converged / not converged or failed / skipped among the rows of the last run. */
+    function counts(state) {
+        const rows = (state.seq.order === null ? [] : state.seq.order).map((id) => state.seq.rows[id]).filter(isObject);
+        const done = rows.filter((row) => row.state === 'done' && isObject(row.result));
+        const converged = done.filter((row) => row.result.status === 'converged').length;
+        return Object.freeze({
+            converged, skipped: rows.filter((row) => row.state === 'skipped').length,
+            other: done.length - converged + rows.filter((row) => row.state === 'error').length,
+        });
+    }
+
     const th = (html) => '<th scope="col">' + html + '</th>';
 
     function headHtml(cols, conditionName) {
         const condition = text(conditionName).trim() === '' ? DEFAULT_CONDITION : conditionName.trim();
         const sub = cols.scaled === true ? '<span class="sf-seq-sub">' + esc(TEXT.scaledError) + '</span>' : '';
         const names = cols.names.map((name) => th('<span class="sf-seq-param">' + esc(name) + '</span>' + sub));
-        return '<tr>' + th('<span class="sr-only">' + TEXT.pick + '</span>') + th(TEXT.file) + th(esc(condition)) + names.join('')
-            + th(globalThis.SasFitHtml.measureHtml(cols.measure)) + th(TEXT.status) + '</tr>';
+        const measure = globalThis.SasFitHtml.measureHtml(cols.measure) + '<span class="sf-seq-sub">' + TEXT.status + '</span>';
+        return '<tr>' + th('<span class="sr-only">' + TEXT.pick + '</span>') + th(TEXT.file) + th(esc(condition)) + th(measure)
+            + names.join('') + '</tr>';
     }
 
     function cellHtml(cell) {
@@ -241,14 +252,22 @@
         return '<td class="sf-seq-num"><span class="sf-seq-value">' + esc(cell.value) + '</span>' + extra + '</td>';
     }
 
-    function statusHtml(row) {
-        const html = globalThis.SasFitHtml;
+    /** The fit measure with the status under it. */
+    function fitHtml(row) {
         const status = isObject(row.status) ? row.status : { text: '', tone: null };
         const chip = status.tone === null || status.tone === undefined
-            ? '<span class="sf-seq-state">' + esc(status.text) + '</span>' : html.statusChipHtml(status);
-        const stale = row.stale === true ? html.statusChipHtml({ text: TEXT.stale, tone: 'warn' }) : '';
+            ? '<span class="sf-seq-state">' + esc(status.text) + '</span>' : globalThis.SasFitHtml.statusChipHtml(status);
+        return '<td class="sf-seq-num sf-seq-fit"><span class="sf-seq-value">' + esc(row.measure) + '</span>' + chip + '</td>';
+    }
+
+    /** The row under a file's row that says what there is to say about it; '' when there is nothing. */
+    function noteRowHtml(row, span) {
+        const stale = row.stale === true ? globalThis.SasFitHtml.statusChipHtml({ text: TEXT.stale, tone: 'warn' }) : '';
         const note = text(row.note) === '' ? '' : '<span class="sf-seq-note">' + esc(row.note) + '</span>';
-        return '<td class="sf-seq-status">' + chip + stale + note + '</td>';
+        if (stale === '' && note === '') return '';
+        // the box stays in the visible part of the table (CSS: sticky, as wide as the wrapper): a note is never cut off by the scrolling
+        return '<tr class="sf-seq-noterow"><td' + attrs({ colspan: span, headers: nameId(row.id) }) + '><div class="sf-seq-notebox">'
+            + stale + note + '</div></td></tr>';
     }
 
     function rowHtml(row, locked) {
@@ -258,10 +277,11 @@
             'data-id': row.id, 'aria-label': TEXT.loadLabel(row.fileName), disabled: locked || row.canLoad !== true }) + '>' + TEXT.load + '</button>';
         const name = '<span' + attrs({ class: 'sf-file-text', title: row.fileName }) + '>'
             + esc(globalThis.SasFitHtml.middleEllipsis(row.fileName)) + '</span>';
-        return '<tr' + attrs({ class: 'sf-seq-row', 'data-id': row.id }) + '><td class="sf-seq-pick">' + pick + '</td>'
-            + '<th scope="row" class="sf-seq-name"><span class="sf-seq-namebox">' + name + load + '</span></th>'
-            + '<td class="sf-seq-num">' + esc(row.condition) + '</td>' + row.cells.map(cellHtml).join('')
-            + '<td class="sf-seq-num">' + esc(row.measure) + '</td>' + statusHtml(row) + '</tr>';
+        const noteRow = noteRowHtml(row, FIXED_COLUMNS + row.cells.length);
+        return '<tr' + attrs({ class: noteRow === '' ? 'sf-seq-row' : 'sf-seq-row sf-seq-row--noted', 'data-id': row.id }) + '>'
+            + '<td class="sf-seq-pick">' + pick + '</td>'
+            + '<th' + attrs({ scope: 'row', class: 'sf-seq-name', id: nameId(row.id) }) + '><span class="sf-seq-namebox">' + name + load + '</span></th>'
+            + '<td class="sf-seq-num">' + esc(row.condition) + '</td>' + fitHtml(row) + row.cells.map(cellHtml).join('') + '</tr>' + noteRow;
     }
 
     function bodyHtml(rows, options) {
@@ -351,6 +371,6 @@
     }
 
     globalThis.SasFitSeqView = Object.freeze({
-        MEASURE_KEY, columns, tableRows, loadForm, headHtml, bodyHtml, pickId, loadId, yOptions, yOptionsHtml, trend, trendConfig,
+        MEASURE_KEY, columns, tableRows, shownResult, loadForm, counts, headHtml, bodyHtml, pickId, loadId, nameId, yOptions, yOptionsHtml, trend, trendConfig,
     });
 })();

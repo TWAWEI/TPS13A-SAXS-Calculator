@@ -39,7 +39,7 @@
     'use strict';
 
     const EOL = '\r\n';
-    const HC_KEV_ANGSTROM = 12.398419843320026;       // h c in keV Å (CODATA 2018): wavelength = hc / energy
+    const HC_KEV_ANGSTROM = 12.398;        // h c in keV Å as the SAXS page uses it (section-saxs.js): both show the same wavelength
     const SIGMA_MODE = 'sigma';
     const HAYTER = 'hayter_msa';
     const NONE = 'none';
@@ -78,10 +78,11 @@
         boundsLost: '上下限未記錄（匯出時參數表的模型已與這次擬合不同）',
         notChi2: '此數值不是 χ²ᵣ，沒有絕對意義；參數誤差已乘 √(加權殘差均方)，SasView 在相同權重下顯示未乘的值',
         algorithm: 'Algorithm: Levenberg-Marquardt (lm), Nielsen damping update, forward-difference Jacobian, projected bounds',
-        covariance: 'Errors: from the covariance J^T J at the solution (SVD, singular values floored at 1e-8), as bumps / SasView',
+        covariance: 'Errors: from the covariance (J^T J)^-1 at the solution (SVD, singular values floored at 1e-8), as bumps / SasView',
         curveFlag: '模型曲線中無法計算（非有限）的點數',
-        sld: 'SLD 若由本頁的化學式計算器求得，是以 f ≈ Z 計算（忽略異常散射），SLD 與能量無關。15 keV 下，含 Rb、Sr、Y、Zr、Br、Kr 或 '
-            + 'Pt、Au、Hg、Tl、Pb、Bi、Th、U 的物質，實際 SLD 會低約 4–10 %，對比度平方的誤差約為兩倍；其他能量下受影響的元素不同。',
+        sld: 'SLD 若由本頁的化學式計算器求得，是以 f ≈ Z 計算（忽略異常散射），SLD 與能量無關。15 keV 下，Rb、Sr、Y、Zr、Br、Kr 與 '
+            + 'Pt、Au、Hg、Tl、Pb、Bi、Th、U 這些元素的散射因子低約 4–10 %，含這些元素的物質實際 SLD 會低於計算值（幅度依它們所占的電子比例而定）；'
+            + 'Δρ² 的相對誤差至少約為 SLD 相對誤差的兩倍。其他能量下受影響的元素不同。',
         hayter: '結構因子 hayter_msa 在低 q 可能出現不連續或無法計算的點（sasmodels／SasView 相同），擬合得到的誤差可能不可靠；請連同殘差圖一起判斷結果。',
         atBound: '貼在邊界上的參數（at bound）仍列出有限的誤差，那是把它當自由參數算出來的數字，不代表該參數的不確定度。',
         undetermined: '誤差大於數值的參數（undetermined）與 0 無法區分，或無法由這組資料決定。',
@@ -262,20 +263,8 @@
 
     // ------------------------------------------------------------- sequence CSV
 
-    function sameSpec(form, result) {
-        const theirs = isObject(result.settings) ? result.settings.modelSpec : null;
-        if (!isObject(form) || !isObject(theirs)) return false;
-        const mine = globalThis.SasFitJobs.modelSpec(form);
-        return Object.keys(mine).every((key) => mine[key] === theirs[key]);
-    }
-
-    /** The FitResult whose numbers the sequence table shows for a file, or null (the rule of SasFitSeqView). */
-    function shownResult(state, id) {
-        const row = has(state.seq.rows, id) ? state.seq.rows[id] : null;
-        const current = has(state.fitResults, id) ? state.fitResults[id] : null;
-        if (row === null || row.state !== 'done' || current === null) return null;
-        return sameSpec(state.seq.form, current) ? current : null;
-    }
+    /** The FitResult whose numbers the sequence table shows for a file -- the run's own -- or null (the rule of SasFitSeqView). */
+    const shownResult = (state, id) => globalThis.SasFitSeqView.shownResult(state, id);
 
     function seqHeader(columns, conditionName) {
         const exporter = globalThis.SasFitExport;

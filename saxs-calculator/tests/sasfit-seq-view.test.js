@@ -115,20 +115,37 @@ test('[sasfit-seq-view] tableRows：跳過、出錯、停在途中的列數值�
     assert.equal(byName['nosigma.txt'].condition, '');
 });
 
-test('[sasfit-seq-view] tableRows：序列後被單筆擬合取代 → stale、顯示目前的數字；模型不同 → 數值「—」、不能載入', () => {
+test('[sasfit-seq-view] tableRows：序列後被單筆擬合取代 → stale，數字仍是序列自己的結果（不混用兩次擬合）；仍可載入序列的值', () => {
     const { state } = seqState();
-    const again = fakeResult({ job: null, values: { scale: 1, background: 0.001, radius: 61.5 }, names: ['scale', 'background', 'radius'] });
+    const own = rowOf(state, 'd2');
+    const again = fakeResult({ job: null, values: { scale: 1, background: 0.001, radius: 61.5 }, names: ['scale', 'background', 'radius'], chi2r: 77, weighting: 'none' });
     const replaced = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: again }) });
     const row = rowOf(replaced, 'd2');
     assert.equal(row.stale, true);
-    assert.match(row.cells[2].value, /^61\.5/);
+    assert.deepEqual(row.cells, own.cells, '參數格沒變');
+    assert.equal(row.measure, own.measure, '量度仍是序列那次的');
+    assert.deepEqual(row.status, own.status);
     assert.equal(row.canLoad, true);
+    assert.equal(View.shownResult(replaced, 'd2'), state.seq.rows.d2.result);
     assert.equal(rowOf(replaced, 'd1').stale, false);
     const other = fakeResult({ values: { radius: 61.5 }, settings: { ...again.settings, modelSpec: { model: 'cylinder', structure: null, lowQPowerLaw: false } } });
     const foreign = rowOf(Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: other }) }), 'd2');
     assert.equal(foreign.stale, true);
-    assert.equal(foreign.canLoad, false);
-    assert.ok(foreign.cells.every((cell) => cell.value === Format.MISSING));
+    assert.deepEqual(foreign.cells, own.cells, '另一個模型的單筆擬合也不影響序列表');
+});
+
+test('[sasfit-seq-view] trend：被單筆擬合取代的列，趨勢圖仍畫序列自己的值', () => {
+    const { state } = seqState({ steps: [{ values: { radius: 50 } }, { values: { radius: 52 } }, { values: { radius: 54 } }] });
+    const again = fakeResult({ values: { scale: 1, background: 0.001, radius: 99 }, names: ['scale', 'background', 'radius'], chi2r: 77, weighting: 'none' });
+    const replaced = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: again }) });
+    assert.deepEqual(View.trend(replaced, 'radius').points.map((p) => p.y), [50, 52, 54]);
+    assert.deepEqual(View.trend(replaced, View.MEASURE_KEY).points.map((p) => p.y), [1.1, 1.1, 1.1]);
+});
+
+test('[sasfit-seq-view] counts：收斂、未收斂（含出錯）、跳過', () => {
+    assert.deepEqual(View.counts(seqState().state), { converged: 3, other: 0, skipped: 0 });
+    assert.deepEqual(View.counts(seqState({ steps: [{}, { error: 'x' }, { status: 'maxiter' }] }).state), { converged: 1, other: 2, skipped: 0 });
+    assert.deepEqual(View.counts(loadedState({})), { converged: 0, other: 0, skipped: 0 });
 });
 
 test('[sasfit-seq-view] tableRows：執行中的列是「擬合中」，其後是「等待中」；移除的檔不列', () => {
@@ -145,17 +162,19 @@ test('[sasfit-seq-view] headHtml：表頭 scope="col"；條件欄用條件名稱
     const sigma = View.headHtml(View.columns(seqState().state), 'Temperature (K)');
     const tags = checkMarkup(sigma, 'head');
     const heads = tags.filter((t) => !t.closing && t.name === 'th');
-    assert.equal(heads.length, 3 + 3 + 2);
+    assert.equal(heads.length, 4 + 3);
     heads.forEach((t) => assert.equal(t.attrs.scope, 'col'));
     assert.match(textOf(sigma), /Temperature \(K\)/);
     assert.ok(sigma.includes(globalThis.SasFitHtml.measureHtml(Hints.measure('sigma'))));
+    assert.ok(sigma.indexOf(globalThis.SasFitHtml.measureHtml(Hints.measure('sigma'))) < sigma.indexOf('scale'), '量度欄在參數欄之前');
+    assert.doesNotMatch(textOf(sigma), /狀態與註記/);
     assert.ok(!sigma.includes('已乘'));
     const none = View.headHtml(View.columns(seqState({ weighting: 'none' }).state), '  ');
     assert.match(textOf(none), /條件值/);
     assert.match(textOf(none), /已乘 √均方/);
     assert.match(textOf(none), /加權殘差均方/);
     const empty = View.headHtml(View.columns(loadedState({})), '條件');
-    assert.equal(checkMarkup(empty, 'empty head').filter((t) => !t.closing && t.name === 'th').length, 5);
+    assert.equal(checkMarkup(empty, 'empty head').filter((t) => !t.closing && t.name === 'th').length, 4);
 });
 
 test('[sasfit-seq-view] bodyHtml：每列 data-id；勾選與載入鈕都有 id、aria-label；locked 與 canLoad 決定停用', () => {
@@ -163,7 +182,21 @@ test('[sasfit-seq-view] bodyHtml：每列 data-id；勾選與載入鈕都有 id�
     const html = View.bodyHtml(rows, { locked: false });
     const tags = checkMarkup(html, 'body');
     const trs = tags.filter((t) => !t.closing && t.name === 'tr');
-    assert.deepEqual(trs.map((t) => t.attrs['data-id']), ['d1', 'd2', 'd3']);
+    assert.deepEqual(trs.filter((t) => /\bsf-seq-row\b/.test(t.attrs.class)).map((t) => t.attrs['data-id']), ['d1', 'd2', 'd3']);
+    // 註記列：只有有話要說的列才有（d1 沒有；d2 出錯、d3 的初值來自 d1），以 headers 指回該檔的列標題
+    const notes = trs.filter((t) => t.attrs.class === 'sf-seq-noterow');
+    assert.equal(notes.length, 2);
+    const noteCells = tags.filter((t) => !t.closing && t.name === 'td' && t.attrs.headers !== undefined);
+    assert.deepEqual(noteCells.map((t) => t.attrs.headers), ['sfSeqName_d2', 'sfSeqName_d3']);
+    noteCells.forEach((t) => assert.equal(t.attrs.colspan, String(4 + rows[0].cells.length)));
+    const rowHeads = tags.filter((t) => !t.closing && t.name === 'th');
+    assert.deepEqual(rowHeads.map((t) => t.attrs.id), ['sfSeqName_d1', 'sfSeqName_d2', 'sfSeqName_d3']);
+    assert.equal(trs.length, 5);
+    assert.ok(html.lastIndexOf('初值來自') > html.indexOf('id="sfSeqName_d3"'));
+    // 欄序：納入、檔名、條件、量度＋狀態、參數
+    const firstRow = html.slice(0, html.indexOf('</tr>'));
+    assert.ok(firstRow.indexOf('sf-seq-fit') < firstRow.indexOf('sf-seq-value">' + rows[0].cells[0].value), '量度在第一個參數之前');
+    assert.ok(firstRow.indexOf('sf-seq-fit') < firstRow.indexOf('已收斂'));
     const picks = tags.filter((t) => t.attrs && t.attrs['data-action'] === 'pick');
     const loads = tags.filter((t) => t.attrs && t.attrs['data-action'] === 'load');
     assert.deepEqual(picks.map((t) => t.attrs.id), ['sfSeqPick_d1', 'sfSeqPick_d2', 'sfSeqPick_d3']);
@@ -322,7 +355,7 @@ test('[sasfit-seq-view] trendConfig：scatter＋連線、tpsSeries 0、sfErrorBa
 });
 
 // ---------------------------------------------------------------- 點列載入用的表單
-test('[sasfit-seq-view] loadForm：序列的表單快照＋該列目前的擬合值；結果對不上快照（固定參數不同、另一個模型）或沒有結果 → null', () => {
+test('[sasfit-seq-view] loadForm：序列的表單快照＋序列自己那一筆的擬合值；沒有結果 → null；之後的單筆擬合不改變它', () => {
     const { state, form } = seqState();
     const Jobs = globalThis.SasFitJobs;
     const loaded = View.loadForm(state, 'd2');
@@ -330,14 +363,10 @@ test('[sasfit-seq-view] loadForm：序列的表單快照＋該列目前的擬合
     assert.equal(Jobs.resultMatchesForm(loaded, state.fitResults.d2), true);
     assert.equal(View.loadForm(loadedState({}), 'd1'), null, '還沒跑過');
     assert.equal(View.loadForm(seqState({ steps: [{}, { error: 'x' }, {}] }).state, 'd2'), null, '出錯的列');
-    // 之後的單筆擬合：同一個模型、同樣的固定參數 → 仍可載入；固定參數（sld）不同 → 不能（載入後表單會對不上結果）
-    const same = fakeResult({ values: { scale: 1, background: 0.001, radius: 61.5 }, names: ['scale', 'background', 'radius'] });
-    const sameState = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: same }) });
-    assert.equal(Number(View.loadForm(sameState, 'd2').fields.radius.value), 61.5);
     const other = fakeResult({ values: { scale: 1, background: 0.001, radius: 61.5, sld: 2 }, names: ['scale', 'background', 'radius'] });
     const otherState = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, d2: other }) });
-    assert.equal(View.loadForm(otherState, 'd2'), null);
-    assert.equal(rowOf(otherState, 'd2').canLoad, false);
+    assert.deepEqual(View.loadForm(otherState, 'd2'), loaded);
+    assert.equal(rowOf(otherState, 'd2').canLoad, true);
     assert.equal(rowOf(otherState, 'd2').stale, true);
-    assert.match(rowOf(otherState, 'd2').cells[2].value, /^61\.5/, '數字照樣顯示');
+    assert.deepEqual(rowOf(otherState, 'd2').cells, rowOf(state, 'd2').cells);
 });

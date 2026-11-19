@@ -22,7 +22,7 @@ const ALLOWED_TAGS = Object.freeze(['a', 'button', 'div', 'input', 'label', 'li'
 const ALLOWED_ATTRS = Object.freeze(['aria-controls', 'aria-describedby', 'aria-expanded', 'aria-hidden', 'aria-invalid',
     'aria-label', 'aria-labelledby', 'aria-live', 'autocomplete', 'checked', 'class', 'colspan', 'data-action',
     'data-field', 'data-group', 'data-hint', 'data-id', 'data-param', 'data-series', 'data-target', 'disabled', 'for', 'label',
-    'hidden', 'href', 'id', 'inputmode', 'maxlength', 'name', 'placeholder', 'rel', 'role', 'scope', 'selected',
+    'headers', 'hidden', 'href', 'id', 'inputmode', 'maxlength', 'name', 'placeholder', 'rel', 'role', 'scope', 'selected',
     'spellcheck', 'step', 'target', 'title', 'type', 'value']);
 
 /** Every tag of html as { name, attrs: { name: value | true }, closing }; throws on anything that is not a well-formed tag. */

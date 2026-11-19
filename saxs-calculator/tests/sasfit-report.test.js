@@ -22,8 +22,9 @@ const m4 = require('./sasfit-m4-helpers.js');
 const SOFTWARE = E.software('9.9');
 const AT = '2026-11-19T08:00:00.000Z';
 const BOUNDS = Object.freeze({ scale: [0, Infinity], radius: [0, 60] });
-const SLD_NOTE = '- SLD 若由本頁的化學式計算器求得，是以 f ≈ Z 計算（忽略異常散射），SLD 與能量無關。15 keV 下，含 Rb、Sr、Y、Zr、Br、Kr 或 '
-    + 'Pt、Au、Hg、Tl、Pb、Bi、Th、U 的物質，實際 SLD 會低約 4–10 %，對比度平方的誤差約為兩倍；其他能量下受影響的元素不同。';
+const SLD_NOTE = '- SLD 若由本頁的化學式計算器求得，是以 f ≈ Z 計算（忽略異常散射），SLD 與能量無關。15 keV 下，Rb、Sr、Y、Zr、Br、Kr 與 '
+    + 'Pt、Au、Hg、Tl、Pb、Bi、Th、U 這些元素的散射因子低約 4–10 %，含這些元素的物質實際 SLD 會低於計算值（幅度依它們所占的電子比例而定）；'
+    + 'Δρ² 的相對誤差至少約為 SLD 相對誤差的兩倍。其他能量下受影響的元素不同。';
 const KERNEL_NOTE = '模型計算核心：SasView sasmodels 1.0.12（BSD-3-Clause），C 原始碼原樣編譯為 WebAssembly';
 
 const REPORT_GOLDEN = [
@@ -70,7 +71,7 @@ const REPORT_GOLDEN = [
     '',
     '[Algorithm and status]',
     'Algorithm: Levenberg-Marquardt (lm), Nielsen damping update, forward-difference Jacobian, projected bounds',
-    'Errors: from the covariance J^T J at the solution (SVD, singular values floored at 1e-8), as bumps / SasView',
+    'Errors: from the covariance (J^T J)^-1 at the solution (SVD, singular values floored at 1e-8), as bumps / SasView',
     'ftol: 1e-10',
     'xtol: 1e-10',
     'Max steps: 200',
@@ -130,7 +131,7 @@ test('[sasfit-report] 規格 §9 的每一項都有一行（官方檔、core_she
     const lines = linesOf(report({ file: official(), fitResult: h.coreShellResult(), bounds: null }));
     const REQUIRED = [
         'Data file: B1216_out.dat', 'Output filename: B1216_out.dat', 'Photon energy (keV): 15',
-        'Wavelength (Ang): 0.8265613228880018（由能量換算：12.398419843320026 / E）',
+        'Wavelength (Ang): 0.8265333333333333（由能量換算：12.398 / E）',
         'Starting q for binning (1/Ang): 0.005', 'Sample thickness (mm): 1.5', 'Scaling factor: 0.0125',
         'Sample transmission: 0.75', 'Empty-cell transmission: 0.875', 'Sample-to-detector distance (mm): 2500',
         'Total frames: 10', 'Single frame time (s): 2', 'Number of points in file: 5',
@@ -331,21 +332,23 @@ test('[sasfit-report] sequenceCsv：三筆收斂＋一筆跳過＋一筆出錯 �
     assert.equal(rows.filter((row) => row[col('status')] === 'converged').length, 3);
 });
 
-test('[sasfit-report] sequenceCsv：數字與表格同一來源、全精度；被單筆擬合取代的列有註記；貼邊界的值不列誤差', () => {
-    const { state, form } = m4.seqState();
+test('[sasfit-report] sequenceCsv：數字與表格同一來源（序列自己的結果）、全精度；被單筆擬合取代的列只多一個註記；貼邊界的值不列誤差', () => {
+    const { state, form } = m4.seqState({ steps: [{}, { values: { radius: 52.123456789012 }, atBound: Object.freeze({ scale: 'upper' }) }, {}] });
     const id = state.seq.order[1];
     const dataset = state.files.find((file) => file.id === id).dataset;
-    const job = globalThis.SasFitJobs.fitJob(form, dataset, { range: { qMin: 0.005, qMax: 0.2 }, weighting: 'sigma', maxSteps: 200 });
-    const replaced = m4.fakeResult({ job, values: { radius: 52.123456789012 }, atBound: Object.freeze({ scale: 'upper' }) });
+    const job = globalThis.SasFitJobs.fitJob(form, dataset, { range: { qMin: 0.005, qMax: 0.2 }, weighting: 'none', maxSteps: 200 });
+    const replaced = m4.fakeResult({ job, values: { radius: 99.5 }, chi2r: 77 });
     const next = Object.freeze({ ...state, fitResults: Object.freeze({ ...state.fitResults, [id]: replaced }) });
     const { header, rows } = h.splitCsv(seqCsv(next));
     const col = (name) => header.indexOf(name);
     const row = rows[1];
-    assert.ok(Object.is(Number(row[col('radius')]), 52.123456789012));
-    assert.equal(row[col('q_max')], '0.2');
+    assert.ok(Object.is(Number(row[col('radius')]), 52.123456789012), '仍是序列那一次的值');
+    assert.equal(row[col('chi2r')], '1.1', '量度不換成另一種權重的數字');
+    assert.equal(row[col('q_max')], String(state.seq.rows[id].result.settings.range.qMax));
     assert.equal(row[col('scale_error')], '');
     assert.match(row[col('note')], /scale 貼上限/);
     assert.match(row[col('note')], /已單獨重新擬合/);
+    assert.deepEqual(h.splitCsv(seqCsv(state)).rows[1].slice(0, col('note')), row.slice(0, col('note')), '除了註記，整列與取代前相同');
     // 與表格一致：表格有數字的列 CSV 才有數字
     const table = SasFitSeqView.tableRows(next);
     rows.forEach((csvRow, i) => {

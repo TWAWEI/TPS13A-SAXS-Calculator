@@ -69,7 +69,7 @@ test('[seq-ui] 有資料還沒跑：每個有資料的檔一列、都勾選、�
         assert.equal(page.pick(id).disabled, false, id);
         assert.equal(page.load(id).disabled, true, id + '：還沒有結果可載入');
     }
-    assert.equal(page.$('sfSeqHead').querySelectorAll('th').length, 5);
+    assert.equal(page.$('sfSeqHead').querySelectorAll('th').length, 4);
     assert.match(texts(page.body()), /尚未執行序列/);
     assert.equal(page.$('sfSeqAll').disabled, false);
 });
@@ -212,7 +212,7 @@ async function finished(options = {}) {
 
 test('[seq-ui] 序列完成後表格三列有數字與狀態；表頭多了各擬合參數', async () => {
     const page = await finished();
-    assert.equal(page.$('sfSeqHead').querySelectorAll('th').length, 8);
+    assert.equal(page.$('sfSeqHead').querySelectorAll('th').length, 7);
     const text = texts(page.body());
     for (const value of ['50.120', '52.070', '53.950']) assert.ok(text.includes(value), value);
     assert.equal(text.split('已收斂').length - 1, 3);
@@ -366,34 +366,36 @@ test('[seq-ui] 點列載入以快照為底：之後改過上下限、勾選或�
     assert.equal(Jobs.resultMatchesForm(loaded, page.Section.getState().fitResults.d2), true);
 });
 
-test('[seq-ui] 點列載入：結果對不上快照（另一個模型、或固定參數不同）→ 表單不變並說明', async () => {
+test('[seq-ui] 點列載入：之後另一個模型的單筆擬合不影響載入——載入的是序列自己那一筆（審查修正 E14）', async () => {
     const page = await finished();
     const state = page.Section.getState();
+    const own = state.seq.rows.d2.result;
     const other = m4.fakeResult({ values: { radius: 61.5 }, settings: { ...state.fitResults.d2.settings, modelSpec: { model: 'cylinder', structure: null, lowQPowerLaw: false } } });
     page.ctx.dispatch({ type: 'setActive', id: 'd2' });
     page.ctx.dispatch({ type: 'fitStarted' });
     page.ctx.dispatch({ type: 'fitSettled', result: other });
-    assert.equal(page.load('d2').disabled, true, '另一個模型的結果：不能載入');
-    const before = page.ctx.getForm();
-    page.load('d2').fire('click');                             // 按鈕停用時瀏覽器不會送事件；這裡是第二道防線
-    assert.equal(page.ctx.getForm(), before);
-    assert.match(texts(page.$('sfSeqHints')), /無法載入/);
+    assert.equal(page.load('d2').disabled, false);
+    page.load('d2').fire('click');
+    assert.equal(Jobs.resultMatchesForm(page.ctx.getForm(), own), true);
     assert.equal(page.Section.getState().activeId, 'd2');
 });
 
-test('[seq-ui] stale：序列後對其中一檔做單筆擬合 → 該列標「已單獨重新擬合」並顯示新數字，仍可載入', async () => {
-    const page = await finished({ script: RADII.concat([{ values: { radius: 51.5 } }]) });
+test('[seq-ui] stale：序列後對其中一檔做單筆擬合 → 該列標「已單獨重新擬合」，表格與趨勢圖仍是序列自己的數字，仍可載入', async () => {
+    const page = await finished({ script: RADII.concat([{ values: { radius: 51.5 }, chi2r: 9.87 }]) });
+    const before = lastTrend(page).data.datasets[0].data.map((p) => p.y);
+    const rowText = () => texts(page.body().querySelectorAll('tr').find((tr) => tr.dataset.id === 'd2'));
+    const shown = rowText();
     page.ctx.dispatch({ type: 'setActive', id: 'd2' });
     page.$('sfFitStart').fire('click');
     await settle();
     assert.equal(page.Section.getState().fitResults.d2.params.radius, 51.5);
-    const rows = page.body().querySelectorAll('tr');
-    const row = rows.find((tr) => tr.dataset.id === 'd2');
-    assert.match(texts(row), /已單獨重新擬合/);
-    assert.match(texts(row), /51\.500/);
-    assert.doesNotMatch(texts(rows.find((tr) => tr.dataset.id === 'd1')), /已單獨重新擬合/);
+    assert.equal(rowText(), shown, '那一列的數字沒有換成單筆擬合的');
+    assert.doesNotMatch(rowText(), /51\.500|9\.87/);
+    assert.match(texts(page.body()), /已單獨重新擬合/);
+    assert.equal(page.body().innerHTML.split('已單獨重新擬合').length - 1, 1, '只有 d2 有這個註記');
+    assert.ok(page.body().innerHTML.indexOf('已單獨重新擬合') > page.body().innerHTML.indexOf('id="sfSeqName_d2"'));
     assert.equal(page.load('d2').disabled, false);
-    assert.deepEqual(lastTrend(page).data.datasets[0].data.map((p) => p.y).length, 3);
+    assert.deepEqual(lastTrend(page).data.datasets[0].data.map((p) => p.y), before);
 });
 
 test('[seq-ui] 移除一個檔 → 它的列消失、趨勢圖少一點；復原 → 連同結果回來', async () => {

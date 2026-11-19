@@ -296,3 +296,56 @@ test('[iucr] select 以所選項目的文字進複本', () => {
     assert.equal(source.html, 'HTML:第二項');
     source.release();
 });
+
+// ---------------------------------------------------------------- 複製的後備路徑（審查修正 E15，2026-11-19）
+/** 只載入 iucrExecCopy 所需的假 document／window；execCommand 的行為由 exec 決定。 */
+function loadExecCopy(exec) {
+    const log = { listeners: [], removed: 0, ranges: 0, cleared: 0, selected: null };
+    const sandbox = {
+        console,
+        document: {
+            getElementById: () => null,
+            addEventListener: (type, fn) => { log.listeners.push({ type, fn }); },
+            removeEventListener: (type, fn) => { log.listeners = log.listeners.filter((l) => l.fn !== fn); log.removed += 1; },
+            createRange: () => ({ selectNode: (node) => { log.selected = node; } }),
+            execCommand: (command) => exec(command, log),
+        },
+        window: { getSelection: () => ({ removeAllRanges: () => { log.cleared += 1; }, addRange: () => { log.ranges += 1; } }) },
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(`${fs.readFileSync(FILE, 'utf8')}\n;globalThis.__copy = iucrExecCopy;`, sandbox, { filename: FILE });
+    return { copy: sandbox.__copy, log };
+}
+
+test('[iucr] iucrExecCopy：copy 事件寫入給定的 HTML 與純文字並取消預設；監聽器與選取範圍一定清掉', () => {
+    const data = {};
+    let prevented = 0;
+    const { copy, log } = loadExecCopy((command, state) => {
+        assert.equal(command, 'copy');
+        assert.equal(state.listeners.length, 1, '執行時監聽器已掛上');
+        state.listeners[0].fn({ clipboardData: { setData: (type, value) => { data[type] = value; } }, preventDefault: () => { prevented += 1; } });
+        return true;
+    });
+    const node = { id: 'clone' };
+    assert.equal(copy(node, '<table>H</table>', 'T\tx'), true);
+    assert.deepEqual(data, { 'text/html': '<table>H</table>', 'text/plain': 'T\tx' });
+    assert.equal(prevented, 1);
+    assert.equal(log.selected, node);
+    assert.equal(log.listeners.length, 0, '監聽器已移除');
+    assert.equal(log.ranges, 1);
+    assert.ok(log.cleared >= 2, '複製前後都清選取範圍');
+});
+
+test('[iucr] iucrExecCopy：execCommand 回傳 false、沒有觸發 copy 事件、或丟例外 → 不算成功，監聽器仍會移除', () => {
+    const refused = loadExecCopy(() => false);
+    assert.equal(refused.copy({}, 'h', 't'), false);
+    assert.equal(refused.log.listeners.length, 0);
+    const silent = loadExecCopy(() => true);              // 回報成功但瀏覽器沒有送 copy 事件：內容不是我們寫的
+    assert.equal(silent.copy({}, 'h', 't'), false);
+    const noData = loadExecCopy((command, state) => { state.listeners[0].fn({ clipboardData: null, preventDefault() {} }); return true; });
+    assert.equal(noData.copy({}, 'h', 't'), false);
+    const thrown = loadExecCopy(() => { throw new Error('boom'); });
+    assert.throws(() => thrown.copy({}, 'h', 't'), /boom/);
+    assert.equal(thrown.log.listeners.length, 0);
+    assert.ok(thrown.log.cleared >= 2);
+});

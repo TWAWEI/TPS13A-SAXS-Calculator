@@ -14,6 +14,8 @@
  *                          with = + - @ TAB or CR gets a leading apostrophe
  *                          (formula injection, OWASP), then the RFC quoting; a
  *                          text with the comment character is quoted as well.
+ *                          A line break inside a text becomes one blank: a row
+ *                          is one line for tools that read line by line.
  *   commentLine(key, value)  '# key: value' for a value that may hold text of the
  *                          user (file and condition names) -- never quoted (a quoted line would
  *                          not start with the comment prefix); in the value
@@ -21,8 +23,8 @@
  *                          spreadsheet cannot split a file name into a cell
  *                          that starts a formula, and no value adds a line.
  *   safeName(text, fallback)  a text usable inside a file name: NFC; the path
- *                          and the extension (a dot, a letter, letters/digits)
- *                          are dropped; \ / : * ? " < > | control and
+ *                          and a data extension (.dat, .txt, .csv, any case; no
+ *                          other: 'sample.v2' keeps its name) are dropped; \ / : * ? " < > | control and
  *                          bidirectional-control characters and lone surrogates
  *                          become '_'; leading/trailing blanks and dots go; a
  *                          reserved device name (CON, PRN, AUX, NUL, COM1-9,
@@ -103,7 +105,9 @@
     const NAME_UNSAFE_RE = /[\\/:*?"<>|\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g;
     const CONTROL_RE = /[\u0000-\u001F\u007F\u2028\u2029]/g;
     const VERSION_RE = /^[\w.-]+$/;
-    const EXTENSION_RE = /\.[A-Za-z][A-Za-z0-9]{0,9}$/;
+    const EXTENSION_RE = /\.(?:dat|txt|csv)$/i;       // only what a data file is called: 'sample.v2' keeps its '.v2'
+    const LINE_BREAK_RE = /\r\n?|\n/g;
+    const BREAK_THEN_FORMULA_RE = /^[\r\n]+[=+\-@\t]/;
     const EDGE_RE = /^[\s.]+|[\s.]+$/g;
     const RESERVED_RE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
     const MODEL_UNSAFE_RE = /[^\w@+]/g;
@@ -127,6 +131,8 @@
         official: 'q in 1/Ang; I, sigma and I_model in 1/cm (official TPS 13A file, absolute scale)',
         generic: 'q in 1/Ang; I, sigma and I_model in the units of the data file',
     });
+    // the weight w of residual = (I - I_model)/w for each weighting (SasFitWeighting.weights)
+    const RESIDUAL_WEIGHTS = Object.freeze({ sigma: 'w = sigma', sqrtI: 'w = sqrt(|I|)', absI: 'w = |I|', none: 'w = 1' });
     const MEASURE_KEYS = Object.freeze({ chi2: 'chi2r', relative: 'weighted_mean_square_residual' });
     const BOUND_NOTES = Object.freeze({ lower: ', at lower bound', upper: ', at upper bound' });
 
@@ -144,7 +150,8 @@
         if (typeof value === 'number') return num(value);
         if (value === null || value === undefined) return '';
         const raw = String(value);
-        const guarded = FORMULA_START_RE.test(raw) ? "'" + raw : raw;
+        const flat = raw.replace(LINE_BREAK_RE, ' ');             // one row stays one line for tools that read line by line
+        const guarded = FORMULA_START_RE.test(raw) || BREAK_THEN_FORMULA_RE.test(raw) ? "'" + flat : flat;
         return NEEDS_QUOTES_RE.test(guarded) ? '"' + guarded.replace(/"/g, '""') + '"' : guarded;
     }
 
@@ -357,6 +364,12 @@
         return lines;
     }
 
+    /** '# residual: (I - I_model)/w; w = sigma (weighting sigma)': what the residual column is. */
+    function residualLine(weighting) {
+        const w = has(RESIDUAL_WEIGHTS, weighting) ? RESIDUAL_WEIGHTS[weighting] : 'w by the weighting';
+        return programLine('residual', '(I - I_model)/w; ' + w + ' (weighting ' + commentValue(weighting) + ')');
+    }
+
     function commentLines({ file, fitResult, software: softwareText }) {
         const { settings } = fitResult;
         const official = file.dataset.kind === 'official';
@@ -366,7 +379,7 @@
             programLine('software', softwareText), commentLine('data_file', file.fileName),
             programLine('units', official ? UNITS_LINE.official : UNITS_LINE.generic),
         ].concat(modelLines(fitResult), [
-            commentLine('weighting', settings.weighting),
+            commentLine('weighting', settings.weighting), residualLine(settings.weighting),
             commentLine('q_range', num(settings.range.qMin) + ' to ' + num(settings.range.qMax) + ' 1/Ang'),
             commentLine('points_fitted', fitResult.dof + fitResult.names.length), commentLine('dof', fitResult.dof),
             commentLine('chi2', fitResult.chi2), commentLine(measureKey(fitResult), fitResult.chi2r),

@@ -25,6 +25,7 @@ const FIT_CSV_GOLDEN = [
     '# units: q in 1/Ang; I, sigma and I_model in the units of the data file',
     '# model: sphere',
     '# weighting: sigma',
+    '# residual: (I - I_model)/w; w = sigma (weighting sigma)',
     '# q_range: 0.015 to 0.05 1/Ang',
     '# points_fitted: 4',
     '# dof: 2',
@@ -78,8 +79,11 @@ test('[sasfit-export] cell：RFC 4180 引號', () => {
     assert.equal(E.cell('plain'), 'plain');
     assert.equal(E.cell('a,b'), '"a,b"');
     assert.equal(E.cell('he said "x"'), '"he said ""x"""');
-    assert.equal(E.cell('two\nlines'), '"two\nlines"');
-    assert.equal(E.cell('cr\rhere'), '"cr\rhere"');
+    // 文字格裡的換行換成一個空白（審查修正 E16）：逐行讀檔的工具不會把一列看成兩列
+    assert.equal(E.cell('two\nlines'), 'two lines');
+    assert.equal(E.cell('cr\rhere'), 'cr here');
+    assert.equal(E.cell('dos\r\nline, x'), '"dos line, x"');
+    assert.equal(E.cell('\n=1+1'), "' =1+1", '換行後面的公式也前置單引號');
     assert.equal(E.cell('中文 檔名'), '中文 檔名');
     [null, undefined, NaN, Infinity].forEach((v) => assert.equal(E.cell(v), '', String(v)));
 });
@@ -96,7 +100,7 @@ test('[sasfit-export] cell：文字型以 = + - @ TAB CR 開頭時前置單引�
     assert.equal(E.cell('-1'), "'-1");
     assert.equal(E.cell('@x'), "'@x");
     assert.equal(E.cell('\t=1'), "'\t=1");
-    assert.equal(E.cell('\r=1'), '"\'\r=1"');
+    assert.equal(E.cell('\r=1'), "' =1");
     assert.equal(E.cell('=HYPERLINK("http://x","y")'), '"\'=HYPERLINK(""http://x"",""y"")"');
     assert.equal(E.cell(-1), '-1');
     assert.equal(E.cell(-1e-5), '-0.00001');
@@ -147,7 +151,14 @@ test('[sasfit-export] safeName：中文、@、+ 與數字裡的小數點保留�
     assert.equal(E.safeName('樣品 1.5 mg@25°C+鹽.dat', 'FB'), '樣品 1.5 mg@25°C+鹽');
     assert.equal(E.safeName('B1216_1.5', 'FB'), 'B1216_1.5');                 // 「.5」不是副檔名（副檔名以字母開頭）
     assert.equal(E.safeName('e\u0301.dat', 'FB'), '\u00E9');
-    assert.equal(E.safeName('name.tar.gz', 'FB'), 'name.tar');
+    // 只去掉已知的資料副檔名（.dat／.txt／.csv，不分大小寫）；其他的「.xxx」是檔名的一部分（審查修正 E16）
+    assert.equal(E.safeName('name.tar.gz', 'FB'), 'name.tar.gz');
+    assert.equal(E.safeName('sample.v2', 'FB'), 'sample.v2');
+    assert.equal(E.safeName('run.A', 'FB'), 'run.A');
+    assert.equal(E.safeName('sample.v2.DAT', 'FB'), 'sample.v2');
+    assert.equal(E.safeName('a.Txt', 'FB'), 'a');
+    assert.equal(E.safeName('a.CSV', 'FB'), 'a');
+    assert.equal(E.safeName('a.dat.dat', 'FB'), 'a.dat');
 });
 
 test('[sasfit-export] safeName：以 UTF-8 位元組計上限 120，在碼位邊界截斷，截斷後再去尾端的點與空白', () => {
@@ -338,6 +349,17 @@ test('[sasfit-export] 量度名稱：sigma → 註解鍵 chi2r；none → weight
     assert.doesNotMatch(none, /chi2r/);
     assert.ok(none.includes('# errors: multiplied by sqrt(weighted_mean_square_residual)\n'));
     assert.ok(none.includes('# param radius = 50.0123456789 +/- 0.25 Ang (fitted)\n'));
+});
+
+test('[sasfit-export] fitCsv：註解列寫明 residual 的定義與各權重的 w（審查修正 E5）', () => {
+    const expected = { sigma: 'w = sigma', sqrtI: 'w = sqrt(|I|)', absI: 'w = |I|', none: 'w = 1' };
+    Object.keys(expected).forEach((weighting) => {
+        const { comments } = h.splitCsv(csvOf(h.sphereResult({ weighting })));
+        const line = comments.find((text) => text.startsWith('# residual: '));
+        assert.equal(line, '# residual: (I - I_model)/w; ' + expected[weighting] + ' (weighting ' + weighting + ')', weighting);
+        assert.equal(comments.filter((text) => text.startsWith('# residual')).length, 1);
+        assert.doesNotMatch(line, /[,"]/, '註解列不含會被試算表拆開的字元');
+    });
 });
 
 test('[sasfit-export] fitCsv：貼上限、多分散、S(Q) 與官方檔的註解列', () => {

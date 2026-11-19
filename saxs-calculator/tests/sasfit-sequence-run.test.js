@@ -183,3 +183,24 @@ test('[sasfit-sequence] run：不修改 plan 與 form；輸入不合時 Promise 
     assert.equal(end.outcome, 'aborted');
     assert.ok(end.error instanceof Error);
 });
+
+test('[sasfit-sequence] run：上一筆未能決定的參數不沿用，從 form0 的原始值出發，並寫進該列註記（D1，2026-11-19）', async () => {
+    const { client, events } = await runWith([
+        { values: { radius: 51.5, scale: 1.3 }, errors: { radius: 0.2, scale: 5 } }, { values: { radius: 52 } }, {}]);
+    assert.equal(client.jobs[1].params.radius, 51.5, '定得出來的沿用');
+    assert.equal(client.jobs[1].params.scale, client.jobs[0].params.scale, '定不出來的用 form0');
+    const rows = finalRows(events);
+    assert.equal(rows[0].row.note, '');
+    assert.match(rows[1].row.note, /scale/);
+    assert.match(rows[1].row.note, /未沿用/);
+    assert.equal(rows[1].row.startedFrom, 'd1');
+    assert.equal(rows[2].row.note, '', '第二筆的結果都定得出來');
+    const running = rowsOf(events).filter((event) => event.row.state === 'running');
+    assert.match(running[1].row.note, /未沿用/, '執行中的列就帶著註記');
+});
+
+test('[sasfit-sequence] run：illConditioned 的結果不當初值（E1）', async () => {
+    const { client, events } = await runWith([{ values: { radius: 61 }, illConditioned: true }, {}, {}]);
+    assert.equal(client.jobs[1].params.radius, 50);
+    assert.equal(finalRows(events)[1].row.startedFrom, null);
+});

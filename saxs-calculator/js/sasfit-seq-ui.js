@@ -46,7 +46,10 @@
  * and, should finish() itself fail, by the last catch of start(). A "stop"
  * that does not end the run within STOP_GRACE_MS (stop() threw before it
  * could resolve the fit) abandons the run: the page is unlocked with a page
- * alert, and whatever the abandoned run still reports is ignored.
+ * alert, and whatever the abandoned run still reports is ignored. Why a run
+ * was aborted or abandoned is ALSO kept as the end note of this segment
+ * (#sfSeqHints, error tone): the page alert is shared with the preview, whose
+ * next good answer clears it.
  * After the end THIS module clears the progress line of the fit bar
  * (ctx.fit.setBarProgress) -- or leaves "stopped" / "aborted" there.
  *
@@ -103,8 +106,11 @@
         started: (total) => '序列擬合開始，共 ' + total + ' 筆',
         progress: (k, total, name) => '序列擬合 第 ' + k + '／' + total + ' 筆：' + name,
         step: (step, label, value) => '第 ' + step + ' 步，' + label + '＝' + value,
+        barProgress: (k, total) => '序列 ' + k + '／' + total,
+        barStep: (step, label, value) => '第 ' + step + ' 步' + DOT + label + ' ' + value,
+        tally: (counts) => '：收斂 ' + counts.converged + '、未收斂 ' + counts.other + '、跳過 ' + counts.skipped,
         rowDone: (k, total, name, status) => '第 ' + k + '／' + total + ' 筆 ' + name + '：' + status,
-        finished: (done, total) => '序列擬合完成，共 ' + done + '／' + total + ' 筆',
+        finished: (done, total) => '完成 ' + done + '／' + total + ' 筆',
         stopped: (done, total) => '序列已停止，完成 ' + done + '／' + total + ' 筆',
         aborted: (done, total) => '序列中止，完成 ' + done + '／' + total + ' 筆',
         abortedBar: '序列中止',
@@ -118,7 +124,7 @@
         omitted: (count) => count + ' 筆沒有畫出（擬合失敗、被跳過、未完成或沒有條件值）',
         byOrder: '沒有條件值，橫軸改用序號',
         loaded: (name) => '已載入 ' + name + ' 的擬合參數（模型與上下限回到序列開始時的設定）',
-        cannotLoad: (name) => name + ' 的結果無法載入：它不是以序列開始時的模型與固定參數擬合的；請到「資料」把它設為擬合對象查看',
+        cannotLoad: (name) => name + ' 的序列結果無法寫入參數表',
     });
 
     const isObject = (v) => v !== null && typeof v === 'object';
@@ -304,18 +310,30 @@
         return file === undefined ? '' : file.fileName;
     };
 
-    /** The progress text, written directly (no redraw): here and in the fit bar. */
-    function showProgress(ui, text) {
-        ui.store.set({ barText: text });
+    /**
+     * The progress, written directly (no redraw): the full text with the file name here, a short one without it in
+     * the fit bar (the bar is one line beside two buttons on every tab).
+     */
+    function showProgress(ui, text, barText) {
+        const bar = barText === undefined ? text : barText;
+        ui.store.set({ barText: bar });
         ui.ctx.el('sfSeqProgress').textContent = text;
-        ui.ctx.fit.setBarProgress(text);
+        ui.ctx.fit.setBarProgress(bar);
     }
 
-    function progressText(ui) {
-        const { current, total, step } = ui.store.get();
-        if (current === null) return '';
-        const head = TEXT.progress(current.k, total, fileName(ui.ctx.getState(), current.id));
-        return step === '' ? head : head + '；' + step;
+    /** { full, bar }: the two progress texts of the fit in progress. */
+    function progressTexts(ui) {
+        const { current, total, step, barStep } = ui.store.get();
+        if (current === null) return { full: '', bar: '' };
+        const name = globalThis.SasFitHtml.middleEllipsis(fileName(ui.ctx.getState(), current.id));
+        const head = TEXT.progress(current.k, total, name);
+        const bar = TEXT.barProgress(current.k, total);
+        return { full: step === '' ? head : head + '；' + step, bar: barStep === '' ? bar : bar + DOT + barStep };
+    }
+
+    function showCurrent(ui) {
+        const texts = progressTexts(ui);
+        showProgress(ui, texts.full, texts.bar);
     }
 
     /** One full redraw at most every REFRESH_MS while the run goes on. */
@@ -346,8 +364,8 @@
         const { ctx, store } = ui;
         const { row } = event;
         if (row.state === 'running') {
-            store.set({ current: Object.freeze({ id: event.id, k: store.get().finished + 1 }), step: '' });
-            showProgress(ui, progressText(ui));
+            store.set({ current: Object.freeze({ id: event.id, k: store.get().finished + 1 }), step: '', barStep: '' });
+            showCurrent(ui);
             return;
         }
         // silent: one redraw per row would be 500 redraws; a dispatch that throws goes back to the runner, which aborts
@@ -364,8 +382,9 @@
         if (!Number.isInteger(iteration) || iteration < 0) return;
         ctx.dispatch({ type: 'fitProgress', iteration, chi2r: typeof chi2r === 'number' ? chi2r : null }, { silent: true });
         const label = globalThis.SasFitHints.measure(ctx.getState().seq.settings.weighting).label;
-        store.set({ step: TEXT.step(iteration, label, globalThis.SasFitHtml.formatNumber(chi2r, MEASURE_DIGITS)) });
-        showProgress(ui, progressText(ui));
+        const value = globalThis.SasFitHtml.formatNumber(chi2r, MEASURE_DIGITS);
+        store.set({ step: TEXT.step(iteration, label, value), barStep: TEXT.barStep(iteration, label, value) });
+        showCurrent(ui);
     }
 
     /** An event of the runner. What an abandoned run still reports is ignored; an exception goes back to the runner. */
@@ -416,11 +435,26 @@
         return TEXT.loadedActive(fileName(state, own.id));
     }
 
-    function reportAbort(ui, error) {
+    /** Why the run was aborted, as a text for the user (its detail goes to the console). */
+    function abortReason(error) {
         const notice = globalThis.SasFitHints.errorNotice(error, 'fit');
         if (notice.detail !== '') console.warn(LOG + ' ' + notice.detail);
-        showPageAlert(ui.ctx, notice.where === 'ignore' || notice.text === '' ? TEXT.inconsistent : notice.text);
+        return notice.where === 'ignore' || notice.text === '' ? TEXT.inconsistent : notice.text;
     }
+
+    /**
+     * Says why a run did not end by itself: in the page alert, and as the end note of the sequence segment. The
+     * alert is shared with the preview, whose next good answer clears it; the note stays with the rows of that run.
+     */
+    function reportAbort(ui, text) {
+        ui.store.set({ note: text, noteTone: 'error', noteRows: ui.ctx.getState().seq.rows });
+        showPageAlert(ui.ctx, text);
+    }
+
+    const endText = (ui, key) => {
+        const { finished, total } = ui.store.get();
+        return TEXT[key](finished, total) + TEXT.tally(globalThis.SasFitSeqView.counts(ui.ctx.getState()));
+    };
 
     function focusOn(ctx, id) {
         const element = ctx.el(id);
@@ -435,15 +469,15 @@
         const outcome = isObject(end) && typeof end.outcome === 'string' ? end.outcome : 'aborted';
         settle(ui, outcome);
         const settled = ctx.getState().seq.outcome;        // what the state accepted
-        const { finished, total } = store.get();
         const note = settled === 'aborted' ? '' : loadActive(ui);
-        store.set({ current: null, step: '', note, noteTone: 'ok', noteRows: ctx.getState().seq.rows });
-        const text = TEXT[settled === 'finished' ? 'finished' : (settled === STOPPED ? 'stopped' : 'aborted')](finished, total);
+        store.set({ current: null, step: '', barStep: '', note, noteTone: 'ok', noteRows: ctx.getState().seq.rows });
+        const text = endText(ui, settled === 'finished' ? 'finished' : (settled === STOPPED ? 'stopped' : 'aborted'));
         // the fit bar's progress line is ours to end: blank after a finished run (its measure line is back), else why it ended
-        showProgress(ui, settled === 'finished' ? '' : (settled === STOPPED ? text : TEXT.abortedBar));
+        const { finished, total } = store.get();
+        showProgress(ui, settled === 'finished' ? '' : (settled === STOPPED ? TEXT.stopped(finished, total) : TEXT.abortedBar));
         store.set({ barText: '' });
         ctx.el('sfSeqProgress').textContent = text;
-        if (settled === 'aborted') reportAbort(ui, isObject(end) ? end.error : undefined);
+        if (settled === 'aborted') reportAbort(ui, abortReason(isObject(end) ? end.error : undefined));
         ctx.refresh();
         ctx.el('sfSeqLive').textContent = text;
         focusOn(ctx, ctx.getState().tab === SEQUENCE_TAB ? 'sfSeqRun' : 'sfFitStart');
@@ -457,10 +491,10 @@
         store.set({ run: run + 1 });                       // whatever that run still reports is ignored from here on
         ['refreshTimer', 'liveTimer'].forEach((key) => clearTimer(ui, key));
         settle(ui, 'aborted');
-        store.set({ current: null, step: '', note: '', barText: '', noteRows: ctx.getState().seq.rows });
+        store.set({ current: null, step: '', barStep: '', barText: '' });
         ctx.el('sfSeqProgress').textContent = TEXT.abortedBar;
         ctx.fit.setBarProgress(TEXT.abortedBar);
-        showPageAlert(ctx, TEXT.stopFailed);
+        reportAbort(ui, TEXT.stopFailed);
         ctx.refresh();
         ctx.el('sfSeqLive').textContent = TEXT.stopFailed;
         focusOn(ctx, ctx.getState().tab === SEQUENCE_TAB ? 'sfSeqRun' : 'sfFitStart');
@@ -480,7 +514,7 @@
         const { ctx } = ui;
         try {
             settle(ui, 'aborted');
-            showPageAlert(ctx, TEXT.endFailed);
+            reportAbort(ui, TEXT.endFailed);
             ctx.fit.setBarProgress(TEXT.abortedBar);
             ctx.refresh();
         } catch (err) {
@@ -525,7 +559,7 @@
         ctx.preview.cancel();                              // a preview still on its timer must not start during the run
         ctx.setHtml(ctx.el('sfAlert'), '');
         const run = store.get().run + 1;
-        store.set({ run, total: 0, finished: 0, current: null, step: '', note: '', stopRequested: false });
+        store.set({ run, total: 0, finished: 0, current: null, step: '', barStep: '', note: '', stopRequested: false });
         try {
             ctx.dispatch({ type: 'seqStarted', plan: ready.plan, form, settings });      // not silent: the whole page locks
         } catch (err) {
@@ -621,7 +655,7 @@
 
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
-            planInputs: null, plan: null, barText: '', run: 0, total: 0, finished: 0, current: null, step: '',
+            planInputs: null, plan: null, barText: '', run: 0, total: 0, finished: 0, current: null, step: '', barStep: '',
             note: '', noteTone: 'ok', noteRows: null, tableInputs: null, trendInputs: null, stopRequested: false, refreshTimer: null, liveTimer: null, stopTimer: null,
         }) });
         bind(ui);
