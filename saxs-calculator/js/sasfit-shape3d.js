@@ -13,7 +13,7 @@
  *       bar         a scale bar of SasFitShapeView.scaleBar, or null / undefined for none
  *       background  true: fill the light surface colour first (PNG export); otherwise the canvas is cleared
  *                   and the card shows through
- *   SasFitShape3d.create(ctx) -> { render(), exportBlob() -> Promise<Blob | null> }
+ *   SasFitShape3d.create(ctx) -> { render(), exportBlob() -> Promise<Blob | null>, view() }
  *       A segment module of section-sasfit.js (key 'shape'; it is not a tab). create binds the listeners
  *       once. render() shows the view of state.plotView:
  *         'curve'  the curve view and its tools; nothing else happens here -- no mesh is built and the
@@ -27,8 +27,28 @@
  *       exportBlob() a PNG of the sketch as it is turned now: light theme on white, EXPORT_WIDTH pixels wide,
  *                  with the scale bar, drawn on a canvas of its own (ctx.deps.createCanvas); null while the
  *                  curves are shown or there is nothing to draw. The canvas on the page is not touched.
+ *       view()     the current view { yaw, pitch, zoom } (frozen), for tests and the browser smoke test
  *       ctx.deps used here: raf(fn) -> id, cancelRaf(id), createCanvas(), observeResize(element, fn),
  *                  matchMedia(query).
+ *
+ * Turning the sketch (#sfShapeStage; only while the sketch of a model with a shape is shown)
+ *   pointer     drag turns it: DRAG_DEG degrees per pixel, the object follows the pointer (dragging right
+ *               lowers the yaw, dragging down raises the pitch). The pointer is captured, the mouse turns with
+ *               its main button only. A touch turns the yaw only: the stage has touch-action: pan-y, so a
+ *               vertical swipe scrolls the page. Two pointers zoom by the ratio of their distances.
+ *   keyboard    ArrowLeft / ArrowRight: yaw -/+ 5 degrees; ArrowUp / ArrowDown: pitch +/- 5 degrees; + or =:
+ *               zoom in, -: zoom out (x 1.1); 0 or Home: the default view. Handled keys cancel their default
+ *               (the page does not scroll); every other key, and any key with Ctrl / Meta / Alt, is left alone.
+ *   wheel       with Ctrl only (a pinch on a trackpad arrives as Ctrl + wheel): zoom, at most WHEEL_LIMIT per
+ *               event, default cancelled (the listener is not passive). A plain wheel is not touched: the
+ *               page scrolls, as over the charts (decision 28).
+ *   #sfShapeReset   the default view
+ *   #sfShapeSpin    auto-rotate, off by default: SPIN_DEG_PER_S about the z axis, at most 30 frames a second,
+ *               in a requestAnimationFrame loop that exists only while it turns. It pauses -- no frame is
+ *               requested -- while the curves are shown, the model has no shape, a fit runs, the document is
+ *               hidden, another page section is shown or a pointer is down, and goes on when that is over.
+ *               With prefers-reduced-motion: reduce it is switched off and disabled, and the help says so.
+ *   There is no panning. Zoomed in, only the middle is visible: the status line says so.
  *
  * How it paints
  *   polygon   filled with ChartTheme.shade3d(role, k, theme) and stroked with THE SAME colour (SEAM_WIDTH):
@@ -42,9 +62,10 @@
  *             where one part of the chain passes in front of another. (The plan drew the outline with butt
  *             caps and no clip; that leaves ticks inside every bend, because the steps of the chain are
  *             shorter than its radius.)
- *   bar       bottom left: a line in the edge colour with its label above it, in the text colour.
+ *   bar       bottom left: a line in the edge colour, bar.pixels long from outer edge to outer edge, with its
+ *             label above it in the text colour.
  *
- * Redrawing happens on demand only: there is no animation loop. Theme changes (tps:themechange) and a new
+ * Redrawing happens on demand only: there is no animation loop but the auto-rotation. Theme changes (tps:themechange) and a new
  * size of the stage (ResizeObserver) ask for one frame; printing repaints at once in the light theme
  * (beforeprint) and back (afterprint), because a canvas is a bitmap that @media print cannot recolour. The
  * backing store is the CSS size times min(devicePixelRatio, MAX_PIXEL_RATIO).
@@ -72,14 +93,29 @@
     const THEME_EVENT = 'tps:themechange';
     const VIEWS = Object.freeze({ curve: 'sfViewCurve', shape: 'sfViewShape' });
     const CHAIN_MODEL = 'flexible_cylinder';
+    const SECTION_ID = 'section-sasfit';
+    const DRAG_CLASS = 'is-dragging';
+    const DRAG_DEG = 0.5;                     // degrees per pixel of a drag
+    const WHEEL_RATE = 0.01;                  // zoom = exp(-deltaY * WHEEL_RATE) ...
+    const WHEEL_LIMIT = 1.25;                 // ... but never more than this per event (a mouse wheel sends 100 at once)
+    const SPIN_DEG_PER_S = 24;
+    const SPIN_FRAME_MS = 1000 / 30;
+    const SPIN_MAX_STEP_MS = 250;             // after a throttled tab: no jump
+    const MEDIA = Object.freeze({ reduced: '(prefers-reduced-motion: reduce)', coarse: '(pointer: coarse)' });
+    const NO_POINTERS = Object.freeze({});
     const TEXT = Object.freeze({
         title: '結構示意',
         noShape: '此模型沒有固定形狀',
         formError: '參數表有錯誤，示意圖未更新',
         noScene: '這組尺寸畫不出形狀，示意圖未更新',
         chain: '圖中是一個代表性構形',
+        zoomed: '已放大：只看得到中央的部分（不能平移）',
         noAlt: '尚無示意圖',
+        help: '拖曳旋轉；Ctrl＋滾輪或兩指縮放；按比例繪製（正交投影），不能平移',
+        touch: '觸控時只能左右旋轉（上下滑動是捲動頁面）',
+        reduced: '系統設定為減少動態效果，已停用自動旋轉',
     });
+    const SEPARATOR = '；';
 
     const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const isObject = (v) => v !== null && typeof v === 'object';
@@ -140,17 +176,20 @@
         ctx.restore();
     }
 
+    /** The end ticks are drawn half a line width inside, so the bar measures bar.pixels from outer edge to outer edge. */
     function paintBar(ctx, bar, size, palette) {
         const x = BAR.inset;
         const y = size.height - BAR.inset;
+        const half = Math.min(BAR.lineWidth, bar.pixels) / 2;
         ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
         ctx.strokeStyle = palette.shapeEdge;
-        ctx.lineWidth = BAR.lineWidth;
+        ctx.lineWidth = 2 * half;
         ctx.beginPath();
-        ctx.moveTo(x, y - BAR.tick);
-        ctx.lineTo(x, y);
-        ctx.lineTo(x + bar.pixels, y);
-        ctx.lineTo(x + bar.pixels, y - BAR.tick);
+        ctx.moveTo(x + half, y - BAR.tick);
+        ctx.lineTo(x + half, y);
+        ctx.lineTo(x + bar.pixels - half, y);
+        ctx.lineTo(x + bar.pixels - half, y - BAR.tick);
         ctx.stroke();
         ctx.fillStyle = palette.text;
         ctx.font = BAR.fontSize + 'px ' + host().ChartTheme.FONT;
@@ -276,21 +315,50 @@
         ctx.el('sfShapeTools').hidden = !shape;
     }
 
+    const matches = (ui, query) => ui.ctx.deps.matchMedia(query).matches === true;
+
+    /** The status line: what keeps the picture from being current, else the notes about what is shown. */
+    function renderStatus(ui) {
+        const { note, stale, view } = ui.store.get();
+        const zoomed = !stale && view.zoom > 1 ? TEXT.zoomed : '';
+        setText(ui.ctx.el('sfShapeStatus'), [note, zoomed].filter((text) => text !== '').join(SEPARATOR));
+    }
+
+    /** note: the line's own text; stale: the picture is not the form's (then nothing else is said). */
+    function setNote(ui, note, stale) {
+        ui.store.set({ note, stale });
+        renderStatus(ui);
+    }
+
+    /** The auto-rotate button and the help under the stage; reduced motion switches the rotation off. */
+    function renderSpin(ui, available) {
+        const { ctx, store } = ui;
+        const reduced = matches(ui, MEDIA.reduced);
+        if (reduced && store.get().spin) store.set({ spin: false });
+        const button = ctx.el('sfShapeSpin');
+        button.disabled = !available || reduced;
+        button.setAttribute('aria-pressed', String(store.get().spin));
+        if (reduced) button.setAttribute('title', TEXT.reduced); else button.removeAttribute('title');
+        const notes = [TEXT.help, matches(ui, MEDIA.coarse) ? TEXT.touch : '', reduced ? TEXT.reduced : ''];
+        setText(ctx.el('sfShapeHelp'), notes.filter((text) => text !== '').join(SEPARATOR));
+    }
+
     /** Stage, help and texts are there only for a model that has a shape. */
     function showStage(ui, shown) {
         const { ctx } = ui;
         ['sfShapeStage', 'sfShapeHelp', 'sfShapeText'].forEach((id) => { ctx.el(id).hidden = !shown; });
         ctx.el('sfShapeReset').disabled = !shown;
+        renderSpin(ui, shown);
     }
 
     function renderNoShape(ui) {
         const { ctx, store } = ui;
+        store.set({ scene: null, sceneKey: null, painted: null });
         showStage(ui, false);
-        setText(ctx.el('sfShapeStatus'), TEXT.noShape);
+        setNote(ui, TEXT.noShape, true);
         ctx.setHtml(ctx.el('sfShapeDims'), '');
         setText(ctx.el('sfShapeExtras'), '');
         ctx.el('sfShapeCanvas').setAttribute('aria-label', TEXT.noAlt);
-        store.set({ scene: null, sceneKey: null, painted: null });
     }
 
     /** The scene of the form: the one kept when model and dimensions are the same. null: no solid for these sizes. */
@@ -328,10 +396,10 @@
         const params = globalThis.SasFitShapeView.shapeParams(form);
         const scene = params === null ? null : sceneOf(ui, form, params);
         if (scene === null) {                                      // the last picture stays; the status says why
-            setText(ctx.el('sfShapeStatus'), params === null ? TEXT.formError : TEXT.noScene);
+            setNote(ui, params === null ? TEXT.formError : TEXT.noScene, true);
             return;
         }
-        setText(ctx.el('sfShapeStatus'), form.model === CHAIN_MODEL ? TEXT.chain : '');
+        setNote(ui, form.model === CHAIN_MODEL ? TEXT.chain : '', false);
         renderTexts(ui, form, scene);
         drawSoon(ui);
     }
@@ -340,6 +408,7 @@
         const shape = isShown(ui);
         renderSwitch(ui, shape);
         if (shape) renderShape(ui);
+        syncSpin(ui);
     }
 
     // ------------------------------------------------------------- export
@@ -379,7 +448,162 @@
     function setView(ui, view) {
         if (view === ui.store.get().view) return;
         ui.store.set({ view });
+        renderStatus(ui);
         drawSoon(ui);
+    }
+
+    const turn = (ui, action) => setView(ui, globalThis.SasFitShapeView.reduce(ui.store.get().view, action));
+
+    /** The sketch of a model with a shape is on screen: only then the stage answers to pointer, keys and wheel. */
+    const isInteractive = (ui) => isShown(ui) && ui.store.get().scene !== null;
+
+    // ------------------------------------------------------------- auto-rotate
+
+    /** The page section is the one on screen (an element that is not there counts as shown). */
+    function sectionShown(ui) {
+        const section = ui.ctx.el(SECTION_ID);
+        return !section || !isObject(section.classList) || section.classList.contains(ACTIVE_CLASS);
+    }
+
+    function canSpin(ui) {
+        const { pointers } = ui.store.get();
+        return isInteractive(ui) && ui.ctx.getState().fit.phase !== 'running' && sectionShown(ui)
+            && !(typeof document !== 'undefined' && document.hidden === true)
+            && Object.keys(pointers).length === 0 && !matches(ui, MEDIA.reduced);
+    }
+
+    /** One frame of the rotation: the yaw moves by the time that passed, at most 30 times a second. */
+    function spinFrame(ui, time) {
+        const { store } = ui;
+        store.set({ spinRaf: null });
+        if (!store.get().spin || !canSpin(ui)) {
+            store.set({ spinTime: null });
+            return;
+        }
+        const last = store.get().spinTime;
+        if (last === null) {
+            store.set({ spinTime: time });
+        } else if (time - last >= SPIN_FRAME_MS) {
+            const seconds = Math.min(time - last, SPIN_MAX_STEP_MS) / 1000;
+            const view = globalThis.SasFitShapeView.reduce(store.get().view, { type: 'rotate', dYaw: SPIN_DEG_PER_S * seconds, dPitch: 0 });
+            store.set({ spinTime: time, view });
+            draw(ui);                                              // in this frame: no second request
+        }
+        syncSpin(ui);
+    }
+
+    /** Exactly one frame is requested while the rotation is on and may run; none otherwise. */
+    function syncSpin(ui) {
+        const { store, ctx } = ui;
+        const { spin, spinRaf } = store.get();
+        if (spin && canSpin(ui)) {
+            if (spinRaf === null) store.set({ spinRaf: ctx.deps.raf((time) => spinFrame(ui, time)) });
+            return;
+        }
+        if (spinRaf !== null) ctx.deps.cancelRaf(spinRaf);
+        store.set({ spinRaf: null, spinTime: null });
+    }
+
+    function toggleSpin(ui) {
+        const { store } = ui;
+        if (!isInteractive(ui) || matches(ui, MEDIA.reduced)) return;
+        store.set({ spin: !store.get().spin, spinTime: null });
+        renderSpin(ui, true);
+        syncSpin(ui);
+    }
+
+    // ------------------------------------------------------------- pointer, keyboard, wheel
+
+    const pointOf = (event) => Object.freeze({ x: event.clientX, y: event.clientY });
+
+    /** The distance of two pointers, or null when there are not exactly two. */
+    function spread(pointers) {
+        const points = Object.values(pointers);
+        return points.length === 2 ? Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y) : null;
+    }
+
+    /**
+     * setPointerCapture / releasePointerCapture; both throw for a pointer that is not active (a synthetic event,
+     * a pointer that is already gone). The drag then simply works without capture, while it stays over the stage.
+     */
+    function capture(stage, method, pointerId) {
+        if (typeof stage[method] !== 'function') return;
+        try {
+            stage[method](pointerId);
+        } catch (err) {
+            // nothing to capture or to release
+        }
+    }
+
+    function onPointerDown(ui, event) {
+        const { store, ctx } = ui;
+        if (!isInteractive(ui) || (event.pointerType === 'mouse' && event.button !== 0)) return;
+        const stage = ctx.el('sfShapeStage');
+        capture(stage, 'setPointerCapture', event.pointerId);
+        store.set({ pointers: Object.freeze({ ...store.get().pointers, [event.pointerId]: pointOf(event) }) });
+        stage.classList.add(DRAG_CLASS);
+        syncSpin(ui);
+    }
+
+    function onPointerMove(ui, event) {
+        const { store } = ui;
+        const before = store.get().pointers;
+        const last = before[event.pointerId];
+        if (last === undefined) return;                           // not a pointer that went down on the stage
+        const now = pointOf(event);
+        const pointers = Object.freeze({ ...before, [event.pointerId]: now });
+        store.set({ pointers });
+        const [was, is] = [spread(before), spread(pointers)];
+        if (was !== null && is !== null) {
+            if (was > 0 && is > 0) turn(ui, { type: 'zoom', factor: is / was });
+        } else if (Object.keys(pointers).length === 1) {
+            const dPitch = event.pointerType === 'touch' ? 0 : (now.y - last.y) * DRAG_DEG;
+            turn(ui, { type: 'rotate', dYaw: -(now.x - last.x) * DRAG_DEG, dPitch });
+        }
+    }
+
+    function onPointerEnd(ui, event) {
+        const { store, ctx } = ui;
+        const { pointers } = store.get();
+        if (pointers[event.pointerId] === undefined) return;
+        const left = Object.fromEntries(Object.entries(pointers).filter(([id]) => id !== String(event.pointerId)));
+        store.set({ pointers: Object.keys(left).length === 0 ? NO_POINTERS : Object.freeze(left) });
+        const stage = ctx.el('sfShapeStage');
+        capture(stage, 'releasePointerCapture', event.pointerId);
+        if (Object.keys(left).length === 0) stage.classList.remove(DRAG_CLASS);
+        syncSpin(ui);
+    }
+
+    function onKey(ui, event) {
+        if (!isInteractive(ui) || event.ctrlKey || event.metaKey || event.altKey) return;
+        const { view } = ui.store.get();
+        const next = globalThis.SasFitShapeView.reduce(view, { type: 'key', key: event.key });
+        if (next === view) return;                                 // not one of ours: the browser keeps it
+        event.preventDefault();                                    // the arrows and Home would scroll the page
+        setView(ui, next);
+    }
+
+    function onWheel(ui, event) {
+        if (event.ctrlKey !== true || !isInteractive(ui)) return;   // a plain wheel scrolls the page
+        event.preventDefault();
+        const factor = Math.exp(-event.deltaY * WHEEL_RATE);
+        turn(ui, { type: 'zoom', factor: Math.min(WHEEL_LIMIT, Math.max(1 / WHEEL_LIMIT, factor)) });
+    }
+
+    function bindStage(ui) {
+        const { ctx } = ui;
+        const stage = ctx.el('sfShapeStage');
+        stage.addEventListener('pointerdown', (event) => onPointerDown(ui, event));
+        stage.addEventListener('pointermove', (event) => onPointerMove(ui, event));
+        stage.addEventListener('pointerup', (event) => onPointerEnd(ui, event));
+        stage.addEventListener('pointercancel', (event) => onPointerEnd(ui, event));
+        stage.addEventListener('keydown', (event) => onKey(ui, event));
+        stage.addEventListener('wheel', (event) => onWheel(ui, event), { passive: false });
+        ctx.el('sfShapeSpin').addEventListener('click', () => toggleSpin(ui));
+        if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+            document.addEventListener('visibilitychange', () => syncSpin(ui));
+            document.addEventListener('click', () => syncSpin(ui));        // the sidebar shows or hides the page section
+        }
     }
 
     /** Repaint at once in the light theme for the printer, and back afterwards (a frame would come too late). */
@@ -408,10 +632,12 @@
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
             view: globalThis.SasFitShapeView.DEFAULT_VIEW, scene: null, sceneKey: null, painted: null, raf: null, theme: null, printing: false,
+            note: '', stale: false, pointers: NO_POINTERS, spin: false, spinRaf: null, spinTime: null,
         }) });
         bindSwitch(ui);
         bindRedraw(ui);
-        return Object.freeze({ render: () => render(ui), exportBlob: () => exportBlob(ui) });
+        bindStage(ui);
+        return Object.freeze({ render: () => render(ui), exportBlob: () => exportBlob(ui), view: () => ui.store.get().view });
     }
 
     globalThis.SasFitShape3d = Object.freeze({ paint, create, EXPORT_WIDTH, MAX_PIXEL_RATIO });

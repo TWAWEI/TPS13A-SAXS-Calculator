@@ -79,6 +79,12 @@
     outline-offset: 2px;
 }
 
+/* 開著的「自動旋轉」：與站上其他按下的狀態相同的淡珊瑚底＋珊瑚文字 */
+.sf-plot-tools .btn[aria-pressed="true"] {
+    background: var(--color-accent-tint);
+    color: var(--color-accent-text);
+}
+
 /* 畫布的尺寸由容器決定，不得反過來撐開容器（否則 ResizeObserver 會形成重畫迴圈） */
 .sf-shape-stage canvas {
     display: block;

@@ -125,7 +125,8 @@ test('[shape3d] 比例尺：左下角一條輪廓色的線與文字色的標籤'
     assert.equal(stroke.style.lineCap, 'butt');
     const xs = only(ctx, 'moveTo').concat(only(ctx, 'lineTo')).map((call) => call.args[0]);
     const ys = only(ctx, 'moveTo').concat(only(ctx, 'lineTo')).map((call) => call.args[1]);
-    assert.equal(Math.max(...xs) - Math.min(...xs), bar.pixels, '線長＝比例尺的像素數');
+    assert.equal(Math.max(...xs) - Math.min(...xs) + stroke.style.lineWidth, bar.pixels, '由外緣量到外緣＝比例尺的像素數（端線往內縮半個線寬）');
+    assert.equal(stroke.style.lineJoin, 'miter');
     assert.ok(Math.min(...xs) < 20 && Math.max(...ys) > SIZE.height - 20 && Math.max(...ys) < SIZE.height, '在左下角、畫布之內');
     const text = only(ctx, 'fillText')[0];
     assert.equal(text.args[0], bar.label);

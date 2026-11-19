@@ -54,7 +54,7 @@ function makeElement(id, tagName = 'div') {
     let html = '';
     const node = {
         id, tagName, hidden: false, disabled: false, checked: false, textContent: '', value: '', focusCount: 0,
-        parent: null, children: [], htmlSets: 0, dataset: {}, listeners,
+        parent: null, children: [], htmlSets: 0, dataset: {}, listeners, listenerOptions: {},
         style: { setProperty(name, value) { styleProps[name] = value; }, getPropertyValue: (name) => styleProps[name] || '' },
         classList: {
             add: (name) => { classes.add(name); },
@@ -66,7 +66,7 @@ function makeElement(id, tagName = 'div') {
                 return want;
             },
         },
-        addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+        addEventListener(type, fn, options) { (listeners[type] ||= []).push(fn); (node.listenerOptions[type] ||= []).push(options); },
         listenerCount: (type) => (listeners[type] || []).length,
         fire(type, extra) {
             const e = { type, target: node, defaultPrevented: false, preventDefault() { e.defaultPrevented = true; }, ...extra };
@@ -147,6 +147,7 @@ function makeDom(ids) {
     const doc = {
         activeElement: null,
         addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+        listenerCount: (type) => (listeners[type] || []).length,
         fire(type, detail) { (listeners[type] || []).forEach((fn) => fn({ type, detail, target: doc })); },
     };
     const statics = new Map(ids.map((id) => {

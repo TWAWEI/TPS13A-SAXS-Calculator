@@ -336,3 +336,363 @@ test('[shape3d-ui] exportBlob：離屏畫布、淺色白底、寬 1200、同一�
     page.act({ type: 'setModel', model: 'guinier' });
     assert.equal(await segment.exportBlob(), null, '沒有形狀：null');
 });
+
+// ================================================================ 互動（Task 7）
+const view = (page) => page.segment.view();
+const spinning = (page) => page.$('sfShapeSpin').getAttribute('aria-pressed') === 'true';
+const down = (page, id, x, y, extra) => page.stage.fire('pointerdown', { pointerId: id, clientX: x, clientY: y, pointerType: 'mouse', button: 0, ...extra });
+const move = (page, id, x, y, extra) => page.stage.fire('pointermove', { pointerId: id, clientX: x, clientY: y, pointerType: 'mouse', ...extra });
+const up = (page, id, type = 'pointerup') => page.stage.fire(type, { pointerId: id });
+
+test('[shape3d-ui] 拖曳：水平移動改 yaw、垂直移動改 pitch（滑鼠），合併在一個 frame 重畫；放開後結束', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    down(page, 1, 100, 100);
+    assert.ok(page.stage.classList.contains('is-dragging'));
+    assert.deepEqual(page.captures, [1], '捕捉指標：拖出畫布外仍然跟得上');
+    move(page, 1, 140, 100);
+    assert.deepEqual(view(page), { yaw: 25, pitch: 20, zoom: 1 }, '往右拖 40 px：物體跟著指標轉（yaw 減少 20°）');
+    move(page, 1, 140, 110);
+    move(page, 1, 140, 120);
+    assert.deepEqual(view(page), { yaw: 25, pitch: 30, zoom: 1 }, '往下拖：從上方看（pitch 增加）');
+    assert.equal(page.frames.pending(), 1, '三次移動只排一個 frame');
+    page.frames.flush();
+    assert.equal(page.paints(), 2);
+    assert.equal(page.builds(), 1, '旋轉不重建網格');
+    up(page, 1);
+    assert.ok(!page.stage.classList.contains('is-dragging'));
+    assert.deepEqual(page.captures, []);
+    move(page, 1, 300, 300);
+    assert.deepEqual(view(page), { yaw: 25, pitch: 30, zoom: 1 }, '放開後的移動不再旋轉');
+    down(page, 2, 0, 0);
+    up(page, 2, 'pointercancel');
+    assert.ok(!page.stage.classList.contains('is-dragging'), 'pointercancel 也結束拖曳');
+    move(page, 2, 50, 0);
+    assert.deepEqual(view(page), { yaw: 25, pitch: 30, zoom: 1 });
+});
+
+test('[shape3d-ui] 拖曳：滑鼠只認主鍵；pitch 夾在 ±89°；觸控只改 yaw', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    down(page, 1, 0, 0, { button: 2 });
+    move(page, 1, 100, 0);
+    assert.deepEqual(view(page), V.DEFAULT_VIEW, '右鍵不旋轉');
+    up(page, 1);
+    down(page, 1, 0, 0);
+    move(page, 1, 0, 1000);
+    assert.equal(view(page).pitch, 89);
+    up(page, 1);
+    const before = view(page);
+    down(page, 5, 200, 200, { pointerType: 'touch' });
+    move(page, 5, 180, 260, { pointerType: 'touch' });
+    assert.deepEqual(view(page), { yaw: before.yaw + 10, pitch: before.pitch, zoom: 1 }, '觸控：垂直位移不改仰角');
+    up(page, 5);
+});
+
+test('[shape3d-ui] setPointerCapture 丟例外（合成事件、指標已不在）時拖曳照常運作', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    page.stage.setPointerCapture = () => { throw new Error('No active pointer with the given id is found.'); };
+    page.stage.releasePointerCapture = () => { throw new Error('No active pointer with the given id is found.'); };
+    down(page, 9, 10, 10, { pointerType: 'touch' });
+    move(page, 9, 30, 10, { pointerType: 'touch' });
+    up(page, 9);
+    assert.deepEqual(view(page), { yaw: 35, pitch: 20, zoom: 1 });
+    assert.ok(!page.stage.classList.contains('is-dragging'));
+});
+
+test('[shape3d-ui] 兩指：距離加倍 → zoom 約 ×2，不旋轉；縮回去 → 回到原來的 zoom；夾在範圍內', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    down(page, 1, 100, 100, { pointerType: 'touch' });
+    down(page, 2, 200, 100, { pointerType: 'touch' });
+    move(page, 2, 300, 100, { pointerType: 'touch' });
+    assert.ok(Math.abs(view(page).zoom - 2) < 1e-9);
+    assert.deepEqual([view(page).yaw, view(page).pitch], [45, 20], '兩指時不旋轉');
+    move(page, 1, 200, 100, { pointerType: 'touch' });
+    assert.ok(Math.abs(view(page).zoom - 1) < 1e-9);
+    move(page, 2, 5000, 100, { pointerType: 'touch' });
+    assert.equal(view(page).zoom, 4);
+    up(page, 2);
+    move(page, 1, 210, 100, { pointerType: 'touch' });
+    assert.equal(view(page).yaw, 40, '剩一指：回到旋轉，位置不跳');
+    up(page, 1);
+});
+
+test('[shape3d-ui] 鍵盤：方向鍵旋轉、+ − 縮放、0 與 Home 重設，都取消預設行為；其他鍵不處理', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    const key = (name, extra) => page.stage.fire('keydown', { key: name, ...extra });
+    const left = key('ArrowLeft');
+    assert.equal(left.defaultPrevented, true);
+    assert.deepEqual(view(page), { yaw: 40, pitch: 20, zoom: 1 });
+    assert.equal(page.frames.pending(), 1);
+    page.frames.flush();
+    assert.equal(page.paints(), 2);
+    for (const [name, expected] of [['ArrowRight', { yaw: 45, pitch: 20, zoom: 1 }], ['ArrowUp', { yaw: 45, pitch: 25, zoom: 1 }],
+        ['ArrowDown', { yaw: 45, pitch: 20, zoom: 1 }]]) {
+        assert.equal(key(name).defaultPrevented, true, name);
+        assert.deepEqual(view(page), expected, name);
+    }
+    assert.equal(key('+').defaultPrevented, true);
+    assert.ok(Math.abs(view(page).zoom - 1.1) < 1e-9);
+    key('-');
+    key('-');
+    assert.ok(Math.abs(view(page).zoom - 1 / 1.1) < 1e-9);
+    key('ArrowLeft');
+    assert.equal(key('Home').defaultPrevented, true);
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    key('ArrowUp');
+    assert.equal(key('0').defaultPrevented, true);
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    page.frames.flush();
+    const paints = page.paints();
+    for (const name of ['a', 'Tab', 'Enter', ' ', 'PageDown', 'Escape']) {
+        assert.equal(key(name).defaultPrevented, false, name);
+        assert.equal(page.frames.pending(), 0, name);
+    }
+    assert.equal(page.paints(), paints);
+    // 瀏覽器自己的快速鍵（Ctrl/⌘ ＋ 加減、0）不攔
+    for (const extra of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+        assert.equal(key('+', extra).defaultPrevented, false);
+        assert.equal(key('0', extra).defaultPrevented, false);
+        assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    }
+});
+
+test('[shape3d-ui] 滾輪：沒按 Ctrl 不攔截（頁面照常捲動）；Ctrl＋滾輪縮放並取消預設；以 passive: false 註冊', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    assert.deepEqual(page.stage.listenerOptions.wheel, [{ passive: false }]);
+    const plain = page.stage.fire('wheel', { deltaY: -120, ctrlKey: false });
+    assert.equal(plain.defaultPrevented, false);
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    assert.equal(page.frames.pending(), 0);
+    const zoomIn = page.stage.fire('wheel', { deltaY: -10, ctrlKey: true });
+    assert.equal(zoomIn.defaultPrevented, true);
+    assert.ok(view(page).zoom > 1 && view(page).zoom < 1.3);
+    const afterIn = view(page).zoom;
+    page.stage.fire('wheel', { deltaY: 10, ctrlKey: true });
+    assert.ok(Math.abs(view(page).zoom - 1) < 1e-9, '反方向同樣的量回到原來的倍率');
+    page.stage.fire('wheel', { deltaY: -100000, ctrlKey: true });
+    assert.ok(view(page).zoom <= afterIn * 1.5, '單一事件的倍率有上限（滑鼠滾輪一格不會跳好幾倍）');
+    for (let i = 0; i < 60; i++) page.stage.fire('wheel', { deltaY: -500, ctrlKey: true });
+    assert.equal(view(page).zoom, 4);
+    assert.equal(page.frames.pending(), 1);
+});
+
+test('[shape3d-ui] 「重設視角」回到預設視角；放大時狀態行提醒只看得到中央', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    page.stage.fire('keydown', { key: 'ArrowLeft' });
+    page.stage.fire('keydown', { key: '+' });
+    assert.match(page.$('sfShapeStatus').textContent, /已放大/);
+    page.$('sfShapeReset').fire('click');
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    assert.equal(page.$('sfShapeStatus').textContent, '');
+    page.frames.flush();
+    assert.equal(page.paints(), 1, '轉走再轉回，中間沒有畫過：畫面上還是預設視角那一張，不必重畫');
+    page.stage.fire('keydown', { key: '-' });
+    assert.equal(page.$('sfShapeStatus').textContent, '', '縮小不需要提醒');
+});
+
+test('[shape3d-ui] 曲線檢視或沒有形狀時，舞台上的事件不改視角、不排 frame', () => {
+    const page = m4.shapePage();
+    down(page, 1, 0, 0);
+    move(page, 1, 50, 50);
+    up(page, 1);
+    assert.equal(page.stage.fire('keydown', { key: 'ArrowLeft' }).defaultPrevented, false);
+    assert.equal(page.stage.fire('wheel', { deltaY: -10, ctrlKey: true }).defaultPrevented, false);
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    assert.equal(page.frames.requested, 0);
+});
+
+// ---------------------------------------------------------------- 自動旋轉
+test('[shape3d-ui] 自動旋轉預設關閉；按下後 aria-pressed、以 raf 排程，yaw 的增量與時間差成正比', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    assert.equal(spinning(page), false);
+    assert.equal(page.$('sfShapeSpin').disabled, false);
+    assert.equal(page.frames.pending(), 0, '沒開自動旋轉就沒有任何 frame 在排');
+    page.$('sfShapeSpin').fire('click');
+    assert.equal(spinning(page), true);
+    assert.equal(page.frames.pending(), 1);
+    page.frames.flush(1000);                 // 第一格只記時間
+    assert.deepEqual(view(page), V.DEFAULT_VIEW);
+    page.frames.flush(1100);
+    const first = view(page).yaw - 45;
+    assert.ok(first > 0, '往同一個方向轉');
+    page.frames.flush(1300);
+    const second = view(page).yaw - 45 - first;
+    assert.ok(Math.abs(second - 2 * first) < 1e-9, `200 ms 的增量是 100 ms 的兩倍（${first}、${second}）`);
+    assert.equal(view(page).pitch, 20);
+    assert.equal(page.paints(), 3, '每一格重畫一次');
+    assert.equal(page.frames.pending(), 1, '只有一個迴圈');
+    assert.equal(page.builds(), 1);
+});
+
+test('[shape3d-ui] 自動旋轉上限 30 fps：太快來的 frame 不畫也不轉；停很久之後不會一次轉一大步', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    page.$('sfShapeSpin').fire('click');
+    page.frames.flush(0);
+    page.frames.flush(100);
+    const yaw = view(page).yaw;
+    const paints = page.paints();
+    page.frames.flush(110);
+    page.frames.flush(120);
+    assert.equal(view(page).yaw, yaw);
+    assert.equal(page.paints(), paints);
+    assert.equal(page.frames.pending(), 1);
+    page.frames.flush(134);
+    assert.ok(view(page).yaw > yaw, '滿 1/30 秒才前進');
+    const before = view(page).yaw;
+    page.frames.flush(60000);
+    assert.ok(view(page).yaw - before < 10, '分頁被節流後的第一格不會轉一大步');
+});
+
+test('[shape3d-ui] 自動旋轉：再按一次 cancelRaf；任何路徑都只有一個迴圈', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    const spin = page.$('sfShapeSpin');
+    spin.fire('click');
+    page.ctx.refresh();
+    page.ctx.refresh();
+    page.observers[0].fn();
+    page.document.fire('visibilitychange');
+    page.document.fire('click');
+    assert.equal(page.frames.pending(), 1);
+    spin.fire('click');
+    assert.equal(spinning(page), false);
+    assert.equal(page.frames.pending(), 0);
+    assert.equal(page.frames.cancelled, 1);
+    spin.fire('click');
+    spin.fire('click');
+    spin.fire('click');
+    assert.equal(page.frames.pending(), 1);
+    page.frames.flush(0);
+    page.frames.flush(50);
+    assert.equal(page.frames.pending(), 1);
+});
+
+test('[shape3d-ui] 自動旋轉在切回曲線、擬合進行中、頁面隱藏、離開本分頁、拖曳中都停止排程；條件恢復後續轉', async () => {
+    const page = m4.shapePage();
+    const input = page.$('sfFileInput');
+    input.files = [ui.fixtureFile('SYNTH_sphere_10.dat')];
+    input.fire('change');
+    await ui.flush();
+    await ui.flush();
+    page.showShape();
+    page.$('sfShapeSpin').fire('click');
+    const running = () => page.frames.pending() === 1;
+    const settle = () => { page.frames.flush(0); page.frames.flush(40); page.frames.flush(80); };
+    settle();
+    assert.ok(running());
+
+    page.$('sfViewCurve').fire('click');
+    settle();
+    assert.ok(!running(), '曲線檢視');
+    assert.equal(spinning(page), true, '開關的狀態保留');
+    page.$('sfViewShape').fire('click');
+    assert.ok(page.frames.pending() >= 1, '回到結構檢視：續轉');
+    settle();
+
+    page.ctx.dispatch({ type: 'fitStarted' });
+    settle();
+    assert.ok(!running(), '擬合進行中');
+    page.ctx.dispatch({ type: 'fitSettled', result: null });
+    assert.ok(running(), '擬合結束：續轉');
+
+    page.document.hidden = true;
+    page.document.fire('visibilitychange');
+    settle();
+    assert.ok(!running(), '頁面隱藏');
+    page.document.hidden = false;
+    page.document.fire('visibilitychange');
+    assert.ok(running());
+
+    page.$('section-sasfit').classList.remove('active');
+    settle();
+    assert.ok(!running(), '離開本分頁');
+    page.$('section-sasfit').classList.add('active');
+    page.document.fire('click');
+    assert.ok(running(), '側欄點回來：續轉');
+
+    down(page, 1, 0, 0);
+    settle();
+    assert.ok(!running(), '拖曳中');
+    up(page, 1);
+    assert.ok(running());
+
+    const before = view(page).yaw;
+    page.frames.flush(1000);
+    page.frames.flush(1100);
+    assert.ok(view(page).yaw > before, '恢復後確實在轉');
+});
+
+test('[shape3d-ui] 沒有形狀的模型：自動旋轉停用並停止', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    page.$('sfShapeSpin').fire('click');
+    page.act(setModel('guinier'));
+    page.frames.flush(0);
+    page.frames.flush(50);
+    assert.equal(page.$('sfShapeSpin').disabled, true);
+    assert.equal(page.frames.pending(), 0);
+    page.act(setModel('sphere'));
+    assert.equal(page.$('sfShapeSpin').disabled, false);
+    assert.ok(page.frames.pending() >= 1);
+});
+
+test('[shape3d-ui] prefers-reduced-motion：自動旋轉停用、title 與說明補一句，不排任何 frame', () => {
+    const page = m4.shapePage({ reducedMotion: true });
+    assert.deepEqual(page.queries, [], '曲線檢視時不查詢');
+    page.showShape();
+    assert.ok(page.queries.includes('(prefers-reduced-motion: reduce)'));
+    const spin = page.$('sfShapeSpin');
+    assert.equal(spin.disabled, true);
+    assert.equal(spin.getAttribute('title'), '系統設定為減少動態效果，已停用自動旋轉');
+    assert.match(page.$('sfShapeHelp').textContent, /系統設定為減少動態效果，已停用自動旋轉/);
+    spin.fire('click');
+    assert.equal(spinning(page), false);
+    assert.equal(page.frames.pending(), 0);
+    // 沒有這個設定時：沒有 title，說明是原來那一句
+    const normal = m4.shapePage();
+    normal.showShape();
+    assert.equal(normal.$('sfShapeSpin').getAttribute('title'), null);
+    assert.equal(normal.$('sfShapeHelp').textContent, '拖曳旋轉；Ctrl＋滾輪或兩指縮放；按比例繪製（正交投影），不能平移');
+});
+
+test('[shape3d-ui] 開著自動旋轉時系統改成減少動態：下一次重繪就停', () => {
+    const page = m4.shapePage();
+    page.showShape();
+    page.$('sfShapeSpin').fire('click');
+    page.media.matches = true;
+    page.ctx.refresh();
+    page.frames.flush(0);
+    page.frames.flush(50);
+    assert.equal(page.frames.pending(), 0);
+    assert.equal(spinning(page), false);
+    assert.equal(page.$('sfShapeSpin').disabled, true);
+});
+
+test('[shape3d-ui] 觸控裝置（pointer: coarse）：說明補一句只能左右旋轉', () => {
+    const page = m4.shapePage({ coarse: true });
+    page.showShape();
+    assert.match(page.$('sfShapeHelp').textContent, /觸控時只能左右旋轉/);
+});
+
+test('[shape3d-ui] create 綁定的監聽器數目固定；section 只建立一次', () => {
+    const page = m4.shapePage();
+    assert.equal(page.creates(), 1);
+    assert.equal(page.Section.init(), true);
+    assert.equal(page.creates(), 1, '第二次 init 不再 create');
+    const counts = Object.fromEntries(['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'keydown', 'wheel']
+        .map((type) => [type, page.stage.listenerCount(type)]));
+    assert.deepEqual(counts, { pointerdown: 1, pointermove: 1, pointerup: 1, pointercancel: 1, keydown: 1, wheel: 1 });
+    for (const id of ['sfViewCurve', 'sfViewShape', 'sfShapeReset', 'sfShapeSpin']) assert.equal(page.$(id).listenerCount('click'), 1, id);
+    assert.equal(page.document.listenerCount('visibilitychange'), 1);
+    assert.equal(page.windowListeners.beforeprint.length, 1);
+    assert.equal(page.observers.length, 1);
+});

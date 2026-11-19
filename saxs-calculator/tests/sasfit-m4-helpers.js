@@ -7,7 +7,9 @@
  *                   requested／cancelled 計數
  *   shapePage(options) 一份啟動好的頁面，3D 需要的相依都已注入：
  *                   frames、observers（observeResize 的 { element, fn }）、canvases（createCanvas 建的假畫布）、
- *                   media（matchMedia 回傳的同一個物件；options.reducedMotion 決定 matches）、
+ *                   media（matchMedia('(prefers-reduced-motion: reduce)') 回傳的同一個物件；options.reducedMotion
+ *                   決定 matches；其他查詢回傳另一個物件，options.coarse 決定它的 matches）、
+ *                   captures（舞台目前捕捉中的 pointerId）、
  *                   windowListeners（window.addEventListener 收到的 { type: [fn] }）、
  *                   context／canvas／stage（畫面上的畫布與舞台；stage 的 CSS 尺寸預設 575×414）、
  *                   segment（SasFitShape3d.create 的回傳）、creates()（create 被呼叫的次數）、
@@ -91,12 +93,13 @@ function bootWith(real, options) {
     }
 }
 
-function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion = false, ratio = 1, size = [575, 414], ...rest } = {}) {
+function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion = false, coarse = false, ratio = 1, size = [575, 414], ...rest } = {}) {
     const frames = fakeFrames();
     const observers = [];
     const canvases = [];
     const queries = [];
     const media = { matches: reducedMotion };
+    const pointer = { matches: coarse };
     const windowListeners = {};
     countBuilds();
     counters.builds = 0;
@@ -112,7 +115,7 @@ function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion
         modules, ...rest,
         deps: {
             raf: frames.raf, cancelRaf: frames.cancelRaf,
-            matchMedia: (query) => { queries.push(query); return media; },
+            matchMedia: (query) => { queries.push(query); return /reduced-motion/.test(query) ? media : pointer; },
             createCanvas: () => { const canvas = fakeCanvas(); canvases.push(canvas); return canvas; },
             observeResize: (element, fn) => { observers.push({ element, fn }); },
         },
@@ -122,9 +125,12 @@ function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion
     Object.assign(canvas, { width: 300, height: 150, contexts: 0, getContext(kind) { canvas.contexts += 1; return kind === '2d' ? context : null; } });
     const stage = page.$('sfShapeStage');
     [stage.clientWidth, stage.clientHeight] = size;
+    const captures = [];
+    stage.setPointerCapture = (id) => { captures.push(id); };
+    stage.releasePointerCapture = (id) => { captures.splice(captures.indexOf(id), 1); };
     return {
         ...page, frames, observers, canvases, queries, media, windowListeners, context, canvas, stage,
-        segment: captured.segment, creates: () => captured.creates,
+        segment: captured.segment, creates: () => captured.creates, captures,
         paints: () => context.only('clearRect').length,
         builds: () => counters.builds,
         /** 換表單並重繪（等同使用者在參數表改了一格）。 */
