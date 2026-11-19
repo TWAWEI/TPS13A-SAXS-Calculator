@@ -672,7 +672,7 @@
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfSendIucr" aria-describedby="sfSendIucrNote" disabled>送進 IUCr 表格</button>
                                 </div>
                                 <p class="stat-sub" id="sfExportNote" role="status"></p>
-                                <p class="stat-sub" id="sfSendIucrNote">「送進 IUCr 表格」尚未啟用</p>
+                                <p class="stat-sub" id="sfSendIucrNote" role="status"></p>
                             </div>
                         </div>
 
@@ -1457,6 +1457,12 @@
                                         <td>kDa</td>
                                     </tr>
                                 </tbody>
+                                <!-- sasfit:begin -->
+                                <tbody id="iucr-sf-body" class="iucr-sf-body" data-empty="true">
+                                    <tr id="iucr-sf-heading" class="table-section-header"><td colspan="5">Model fitting (analytical form factor)</td></tr>
+                                    <tr id="iucr-sf-empty"><td></td><td colspan="4">尚未送入擬合結果</td></tr>
+                                </tbody>
+                                <!-- sasfit:end -->
                             </table>
                         </div>
                     </div>

@@ -10,7 +10,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { SasFitExport, SasFitReport, SasFitJobs, SasFitForm } = require('./load.js');
+const { SasFitExport, SasFitReport, SasFitJobs, SasFitForm, SasFitIucr } = require('./load.js');
 const ui = require('./sasfit-ui-helpers.js');
 const m4 = require('./sasfit-m4-helpers.js');
 
@@ -358,10 +358,86 @@ test('[sasfit-export-ui] 預設的 download：click 丟例外也會移除節點�
     });
 });
 
-// ---------------------------------------------------------------- 送進 IUCr 表格
-test('[sasfit-export-ui] 「送進 IUCr 表格」在綁定之前始終停用', () => {
+// ---------------------------------------------------------------- 送進 IUCr 表格（Task 17）
+const sendNote = (p) => p.$('sfSendIucrNote').textContent;
+
+test('[sasfit-export-ui] 送進 IUCr：沒有結果、未收斂、參數改過、擬合進行中都停用並說明原因', () => {
     const p = page();
     assert.equal(p.$('sfSendIucr').disabled, true);
-    p.fit();
+    assert.equal(sendNote(p), '尚未擬合');
+    p.fit({ status: 'maxiter' });
     assert.equal(p.$('sfSendIucr').disabled, true);
+    assert.equal(sendNote(p), '擬合未收斂，不能送進表格');
+    p.fit();
+    assert.equal(p.$('sfSendIucr').disabled, false);
+    assert.equal(sendNote(p), '');
+    p.ctx.setForm(SasFitForm.reduce(p.ctx.getForm(), { type: 'setValue', name: 'sld', value: '2' }));
+    p.ctx.refresh();
+    assert.equal(p.$('sfSendIucr').disabled, true);
+    assert.equal(sendNote(p), '參數在擬合後改過；請重新擬合，或還原擬合前的參數');
+    p.ctx.setForm(SasFitForm.reduce(p.ctx.getForm(), { type: 'setValue', name: 'sld', value: '1' }));
+    p.ctx.dispatch({ type: 'fitStarted' });
+    assert.equal(p.$('sfSendIucr').disabled, true);
+    assert.equal(sendNote(p), '擬合進行中，結束後才能送出');
+});
+
+test('[sasfit-export-ui] 送進 IUCr：按下後把 SasFitIucr.data 的凍結物件交給 deps.sendIucr，說明已送出，焦點留在按鈕', () => {
+    const p = page();
+    const { file, result } = p.fit();
+    p.$('sfSendIucr').fire('click');
+    assert.equal(p.sent.length, 1);
+    const data = p.sent[0];
+    assert.ok(Object.isFrozen(data) && Object.isFrozen(data.params));
+    assert.deepEqual(data, SasFitIucr.data({ fileName: file.fileName, fitResult: result, form: p.ctx.getForm(), version: '9.9', absolute: true }));
+    assert.equal(data.datasetName, 'SYNTH_sphere_10.dat');
+    assert.ok(data.software.endsWith('v9.9'));
+    assert.equal(sendNote(p), '已送進 IUCr 表格（SYNTH_sphere_10.dat）；再次送出會取代它');
+    assert.equal(p.$('sfSendIucr').focusCount, 1);
+    p.ctx.refresh();
+    assert.equal(sendNote(p), '已送進 IUCr 表格（SYNTH_sphere_10.dat）；再次送出會取代它', '重繪不洗掉訊息');
+    // 再送一次：是另一個新物件
+    p.$('sfSendIucr').fire('click');
+    assert.equal(p.sent.length, 2);
+    assert.notEqual(p.sent[1], p.sent[0]);
+    assert.deepEqual(p.sent[1], p.sent[0]);
+});
+
+test('[sasfit-export-ui] 送出後又改了參數：不再送出，說明改回不能送的原因', () => {
+    const p = page();
+    p.fit();
+    p.$('sfSendIucr').fire('click');
+    p.ctx.setForm(SasFitForm.reduce(p.ctx.getForm(), { type: 'setValue', name: 'radius', value: '70' }));
+    p.ctx.refresh();
+    assert.equal(p.$('sfSendIucr').disabled, true);
+    assert.equal(sendNote(p), '參數在擬合後改過；請重新擬合，或還原擬合前的參數');
+    assert.equal(p.sent.length, 1);
+});
+
+test('[sasfit-export-ui] 送進 IUCr：sendIucr 或 data() 丟例外 → 訊息顯示在 sfSendIucrNote、console.warn，頁面其他部分照常', async () => {
+    const p = page({ deps: { sendIucr: () => { throw new Error('table missing'); } } });
+    p.fit();
+    const warnings = await ui.captureConsole('warn', () => { p.$('sfSendIucr').fire('click'); });
+    assert.match(sendNote(p), /送出失敗：table missing/);
+    assert.equal(warnings.length, 1);
+    assert.equal(p.$('sfExportCsv').disabled, false);
+    const q = page({ deps: { version: () => null } });
+    q.fit();
+    const more = await ui.captureConsole('warn', () => { q.$('sfSendIucr').fire('click'); });
+    assert.match(sendNote(q), /送出失敗/);
+    assert.equal(q.sent.length, 0);
+    assert.equal(more.length, 1);
+});
+
+test('[sasfit-export-ui] 預設的 sendIucr 是頁面的 setIUCrModelFit（頂層函式在瀏覽器裡是 window 的屬性）', () => {
+    const received = [];
+    window.setIUCrModelFit = (data) => { received.push(data); };
+    try {
+        const p = page({ deps: { sendIucr: undefined } });
+        p.fit();
+        p.$('sfSendIucr').fire('click');
+        assert.equal(received.length, 1);
+        assert.equal(received[0].model, 'sphere');
+    } finally {
+        delete window.setIUCrModelFit;
+    }
 });

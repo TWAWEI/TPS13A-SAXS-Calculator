@@ -323,3 +323,10 @@ test('[sasfit-iucr] resultMatchesForm 是送出的條件：fixture 的表單與�
         assert.equal(SasFitJobs.resultMatchesForm(h.formOf(result), result), true);
     });
 });
+
+test('[sasfit-iucr] index.html 的靜態擬合段（區段 3）與 rowsHtml(null) 相同（去掉標籤之間的空白後）', () => {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const m = /<tbody id="iucr-sf-body" class="iucr-sf-body" data-empty="true">([\s\S]*?)<\/tbody>/.exec(page);
+    assert.ok(m, 'index.html 沒有 tbody#iucr-sf-body');
+    assert.equal(m[1].replace(/>\s+</g, '><').trim(), U.rowsHtml(null));
+});

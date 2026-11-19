@@ -1,7 +1,8 @@
 /**
  * sasfit-export-ui.js -- the export buttons of the SAS fitting page: the
  * fit-curve CSV, the report TXT, the sequence CSV, the PNG of every chart and
- * of the 3D sketch (design spec 9; plan M4 Task 15). Original code.
+ * of the 3D sketch, and "send to the IUCr table" (design spec 8, 9; plan M4
+ * Tasks 15 and 17). Original code.
  *
  * A segment module of section-sasfit.js (key 'export'; it is not a tab). It
  * only wires: every string comes from the pure builders (SasFitExport,
@@ -33,10 +34,16 @@
  *       Nothing here asks the network layer for a data: or blob: URL -- the
  *       page's connect-src refuses both.
  *   #sfShapePng                   ctx.shape.exportBlob() of the 3D sketch
+ *   #sfSendIucr                   not a file: SasFitIucr.data of the fit target's result goes to
+ *       ctx.deps.sendIucr (the IUCr table page's setIUCrModelFit) as a NEW frozen object on every
+ *       click. It is enabled only while SasFitIucr.canSend says so (converged, not blocked, still
+ *       the parameters on the page) and no fit runs; #sfSendIucrNote says why not, or that it was
+ *       sent. The table keeps what was sent: editing a parameter afterwards changes only the note.
  * Text files start with a BOM (Excel then reads UTF-8).
  *
  * ctx.deps used here: download(blob, fileName), now() -> ms, version() -> the
- * page version (the ?v= of the scripts) or null, plots.getChart(id).
+ * page version (the ?v= of the scripts) or null, plots.getChart(id),
+ * sendIucr(data).
  *
  * Every failure is caught: the message goes to #sfExportNote (textContent)
  * and the detail to console.warn; the rest of the page is not affected.
@@ -52,6 +59,7 @@
     const STOPPED = 'stopped';
     const LOG = '[sasfit]';
     const NOTE_ID = 'sfExportNote';
+    const SEND_NOTE_ID = 'sfSendIucrNote';
     const CHARTS = Object.freeze({
         sfMainPng: Object.freeze({ chart: 'sfMainChart', kind: 'png-main' }),
         sfResidualPng: Object.freeze({ chart: 'sfResidualChart', kind: 'png-residual' }),
@@ -68,6 +76,9 @@
         noSequence: '尚無序列擬合的結果',
         noVersion: '讀不到頁面版本（腳本網址沒有 ?v=），無法寫入軟體版本；請重新整理頁面',
         notShape: '切到「結構」檢視且模型有固定形狀時才能匯出',
+        sendRunning: '擬合進行中，結束後才能送出',
+        sent: (name) => '已送進 IUCr 表格（' + name + '）；再次送出會取代它',
+        sendFailed: (message) => '送出失敗：' + message,
         done: (name) => '已下載 ' + name,
         failed: (message) => '匯出失敗：' + message,
     });
@@ -280,6 +291,46 @@
         return { reason: '', note: globalThis.SasFitJobs.resultMatchesForm(ctx.getForm(), result) ? '' : TEXT.stale };
     }
 
+    /** Why the result cannot go to the IUCr table ('' when it can). */
+    function sendReason(ctx, state) {
+        if (isRunning(state)) return TEXT.sendRunning;
+        return globalThis.SasFitIucr.canSend(ctx.getForm(), activeResult(state)).reason;
+    }
+
+    function renderSend(ui, state) {
+        const { ctx, store } = ui;
+        const reason = sendReason(ctx, state);
+        ctx.el('sfSendIucr').disabled = reason !== '';
+        // "sent" stays while nothing changed since; a changed parameter brings the reason back (the table keeps its snapshot)
+        const { sent, sentState, sentForm } = store.get();
+        const kept = reason === '' && sentState === state && sentForm === ctx.getForm() ? sent : '';
+        const note = kept !== '' ? kept : reason;
+        if (ctx.el(SEND_NOTE_ID).textContent !== note) ctx.el(SEND_NOTE_ID).textContent = note;
+    }
+
+    /** Sends the result of the fit target to the IUCr table page as a new frozen object; nothing it throws leaves this module. */
+    function sendIucr(ui) {
+        const { ctx, store } = ui;
+        const state = ctx.getState();
+        const form = ctx.getForm();
+        try {
+            const file = activeFile(state);
+            const version = ctx.deps.version();
+            if (typeof version !== 'string' || version === '') throw new Error(TEXT.noVersion);
+            const data = globalThis.SasFitIucr.data({
+                fileName: file === null ? '' : file.fileName, fitResult: activeResult(state), form, version,
+                absolute: file !== null && file.dataset.kind === 'official',
+            });
+            ctx.deps.sendIucr(data);
+            store.set({ sent: TEXT.sent(data.datasetName), sentState: state, sentForm: form });
+            ctx.el(SEND_NOTE_ID).textContent = store.get().sent;
+            ctx.el('sfSendIucr').focus();
+        } catch (err) {
+            console.warn(LOG + ' 送進 IUCr 表格失敗', err);
+            ctx.el(SEND_NOTE_ID).textContent = TEXT.sendFailed(err instanceof Error ? err.message : String(err));
+        }
+    }
+
     function render(ui) {
         const { ctx, store } = ui;
         const state = ctx.getState();
@@ -290,7 +341,7 @@
         setButton(ctx, 'sfSeqTrendPng', ctx.el('sfSeqTrendBox').hidden ? TEXT.noTrend : '');
         setButton(ctx, 'sfShapePng', shapeAvailable(ctx) ? '' : TEXT.notShape);
         setButton(ctx, 'sfMainPng', '');
-        ctx.el('sfSendIucr').disabled = true;                        // not wired yet: it stays as the markup ships it
+        renderSend(ui, state);
         // what the last click said stays until the page state changes; then the note describes the state again
         const kept = store.get().messageFor === state ? store.get().message : '';
         const note = kept !== '' ? kept : fit.note;
@@ -304,10 +355,11 @@
         ctx.el('sfSeqCsv').addEventListener('click', exporting(ui, sequenceFile));
         Object.keys(CHARTS).forEach((id) => ctx.el(id).addEventListener('click', exporting(ui, (context) => chartFile(context, CHARTS[id]))));
         ctx.el('sfShapePng').addEventListener('click', () => exportShape(ui));
+        ctx.el('sfSendIucr').addEventListener('click', () => sendIucr(ui));
     }
 
     function create(ctx) {
-        const ui = Object.freeze({ ctx, store: makeStore({ message: '', messageFor: null }) });
+        const ui = Object.freeze({ ctx, store: makeStore({ message: '', messageFor: null, sent: '', sentState: null, sentForm: null }) });
         bind(ui);
         return Object.freeze({ render: () => render(ui) });
     }

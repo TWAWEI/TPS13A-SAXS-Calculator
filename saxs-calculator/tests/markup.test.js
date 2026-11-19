@@ -43,10 +43,12 @@ const END = '<!-- sasfit:end -->';
 const LOOSE_MARKER = /<!--\s*sasfit:(?:begin|end)\s*-->/g;
 
 /** 依文件順序，每個區段必須含對應的字串（M3：側欄按鈕、整個分頁）。 */
-const REGION_SIGNATURES = Object.freeze(['data-section="sasfit"', 'id="section-sasfit"']);
+const REGION_SIGNATURES = Object.freeze(['data-section="sasfit"', 'id="section-sasfit"', 'id="iucr-sf-body"']);
 
 /** 區段內允許的 id：分頁本身，或規格 §5 的前綴 sf。 */
-const REGION_ID = /^(?:section-sasfit|sf[A-Z]\w*)$/;
+const SF = /^(?:section-sasfit|sf[A-Z]\w*)$/;
+/** 每個區段自己的 id 樣式（依文件順序）：第三個是 IUCr 表格內的擬合段，前綴 iucr-sf。 */
+const REGION_IDS = Object.freeze([SF, SF, /^iucr-sf(?:-[a-z0-9]+)*$/]);
 
 /** 指向其他元素 id 的屬性（值可以是以空白分隔的多個 id）。 */
 const REFERENCE_ATTRIBUTES = Object.freeze(['for', 'aria-controls', 'aria-labelledby', 'aria-describedby']);
@@ -163,10 +165,27 @@ test('[markup] sasfit 區段：id 不重複（跨區段也不重複），也不�
     assert.deepEqual(ids.filter(id => outside.has(id)), [], '區段內的 id 與區段外的衝突');
 });
 
-test('[markup] sasfit 區段：id 只能是 section-sasfit 或 sf 前綴', () => {
+test('[markup] sasfit 區段：每個區段的 id 只能符合自己的樣式（前兩段 section-sasfit 或 sf 前綴，第三段 iucr-sf 前綴）', () => {
     const ids = REGIONS.flatMap(region => attributeValues(region, 'id'));
     assert.ok(ids.includes('section-sasfit'), '區段內找不到 section-sasfit');
-    assert.deepEqual(ids.filter(id => !REGION_ID.test(id)), []);
+    assert.equal(REGION_IDS.length, REGION_SIGNATURES.length);
+    REGIONS.forEach((region, i) => {
+        assert.deepEqual(attributeValues(region, 'id').filter(id => !REGION_IDS[i].test(id)), [], `第 ${i + 1} 個區段`);
+    });
+});
+
+test('[markup] sasfit 區段 3：是 #iucrTable 內完整的一個 <tbody>，沒有任何表單控制項', () => {
+    const region = REGIONS[2].trim();
+    assert.match(region, /^<tbody\b/);
+    assert.match(region, /<\/tbody>$/);
+    assert.equal(countOf(region, '<tbody'), 1);
+    assert.equal(countOf(region, '</tbody>'), 1);
+    const tableStart = PAGE.indexOf('id="iucrTable"');
+    const tableEnd = PAGE.indexOf('</table>', tableStart);
+    const at = PAGE.indexOf('id="iucr-sf-body"');
+    assert.ok(tableStart >= 0 && tableEnd > tableStart, '找不到 #iucrTable');
+    assert.ok(at > tableStart && at < tableEnd, '區段 3 不在 #iucrTable 內');
+    assert.doesNotMatch(region, /<(?:input|select|textarea|button)\b/i);
 });
 
 test('[markup] sasfit 區段：每個表單控制項都有 id 與標籤；for／aria-controls／aria-labelledby／aria-describedby 指到的 id 都在區段內', () => {

@@ -15,8 +15,10 @@ function initIUCrSection() {
         if (!table) return;
         try {
             // Modern Clipboard API: copy table as both HTML and plain text
-            const html = table.outerHTML;
-            const text = table.innerText;
+            // 內容取自處理過的複本（輸入框換成現值、空的擬合段不進複製）；取值後立刻移除複本，才進入 await
+            const source = iucrCopySource(table);
+            const { html, text } = source;
+            source.release();
             if (navigator.clipboard && navigator.clipboard.write) {
                 const blob = new Blob([html], { type: 'text/html' });
                 const textBlob = new Blob([text], { type: 'text/plain' });
@@ -31,12 +33,14 @@ function initIUCrSection() {
                 copyBtn.textContent = '複製表格';
             }, 2000);
         } catch (err) {
-            // Fallback for older browsers
-            const range = document.createRange();
-            range.selectNode(table);
-            window.getSelection().removeAllRanges();
-            window.getSelection().addRange(range);
+            // Fallback for older browsers：選取的同樣是處理過的複本，複製完（或失敗）一定移除
+            let source = null;
             try {
+                source = iucrCopySource(table);
+                const range = document.createRange();
+                range.selectNode(source.node);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
                 document.execCommand('copy');
                 copyBtn.textContent = '✓ 已複製';
                 setTimeout(() => {
@@ -47,10 +51,97 @@ function initIUCrSection() {
                 setTimeout(() => {
                     copyBtn.textContent = '複製表格';
                 }, 2000);
+            } finally {
+                if (source) source.release();
             }
             window.getSelection().removeAllRanges();
         }
     });
+}
+
+/**
+ * 表單控制項在複製內容裡的文字：輸入框與文字區是現值，選單是所選項目的文字。
+ *
+ * @param {HTMLElement} control - 原表格裡的控制項（複本不帶現值）
+ * @returns {string} 純文字
+ */
+function iucrControlText(control) {
+    if (control.tagName && String(control.tagName).toLowerCase() === 'select') {
+        const option = control.options ? control.options[control.selectedIndex] : null;
+        return option ? String(option.text) : '';
+    }
+    return control.value === undefined || control.value === null ? '' : String(control.value);
+}
+
+/**
+ * 表格的複本，處理成適合貼到別處的樣子（不修改原表格）：
+ * 每個表單控制項換成它「目前的值」的文字節點（值從原表格讀——cloneNode 不帶現值；文字節點由瀏覽器跳脫）；
+ * 還沒送入擬合結果的擬合段（#iucr-sf-body[data-empty="true"]）拿掉；表格直屬的註解節點拿掉。
+ *
+ * @param {HTMLTableElement} table - 畫面上的表格
+ * @returns {HTMLTableElement} 尚未掛進文件的複本
+ */
+function iucrCopyClone(table) {
+    const clone = table.cloneNode(true);
+    const live = table.querySelectorAll('input, select, textarea');
+    clone.querySelectorAll('input, select, textarea').forEach((control, i) => {
+        control.replaceWith(document.createTextNode(iucrControlText(live[i])));
+    });
+    const fitBlock = clone.querySelector('#iucr-sf-body');
+    if (fitBlock && fitBlock.getAttribute('data-empty') === 'true') fitBlock.remove();
+    Array.from(clone.childNodes).filter(node => node.nodeType === 8).forEach(node => node.remove());
+    clone.normalize();      // 相鄰的文字節點併成一個、空的文字節點（清空的輸入框）拿掉
+    return clone;
+}
+
+/**
+ * 「複製表格」的內容來源。複本掛進一個 .sr-only 容器（要有版面盒，innerText 才會依表格版面輸出 Tab 與換行），
+ * 讀出 HTML 與純文字；呼叫端用完必須 release()。從掛上到 release 要在同一個同步段落內完成
+ * （這段時間文件裡有重複的 id，瀏覽器不會在中途重繪）。讀取時丟例外也不留下容器。
+ *
+ * @param {HTMLTableElement} table - 畫面上的表格
+ * @returns {{html: string, text: string, node: HTMLTableElement, release: function(): void}} 複本的內容與移除函式
+ */
+function iucrCopySource(table) {
+    const holder = document.createElement('div');
+    holder.className = 'sr-only';
+    holder.setAttribute('aria-hidden', 'true');
+    const node = iucrCopyClone(table);
+    holder.appendChild(node);
+    table.parentNode.appendChild(holder);
+    const release = () => holder.remove();
+    try {
+        return { html: node.outerHTML, text: node.innerText, node, release };
+    } catch (err) {
+        release();
+        throw err;
+    }
+}
+
+/**
+ * 把 AppState.sasfitData 畫進 IUCr 表格的「Model fitting」段（tbody#iucr-sf-body）。
+ * 找不到該段或 SasFitIucr 不存在時什麼都不做。列的 HTML 由 SasFitIucr.rowsHtml 產生（已跳脫）。
+ *
+ * @returns {void}
+ */
+function renderIUCrModelFit() {
+    const body = document.getElementById('iucr-sf-body');
+    if (!body || typeof SasFitIucr === 'undefined') return;
+    const data = typeof AppState !== 'undefined' && AppState.sasfitData ? AppState.sasfitData : null;
+    body.innerHTML = SasFitIucr.rowsHtml(data);
+    body.setAttribute('data-empty', data === null ? 'true' : 'false');
+}
+
+/**
+ * SAS 模型擬合頁「送進 IUCr 表格」的入口：以新物件取代 AppState.sasfitData（null 表示清除）並重畫擬合段。
+ * updateIUCrTable 只由蛋白質頁與 SAXS 頁呼叫，所以擬合段在送出當下自己寫入。
+ *
+ * @param {Object|null} data - SasFitIucr.data 的回傳（凍結），或 null
+ * @returns {void}
+ */
+function setIUCrModelFit(data) {
+    AppState.sasfitData = data === undefined ? null : data;
+    renderIUCrModelFit();
 }
 
 /**

@@ -25,6 +25,7 @@
  *         download(blob, fileName)     default: SasFitExportUi.download (an object URL on a temporary <a download>)
  *         now()                 default: Date.now()
  *         version()             default: SasFitWorkerClient.scriptVersion (the ?v= of the scripts; null without one)
+ *         sendIucr(data)        default: setIUCrModelFit(data) of js/section-iucr.js (a top-level function: a window property)
  *   SasFitSection.getState() -> the frozen SasFitState state
  *   SasFitSection.getForm()  -> the frozen SasFitForm form
  *   SasFitSection.ELEMENT_IDS       the static ids of index.html this page needs; init checks all of them
@@ -205,6 +206,7 @@
             download: g.download || ((blob, fileName) => globalThis.SasFitExportUi.download(blob, fileName)),
             now: g.now || (() => Date.now()),
             version: g.version || (() => globalThis.SasFitWorkerClient.scriptVersion),
+            sendIucr: g.sendIucr || ((data) => host().setIUCrModelFit(data)),
         });
     }
 

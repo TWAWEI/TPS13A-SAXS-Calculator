@@ -429,3 +429,14 @@
         display: none;
     }
 }
+
+/* ===== IUCr 表格的「Model fitting」段（index.html 的 sasfit 區段 3）===== */
+#iucr-sf-empty td {
+    color: var(--color-text-muted);
+}
+
+/* 假設與註記是整句話：在表格裡可以折行（表格其餘儲存格是短值） */
+.iucr-sf-body td[colspan="3"] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}

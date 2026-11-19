@@ -10,6 +10,7 @@
 const AppState = {
     proteinData: null,
     saxsData: null,
+    sasfitData: null,
     charts: {},
     dndcUnlocked: false
 };
