@@ -34,9 +34,12 @@
  * Turning the sketch (#sfShapeStage; only while the sketch of a model with a shape is shown)
  *   pointer     drag turns it: DRAG_DEG degrees per pixel, the object follows the pointer (dragging right
  *               lowers the yaw, dragging down raises the pitch). The pointer is captured, the mouse turns with
- *               its main button only. A touch turns the yaw only: the stage has touch-action: pan-y, so a
- *               vertical swipe scrolls the page. Two pointers zoom by the ratio of their distances.
- *   keyboard    ArrowLeft / ArrowRight: yaw -/+ 5 degrees; ArrowUp / ArrowDown: pitch +/- 5 degrees; + or =:
+ *               its main button only. A touch turns it the same way once the browser has given the gesture to
+ *               the page: the stage has touch-action: pan-y, so a swipe that STARTS vertically scrolls the
+ *               page, and one that starts sideways turns the sketch (both angles). Two pointers zoom by the
+ *               ratio of their distances.
+ *   keyboard    the arrows turn the way a drag does -- ArrowRight / ArrowLeft: yaw -/+ 5 degrees; ArrowDown /
+ *               ArrowUp: pitch +/- 5 degrees; + or =:
  *               zoom in, -: zoom out (x 1.1); 0 or Home: the default view. Handled keys cancel their default
  *               (the page does not scroll); every other key, and any key with Ctrl / Meta / Alt, is left alone.
  *   wheel       with Ctrl only (a pinch on a trackpad arrives as Ctrl + wheel): zoom, at most WHEEL_LIMIT per
@@ -111,8 +114,8 @@
         chain: '圖中是一個代表性構形',
         zoomed: '已放大：只看得到中央的部分（不能平移）',
         noAlt: '尚無示意圖',
-        help: '拖曳旋轉；Ctrl＋滾輪或兩指縮放；按比例繪製（正交投影），不能平移',
-        touch: '觸控時只能左右旋轉（上下滑動是捲動頁面）',
+        help: '拖曳旋轉；Ctrl＋滾輪或兩指縮放；鍵盤：方向鍵旋轉、＋／－縮放、0 重設；按比例繪製（正交投影），不能平移',
+        touch: '觸控：先左右拖曳即可旋轉，直接上下滑動是捲動頁面',
         reduced: '系統設定為減少動態效果，已停用自動旋轉',
     });
     const SEPARATOR = '；';
@@ -382,6 +385,13 @@
         ctx.setHtml(ctx.el('sfShapeDims'), shapeView.dimsHtml(text.dims));
         setText(ctx.el('sfShapeExtras'), text.extras.join('\n'));
         ctx.el('sfShapeCanvas').setAttribute('aria-label', text.alt);
+        syncTextFocus(ctx.el('sfShapeText'));
+    }
+
+    /** The text box is a tab stop only while it scrolls (a keyboard user must be able to scroll it); else it is skipped. */
+    function syncTextFocus(box) {
+        if (box.scrollHeight > box.clientHeight) box.setAttribute('tabindex', '0');
+        else box.removeAttribute('tabindex');
     }
 
     function renderShape(ui) {
@@ -557,8 +567,7 @@
         if (was !== null && is !== null) {
             if (was > 0 && is > 0) turn(ui, { type: 'zoom', factor: is / was });
         } else if (Object.keys(pointers).length === 1) {
-            const dPitch = event.pointerType === 'touch' ? 0 : (now.y - last.y) * DRAG_DEG;
-            turn(ui, { type: 'rotate', dYaw: -(now.x - last.x) * DRAG_DEG, dPitch });
+            turn(ui, { type: 'rotate', dYaw: -(now.x - last.x) * DRAG_DEG, dPitch: (now.y - last.y) * DRAG_DEG });
         }
     }
 

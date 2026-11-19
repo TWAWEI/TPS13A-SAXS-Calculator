@@ -65,9 +65,9 @@
         scroll-margin-top: calc(clamp(180px, 30vh, 260px) + 11rem);
     }
 
-    /* 視窗 1024px 以下左上角有固定的選單鈕：圖固定在頂端時標題讓開它 */
+    /* 視窗 1024px 以下左上角有固定的選單鈕：圖固定在頂端時標題列（檢視切換在最前面）讓開它 */
     @media (max-width: 1024px) {
-        .sf-workspace[data-tab="model"] .sf-plot-header .card-title {
+        .sf-workspace[data-tab="model"] .sf-plot-header .sf-plot-heading {
             padding-left: 2.75rem;
         }
     }

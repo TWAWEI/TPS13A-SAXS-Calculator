@@ -48,10 +48,20 @@
  * the error of a shell's volume does not depend on its thickness. Vertices are welded by position, which is
  * safe because every surface computes a shared point with the same expression.
  *
- * The chain. Persistence length lp = b / 2 (b = Kuhn length). segments = clamp(round(8 L / b), 16, 200) steps of
- * ds = L / segments. After each step the tangent turns by a Gaussian angle (standard deviation sqrt(ds / lp))
- * about one transverse axis of its frame and then about the other, which makes <t_i . t_i+1> = exp(-ds / lp)
- * exactly; the frame follows by parallel transport. No excluded volume. The points are moved to their centroid.
+ * The chain. Persistence length lp = b / 2 (b = Kuhn length). segments = clamp(round(8 L / b), 16, 200) steps,
+ * each standing for ds = L / segments of contour. The discrete chain must have the SIZE of the worm-like chain
+ * whatever ds is (fix pass after the M4 reviews: with <t_i . t_i+1> = exp(-ds / lp) the capped chain was too
+ * large, <Rg^2> x 1.7 at L / b = 300 and x 5 at 1000):
+ *   ds < b   steps of length ds. After each step the tangent turns by a Gaussian angle of variance -ln(a) about
+ *            one transverse axis of its frame and then about the other, which makes <t_i . t_i+1> = a exactly,
+ *            with a = (2 lp / ds - 1) / (2 lp / ds + 1): a chain of fixed steps with that correlation has
+ *            <R^2> -> N ds^2 (1 + a) / (1 - a) = 2 lp L, the worm-like chain's. At 8 steps per Kuhn length a
+ *            differs from exp(-ds / lp) by 0.001. The frame follows by parallel transport.
+ *   ds >= b  (L / b >= 200: the cap) `coarse`: each step stands for ds / b Kuhn lengths and is drawn in a
+ *            uniformly random direction with the length sqrt(b ds), so <R^2> = L b. The overall size is to scale;
+ *            the contour drawn is shorter than L, which the scene says in notToScale.
+ * `step` is the length of a drawn step (ds, or sqrt(b ds)). No excluded volume. The points are moved to their
+ * centroid.
  * The random numbers depend on the seed only (never on the radius). The same input gives the same points
  * element by element in one engine; across engines the random integers are identical and the coordinates agree
  * to rounding (Math.sin / cos / log are not specified bit for bit).
@@ -71,6 +81,7 @@
         'core_shell_cylinder', 'flexible_cylinder', 'lamellar']);
     const ROLE = Object.freeze({ solid: 'shapeSolid', core: 'shapeCore', shell: 'shapeShell' });
     const LAMELLAR_NOTE = '層狀模型的橫向為無限延伸，圖中的寬度只是示意';
+    const COARSE_NOTE = '鏈很長（L／b ≥ 200）：圖中每一段代表多個 Kuhn 長度，整體大小按比例，輪廓長度只是示意';
 
     const AZIMUTH = 48;                           // steps round the axis; a multiple of 4
     const POLAR = 32;                             // steps from pole to pole; even (the equator is a grid line)
@@ -341,7 +352,7 @@
         if (!isUsableExtent(extent)) return null;
         return Object.freeze({
             kind: 'tube', centreline: chain.points, tubeRadius: radius, segments: chain.segments,
-            bounds: extent.bounds, radius: extent.radius, notToScale: Object.freeze([]),
+            bounds: extent.bounds, radius: extent.radius, notToScale: Object.freeze(chain.coarse ? [COARSE_NOTE] : []),
         });
     }
 
@@ -427,21 +438,38 @@
         return { length, kuhnLength, seed: input.seed === undefined ? SEED : input.seed };
     }
 
+    /** A unit vector in a uniformly random direction. */
+    function randomDirection(next) {
+        const z = 2 * next() - 1;
+        const angle = 2 * Math.PI * next();
+        const r = Math.sqrt(1 - z * z);
+        return [r * Math.cos(angle), r * Math.sin(angle), z];
+    }
+
+    /** { step, sigma, coarse } of a chain whose steps each stand for ds of contour: see "The chain" in the header. */
+    function stepRule(ds, kuhnLength) {
+        if (ds >= kuhnLength) return { step: Math.sqrt(kuhnLength * ds), sigma: 0, coarse: true };
+        const ratio = kuhnLength / ds;                           // 2 lp / ds
+        return { step: ds, sigma: Math.sqrt(-Math.log((ratio - 1) / (ratio + 1))), coarse: false };
+    }
+
     function wormChain(input) {
         const { length, kuhnLength, seed } = chainInput(input);
         const next = prng(seed);
         const wanted = Math.round(CHAIN.perKuhn * length / kuhnLength);
         const segments = Math.min(CHAIN.max, Math.max(CHAIN.min, wanted));
         const ds = length / segments;
-        const sigma = Math.sqrt(ds / (kuhnLength / 2));
+        const { step, sigma, coarse } = stepRule(ds, kuhnLength);
         const points = new Float64Array(3 * (segments + 1));
         let frame = START_FRAME;
         for (let i = 1; i <= segments; i++) {
-            for (let k = 0; k < 3; k++) points[3 * i + k] = points[3 * (i - 1) + k] + ds * frame.t[k];
+            const t = coarse ? randomDirection(next) : frame.t;
+            for (let k = 0; k < 3; k++) points[3 * i + k] = points[3 * (i - 1) + k] + step * t[k];
+            if (coarse) continue;
             const [a, b] = gaussianPair(next);
             frame = bend(frame, sigma * a, sigma * b);
         }
-        return Object.freeze({ points: centred(points), segments, ds });
+        return Object.freeze({ points: centred(points), segments, ds, step, coarse });
     }
 
     globalThis.SasFitShapeGeom = Object.freeze({

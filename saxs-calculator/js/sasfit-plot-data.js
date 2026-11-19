@@ -60,6 +60,8 @@
     const LEGEND_BOX = 7;
     const RANGE_LINE_DASH = Object.freeze([4, 4]);
     const REFERENCE_ROLE = 'reference';
+    const NARROW_AXIS_PX = 260;                  // a horizontal log axis narrower than this keeps about NARROW_TICKS labels
+    const NARROW_TICKS = 4;
     const AXIS_PAD = 1.08;                       // logarithmic x axis: a little room outside the first and last q
     const GUINIER_DROP = 0.1;                    // default Guinier window: up to where I falls to a tenth of its low-q level
     const GUINIER_HEAD = 5;                      // points that give the low-q level
@@ -241,14 +243,24 @@
         return exponent >= LOG_TICK_PLAIN[0] && exponent < LOG_TICK_PLAIN[1] ? plainNumber(value) : mantissa + 'e' + exponent;
     }
 
+    /** Every k-th tick, so that at most about NARROW_TICKS are left. */
+    function thinned(ticks) {
+        const step = Math.ceil(ticks.length / NARROW_TICKS);
+        return ticks.filter((_, i) => i % step === 0);
+    }
+
     /**
      * afterBuildTicks of a logarithmic axis: keep only the ticks logTickLabel names, so that the unnamed ones do
      * not draw grid lines (nine per decade) or crowd the labels. Chart.js hands over its scale and reads
-     * scale.ticks back; a filter that would leave fewer than two ticks changes nothing.
+     * scale.ticks back; a filter that would leave fewer than two ticks changes nothing. On a horizontal axis
+     * narrower than NARROW_AXIS_PX (a phone) the named ticks would still run into each other ("0.010.02"): about
+     * NARROW_TICKS of them are kept.
      */
     function keepLabelledTicks(scale) {
         const kept = scale.ticks.filter((tick) => logTickLabel.call(scale, tick.value) !== '');
-        if (kept.length >= 2) scale.ticks = kept;
+        if (kept.length < 2) return;
+        const narrow = typeof scale.isHorizontal === 'function' && scale.isHorizontal() && scale.width > 0 && scale.width < NARROW_AXIS_PX;
+        scale.ticks = narrow && kept.length > NARROW_TICKS ? thinned(kept) : kept;
     }
 
     function axis(type, title, extra) {

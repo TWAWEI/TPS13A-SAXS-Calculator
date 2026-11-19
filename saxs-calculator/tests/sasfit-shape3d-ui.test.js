@@ -383,10 +383,11 @@ test('[shape3d-ui] 拖曳：滑鼠只認主鍵；pitch 夾在 ±89°；觸控只
     move(page, 1, 0, 1000);
     assert.equal(view(page).pitch, 89);
     up(page, 1);
-    const before = view(page);
+    page.stage.fire('keydown', { key: '0' });
     down(page, 5, 200, 200, { pointerType: 'touch' });
     move(page, 5, 180, 260, { pointerType: 'touch' });
-    assert.deepEqual(view(page), { yaw: before.yaw + 10, pitch: before.pitch, zoom: 1 }, '觸控：垂直位移不改仰角');
+    // 審查修正 E10：瀏覽器把手勢交給頁面之後（先橫向拖，touch-action: pan-y），垂直位移一樣改仰角
+    assert.deepEqual(view(page), { yaw: 45 + 10, pitch: 20 + 30, zoom: 1 }, '觸控：拖曳與滑鼠相同');
     up(page, 5);
 });
 
@@ -424,14 +425,14 @@ test('[shape3d-ui] 鍵盤：方向鍵旋轉、+ − 縮放、0 與 Home 重設�
     const page = m4.shapePage();
     page.showShape();
     const key = (name, extra) => page.stage.fire('keydown', { key: name, ...extra });
-    const left = key('ArrowLeft');
+    const left = key('ArrowRight');
     assert.equal(left.defaultPrevented, true);
-    assert.deepEqual(view(page), { yaw: 40, pitch: 20, zoom: 1 });
+    assert.deepEqual(view(page), { yaw: 40, pitch: 20, zoom: 1 }, '與向右拖曳同方向');
     assert.equal(page.frames.pending(), 1);
     page.frames.flush();
     assert.equal(page.paints(), 2);
-    for (const [name, expected] of [['ArrowRight', { yaw: 45, pitch: 20, zoom: 1 }], ['ArrowUp', { yaw: 45, pitch: 25, zoom: 1 }],
-        ['ArrowDown', { yaw: 45, pitch: 20, zoom: 1 }]]) {
+    for (const [name, expected] of [['ArrowLeft', { yaw: 45, pitch: 20, zoom: 1 }], ['ArrowDown', { yaw: 45, pitch: 25, zoom: 1 }],
+        ['ArrowUp', { yaw: 45, pitch: 20, zoom: 1 }]]) {
         assert.equal(key(name).defaultPrevented, true, name);
         assert.deepEqual(view(page), expected, name);
     }
@@ -661,7 +662,7 @@ test('[shape3d-ui] prefers-reduced-motion：自動旋轉停用、title 與說明
     const normal = m4.shapePage();
     normal.showShape();
     assert.equal(normal.$('sfShapeSpin').getAttribute('title'), null);
-    assert.equal(normal.$('sfShapeHelp').textContent, '拖曳旋轉；Ctrl＋滾輪或兩指縮放；按比例繪製（正交投影），不能平移');
+    assert.equal(normal.$('sfShapeHelp').textContent, '拖曳旋轉；Ctrl＋滾輪或兩指縮放；鍵盤：方向鍵旋轉、＋／－縮放、0 重設；按比例繪製（正交投影），不能平移');
 });
 
 test('[shape3d-ui] 開著自動旋轉時系統改成減少動態：下一次重繪就停', () => {
@@ -677,10 +678,28 @@ test('[shape3d-ui] 開著自動旋轉時系統改成減少動態：下一次重�
     assert.equal(page.$('sfShapeSpin').disabled, true);
 });
 
-test('[shape3d-ui] 觸控裝置（pointer: coarse）：說明補一句只能左右旋轉', () => {
+test('[shape3d-ui] 說明文字含鍵盤操作；觸控裝置（pointer: coarse）補一句怎麼開始旋轉', () => {
+    const fine = m4.shapePage();
+    fine.showShape();
+    assert.match(fine.$('sfShapeHelp').textContent, /鍵盤：方向鍵旋轉、＋／－縮放、0 重設/);
+    assert.doesNotMatch(fine.$('sfShapeHelp').textContent, /觸控/);
     const page = m4.shapePage({ coarse: true });
     page.showShape();
-    assert.match(page.$('sfShapeHelp').textContent, /觸控時只能左右旋轉/);
+    assert.match(page.$('sfShapeHelp').textContent, /鍵盤：方向鍵旋轉/);
+    assert.match(page.$('sfShapeHelp').textContent, /觸控：先左右拖曳即可旋轉，直接上下滑動是捲動頁面/);
+});
+
+test('[shape3d-ui] 尺寸與說明的框只有在真的會捲動時才是 Tab 停駐點（審查修正 E7）', () => {
+    const page = m4.shapePage();
+    const box = page.$('sfShapeText');
+    box.scrollHeight = 300;
+    box.clientHeight = 161;
+    page.showShape();
+    assert.equal(box.getAttribute('tabindex'), '0', '內容比框高：鍵盤要捲得到');
+    box.scrollHeight = 120;
+    page.ctx.setForm(globalThis.SasFitForm.reduce(page.ctx.getForm(), { type: 'setValue', name: 'radius', value: '82' }));
+    page.ctx.refresh();
+    assert.equal(box.getAttribute('tabindex'), null, '放得下：不佔一個 Tab 停駐點');
 });
 
 test('[shape3d-ui] create 綁定的監聽器數目固定；section 只建立一次', () => {

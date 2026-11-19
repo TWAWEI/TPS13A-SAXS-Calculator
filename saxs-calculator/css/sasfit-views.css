@@ -5,7 +5,8 @@
    排在 sasfit.css、sasfit-params.css 之後載入；選擇器都以 .sf- 開頭或限定在 .sf- 容器內。
    ============================================= */
 
-/* ===== 圖卡標題列：標題與檢視切換永遠在同一行；工具（曲線的或結構的）放不下時整組換到下一行 ===== */
+/* ===== 圖卡標題列：檢視切換在前、標題在後，永遠在同一行（標題的字換了，切換鈕也不會移動）；
+   工具（曲線的或結構的）放不下時整組換到下一行 ===== */
 .sf-plot-heading {
     display: flex;
     align-items: center;
@@ -64,7 +65,7 @@
     height: clamp(300px, 46vh, 460px);
     border-radius: var(--radius-md);
     cursor: grab;
-    touch-action: pan-y;               /* 單指上下滑動照常捲頁；左右拖曳改方位角 */
+    touch-action: pan-y;               /* 單指直接上下滑動照常捲頁；先左右拖曳就交給頁面旋轉 */
     user-select: none;
     -webkit-user-select: none;
 }
@@ -136,6 +137,11 @@
     display: none;
 }
 
+/* 操作說明有好幾句，窄的圖卡裡會折行：靠左（.sf-plot-caption 的單行說明是靠右） */
+.sf-shape-help {
+    text-align: left;
+}
+
 /* 單欄版面（寫在一般規則之後才蓋得過）：畫布與主圖同高；圖固定在頂端時（模型分段）只留畫布 */
 @container sf (max-width: 859px) {
     .sf-shape-stage {
@@ -153,6 +159,28 @@
     .sf-workspace[data-tab="model"] .sf-shape-help,
     .sf-workspace[data-tab="model"] .sf-shape-text {
         display: none;
+    }
+}
+
+/* ===== 擬合列在序列分段與窄視窗 ===== */
+/* 序列分段的主要動作是「執行序列擬合」：擬合列的「開始擬合」在這裡退成次要按鈕的樣子（一個畫面一個主要按鈕） */
+.sf-workspace[data-tab="sequence"] #sfFitStart {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+}
+
+.sf-workspace[data-tab="sequence"] #sfFitStart:hover {
+    background: var(--color-bg-hover);
+}
+
+.sf-workspace[data-tab="sequence"] #sfFitStart:disabled:hover {
+    background: var(--color-bg-tertiary);
+}
+
+/* 視窗 1024px 以下左上角有固定的選單鈕（40px）：擬合列捲動後固定在頂端時，內容讓開它，「開始擬合」不被蓋住 */
+@media (max-width: 1024px) {
+    .sf-fitbar {
+        padding-left: calc(var(--spacing-md) + 40px + var(--spacing-sm));
     }
 }
 
@@ -229,6 +257,14 @@
 .sf-seq-wrapper {
     max-height: min(50vh, 24rem);
     overflow: auto;
+    container: sfseq / inline-size;    /* 註記列的寬度以這個框為準（100cqw） */
+}
+
+/* border-collapse: separate：格線屬於各自的儲存格，固定（sticky）的表頭與檔名欄捲動時底線跟著走，
+   而且與同一列其他儲存格的底線在同一條線上（collapse 模式的格線不會跟著 sticky 的儲存格走） */
+.sf-seq-table {
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 .sf-seq-table thead th {
@@ -272,7 +308,7 @@
     margin: 0;
 }
 
-/* 左欄只有約 390 px：欄多時表格一定要左右捲動。檔名欄固定在左邊，捲到哪一欄都知道是哪個檔 */
+/* 左欄只有約 390 px：參數多時表格仍要左右捲動。檔名欄固定在左邊，捲到哪一欄都知道是哪個檔 */
 .sf-seq-table .sf-seq-name,
 .sf-seq-table thead th:nth-child(2) {
     position: sticky;
@@ -288,12 +324,24 @@
     z-index: 2;                        /* 表頭的檔名格同時固定在上與左：蓋過捲過去的表頭與列 */
 }
 
+/* 8rem：1024–1440 的左欄（約 390 px）裡，檔名、條件、量度＋狀態與第一個參數不必橫捲就看得到 */
 .sf-seq-name {
-    min-width: 10rem;
+    min-width: 8rem;
     font-size: 0.8125rem;
     font-weight: 400;
     letter-spacing: 0;
     color: var(--color-text-primary);
+}
+
+/* 手機寬度：固定的檔名欄會佔掉半個表格，改成跟著捲動 */
+@container sf (max-width: 480px) {
+    .sf-seq-table .sf-seq-name {
+        position: static;
+    }
+
+    .sf-seq-table thead th:nth-child(2) {
+        left: auto;                    /* 表頭仍固定在上方，只是不再固定在左邊 */
+    }
 }
 
 /* 檔名與「載入」鈕：放得下時同一行，放不下時按鈕換到檔名下面；檔名只在整個字放不下時才從中間斷 */
@@ -323,25 +371,9 @@
     white-space: nowrap;
 }
 
-.sf-seq-table thead th:last-child,
-.sf-seq-table .sf-seq-status {
-    text-align: left;
-}
-
 /* 條件名稱可以很長（例：Temperature (K)）：表頭可折行，不把數字欄撐寬（寫在上面的 nowrap 之後才蓋得過） */
 .sf-seq-table thead th:nth-child(3) {
     white-space: normal;
-}
-
-/* border-collapse 的格線不會跟著 sticky 的儲存格走：固定的表頭與檔名欄改用內陰影畫底線 */
-.sf-seq-table thead th,
-.sf-seq-table tbody .sf-seq-name {
-    border-bottom: none;
-    box-shadow: inset 0 -1px 0 var(--color-separator);
-}
-
-.sf-seq-table tbody tr:last-child .sf-seq-name {
-    box-shadow: none;
 }
 
 .sf-seq-value {
@@ -358,24 +390,53 @@
     color: var(--color-text-muted);
 }
 
-/* 寬到放得下「初值來自 <一般長度的檔名>」一行：註記折成三行會把每一列撐高 */
-.sf-seq-status {
-    min-width: 12.5rem;
-}
-
-.sf-seq-status .tile-chip {
-    margin: 0 0.25rem 0.125rem 0;
+/* 量度那一格的第二行是狀態（標籤或文字） */
+.sf-seq-fit .tile-chip {
+    margin: 0.125rem 0 0;
     white-space: nowrap;
 }
 
 .sf-seq-state {
+    display: block;
+    font-size: 0.75rem;
     color: var(--color-text-secondary);
 }
 
+/* 註記列：只在該檔有話要說時出現（初值來源、跳過或出錯的原因、之後被單獨重新擬合），橫跨整張表。
+   它屬於上面那一列：上面那一列不畫底線，底線畫在註記列下面 */
+.sf-seq-table .sf-seq-row--noted > th,
+.sf-seq-table .sf-seq-row--noted > td {
+    border-bottom: none;
+    padding-bottom: 0.125rem;
+}
+
+.sf-seq-table .sf-seq-noterow > td {
+    padding-top: 0;
+    padding-left: 0;
+    padding-right: 0;                  /* 內距在 .sf-seq-notebox 裡：格子本身不能比框寬 */
+    text-align: left;
+    white-space: normal;
+}
+
+/* 註記的格子橫跨整張表（可能比框寬）：內容固定在看得見的那一段，寬度＝框的寬度，表格橫捲時註記不被切掉。
+   左邊對齊檔名欄：勾選欄的寬度（0.5 + 1.25 + 0.375 rem）＋檔名格的內距 */
+.sf-seq-notebox {
+    position: sticky;
+    left: 0;
+    box-sizing: border-box;
+    width: 100cqw;
+    max-width: 100%;
+    padding-left: 2.5rem;
+    padding-right: 0.5rem;
+}
+
+.sf-seq-noterow .tile-chip {
+    margin: 0 0.375rem 0.125rem 0;
+    white-space: nowrap;
+}
+
 .sf-seq-note {
-    display: block;
     overflow-wrap: anywhere;
-    margin-top: 0.125rem;
     font-size: 0.75rem;
     color: var(--color-text-muted);
     text-align: left;

@@ -470,11 +470,13 @@ test('wormChain: segments = clamp(round(8 L / b), 16, 200), ds = L / segments, e
         const chain = G.wormChain({ length: 100 * ratio, kuhnLength: 100 });
         assert.equal(chain.segments, segments, 'L / b = ' + ratio);
         assert.equal(chain.ds, 100 * ratio / segments);
+        assert.equal(chain.coarse, false, 'L / b <= 200: every step is a piece of the contour');
+        assert.equal(chain.step, chain.ds);
         assert.ok(chain.points instanceof Float64Array);
         assert.equal(chain.points.length, 3 * (segments + 1));
         assert.ok(chain.points.every(Number.isFinite));
         for (let i = 0; i < segments; i++) {
-            close(norm(sub(chainPoint(chain, i + 1), chainPoint(chain, i))), chain.ds, 1e-9, 'step ' + i);
+            close(norm(sub(chainPoint(chain, i + 1), chainPoint(chain, i))), chain.step, 1e-9, 'step ' + i);
         }
         [0, 1, 2].forEach((k) => {
             let sum = 0;
@@ -538,7 +540,60 @@ test('wormChain: the tangent correlation of neighbouring segments is exp(-ds / l
             count += 1;
         }
     }
-    close(sum / count, Math.exp(-ds / (kuhnLength / 2)), 0.03, 'mean cosine of ' + count + ' joints');
+    // the correlation of the DISCRETE chain that has the WLC's <R^2> for long chains: (1 + a)/(1 - a) = 2 lp / ds
+    const x = 2 * (kuhnLength / 2) / ds;
+    close(sum / count, (x - 1) / (x + 1), 0.02, 'mean cosine of ' + count + ' joints');
+    close((x - 1) / (x + 1), Math.exp(-ds / (kuhnLength / 2)), 0.002, 'at 8 steps per Kuhn length it is exp(-ds / lp) to 0.2 %');
+});
+
+/** <Rg^2> over the seeds 1..count divided by the worm-like chain's lp^2 [x/3 - 1 + 2/x - 2 (1 - exp(-x))/x^2], x = L / lp (Benoit-Doty). */
+function benoitDotyRatio(length, kuhnLength, count) {
+    const lp = kuhnLength / 2;
+    const x = length / lp;
+    const expected = lp * lp * (x / 3 - 1 + 2 / x - 2 * (1 - Math.exp(-x)) / (x * x));
+    let sum = 0;
+    for (let seed = 1; seed <= count; seed++) {
+        const { points, segments } = G.wormChain({ length, kuhnLength, seed });
+        let own = 0;
+        for (let i = 0; i < points.length; i++) own += points[i] * points[i];        // the points are centred
+        sum += own / (segments + 1);
+    }
+    return sum / count / expected;
+}
+
+// fix pass after the M4 reviews (science M1): the 200-segment cap made the chain too large (x1.67 at L/b = 300, x5 at 1000)
+[10, 50, 100, 300, 1000].forEach((ratio) => {
+    test('wormChain: <Rg^2> of 400 fixed seeds is within 12% of the worm-like chain value at L / b = ' + ratio, () => {
+        const measured = benoitDotyRatio(100 * ratio, 100, 400);
+        assert.ok(Math.abs(measured - 1) <= 0.12, 'ratio ' + measured);
+    });
+});
+
+test('wormChain: the contour drawn is L while L / b <= 200; beyond that the steps are coarse-grained and the chain says so', () => {
+    const drawn = (chain) => {
+        let sum = 0;
+        for (let i = 0; i < chain.segments; i++) sum += norm(sub(chainPoint(chain, i + 1), chainPoint(chain, i)));
+        return sum;
+    };
+    [[1, false], [25, false], [100, false], [199, false], [200, true], [300, true], [1000, true]].forEach(([ratio, coarse]) => {
+        const length = 100 * ratio;
+        const chain = G.wormChain({ length, kuhnLength: 100 });
+        assert.equal(chain.coarse, coarse, 'L / b = ' + ratio);
+        assert.ok(chain.segments <= 200);
+        if (!coarse) close(drawn(chain), length, 1e-9 * length, 'contour at L / b = ' + ratio);
+        else {
+            // each step stands for ds / b Kuhn lengths and is drawn sqrt(b ds) long: <R^2> = L b
+            close(chain.step, Math.sqrt(100 * chain.ds), 1e-9, 'step at L / b = ' + ratio);
+            close(drawn(chain), 200 * chain.step, 1e-6 * length, 'drawn contour');
+            assert.ok(drawn(chain) <= length * (1 + 1e-12));
+        }
+    });
+    const plain = G.build('flexible_cylinder', { length: 1000, kuhn_length: 100, radius: 20 });
+    assert.deepEqual([...plain.notToScale], []);
+    const long = G.build('flexible_cylinder', { length: 100000, kuhn_length: 100, radius: 20 });
+    assert.equal(long.notToScale.length, 1);
+    assert.match(long.notToScale[0], /輪廓長度/);
+    assert.match(long.notToScale[0], /示意/);
 });
 
 test('wormChain: invalid input is an Error naming it', () => {

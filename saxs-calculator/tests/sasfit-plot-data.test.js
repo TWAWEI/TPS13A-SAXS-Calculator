@@ -641,6 +641,28 @@ test('[sasfit-plot-data] 對數軸只留有標文字的刻度（沒標的不畫�
     assert.equal(sparse.ticks, before, '1-2-5 規則在這四個刻度裡只留得下 1：不足兩個，所以原樣保留');
 });
 
+test('[sasfit-plot-data] 窄的橫軸（手機寬度，繪圖區不到 260 px）：有標文字的刻度最多留約 4 個，等間隔取、不重疊（審查修正 E12）', () => {
+    const d = { kind: 'official', q: Float64Array.from([0.01, 0.02, 0.03]), I: Float64Array.from([3, 2, 1]), sigma: null };
+    const config = P.mainConfig({ mode: 'loglog', series: [{ id: 'd1', index: 0, label: 'a', active: true, data: d, fitCurve: null }],
+        preview: null, range: null, stagger: { on: false, decades: 1 }, residuals: null });
+    const { afterBuildTicks } = config.options.scales.x;
+    const ticks = () => [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3].map((value) => ({ value }));
+    const run = (extra) => {
+        const scale = { min: 0.005, max: 0.4, ticks: ticks(), ...extra };
+        afterBuildTicks(scale);
+        return scale.ticks.map((t) => t.value);
+    };
+    const all = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2];
+    assert.deepEqual(run({ width: 218, isHorizontal: () => true }), [0.005, 0.02, 0.1], '6 個 → 每隔一個');
+    assert.deepEqual(run({ width: 259, isHorizontal: () => true }), [0.005, 0.02, 0.1]);
+    assert.deepEqual(run({ width: 260, isHorizontal: () => true }), all, '夠寬：不動');
+    assert.deepEqual(run({ width: 120, isHorizontal: () => false }), all, '縱軸不受影響');
+    assert.deepEqual(run({}), all, '沒有尺寸資訊（測試、舊版 Chart.js）：不動');
+    const four = { min: 0.01, max: 0.2, width: 200, isHorizontal: () => true, ticks: [0.01, 0.02, 0.05, 0.1].map((value) => ({ value })) };
+    afterBuildTicks(four);
+    assert.equal(four.ticks.length, 4, '4 個以內不必再刪');
+});
+
 test('[sasfit-plot-data] 兩張圖的版面留白相同且不讓 Chart.js 依點的大小自動加（否則繪圖區右緣差幾個像素）', () => {
     const d = { kind: 'official', q: Float64Array.from([0.01, 0.02, 0.03]), I: Float64Array.from([3, 2, 1]), sigma: null };
     const v = { mode: 'loglog', series: [{ id: 'd1', index: 0, label: 'a', active: true, data: d, fitCurve: null }], preview: null,

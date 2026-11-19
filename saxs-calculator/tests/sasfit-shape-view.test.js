@@ -50,17 +50,18 @@ test('[shape-view] zoom 乘上係數並夾在 ZOOM_RANGE；reset 回到預設', 
 test('[shape-view] key：方向鍵改 yaw／pitch，+ = 放大 1.1 倍，- 縮小，0 與 Home 重設；其他鍵回傳同一個物件', () => {
     const view = Object.freeze({ yaw: 100, pitch: 10, zoom: 1 });
     const key = (name) => V.reduce(view, { type: 'key', key: name });
-    assert.deepEqual(key('ArrowLeft'), { yaw: 95, pitch: 10, zoom: 1 });
-    assert.deepEqual(key('ArrowRight'), { yaw: 105, pitch: 10, zoom: 1 });
-    assert.deepEqual(key('ArrowUp'), { yaw: 100, pitch: 15, zoom: 1 });
-    assert.deepEqual(key('ArrowDown'), { yaw: 100, pitch: 5, zoom: 1 });
+    // 方向鍵與拖曳同一個方向（審查修正 E7）：向右拖 → yaw 變小，向下拖 → pitch 變大
+    assert.deepEqual(key('ArrowRight'), { yaw: 95, pitch: 10, zoom: 1 });
+    assert.deepEqual(key('ArrowLeft'), { yaw: 105, pitch: 10, zoom: 1 });
+    assert.deepEqual(key('ArrowDown'), { yaw: 100, pitch: 15, zoom: 1 });
+    assert.deepEqual(key('ArrowUp'), { yaw: 100, pitch: 5, zoom: 1 });
     assert.ok(close(key('+').zoom, 1.1) && close(key('=').zoom, 1.1) && close(key('-').zoom, 1 / 1.1));
     assert.deepEqual(key('0'), V.DEFAULT_VIEW);
     assert.deepEqual(key('Home'), V.DEFAULT_VIEW);
     for (const other of ['a', 'Enter', 'Tab', ' ', 'PageDown', 'End', 'Escape', '1']) assert.equal(key(other), view, other);
     // 有處理的鍵一律回傳新物件（即使數值沒變）：呼叫端據此取消預設的捲動
     const top = Object.freeze({ yaw: 0, pitch: 89, zoom: 4 });
-    assert.notEqual(V.reduce(top, { type: 'key', key: 'ArrowUp' }), top);
+    assert.notEqual(V.reduce(top, { type: 'key', key: 'ArrowDown' }), top);
     assert.notEqual(V.reduce(top, { type: 'key', key: '+' }), top);
     assert.notEqual(V.reduce(V.DEFAULT_VIEW, { type: 'key', key: 'Home' }), V.DEFAULT_VIEW);
 });
@@ -301,7 +302,7 @@ test('[shape-view] describe：各模型的尺寸清單（nm、一位小數）', 
     assert.deepEqual(dims('sphere'), ['半徑 R 5.0 nm']);
     assert.deepEqual(dims('ellipsoid'), ['極半徑 R_polar 2.0 nm', '赤道半徑 R_equatorial 40.0 nm']);
     assert.deepEqual(dims('cylinder'), ['半徑 R 2.0 nm', '長度 L 40.0 nm']);
-    assert.deepEqual(dims('core_shell_sphere'), ['核半徑 6.0 nm', '殼厚 1.0 nm', '外徑 14.0 nm']);
+    assert.deepEqual(dims('core_shell_sphere'), ['核半徑 6.0 nm', '殼厚 1.0 nm', '外直徑 14.0 nm']);
     assert.deepEqual(dims('vesicle'), ['內半徑 10.0 nm', '膜厚 3.0 nm']);
     assert.deepEqual(dims('core_shell_cylinder'), ['核半徑 2.0 nm', '殼厚 2.0 nm', '核長度 L 40.0 nm', '總長 44.0 nm']);
     assert.deepEqual(dims('flexible_cylinder'), ['輪廓長度 L 100.0 nm', 'Kuhn 長度 b 10.0 nm', '半徑 R 2.0 nm']);
@@ -316,16 +317,23 @@ test('[shape-view] describe：柔性圓柱與層狀的說明、替代文字', ()
     assert.match(chain.alt, /一個代表性構形/);
     const slab = V.describe(formOf('lamellar'));
     assert.ok(slab.extras.includes('層狀模型的橫向為無限延伸，圖中的寬度只是示意'));
-    assert.equal(V.describe(formOf('core_shell_sphere')).alt, '核殼球的 3D 示意圖：核半徑 6.0 nm、殼厚 1.0 nm、外徑 14.0 nm；切開四分之一以顯示內部');
+    assert.equal(V.describe(formOf('core_shell_sphere')).alt, '核殼球的 3D 示意圖：核半徑 6.0 nm、殼厚 1.0 nm、外直徑 14.0 nm；切開四分之一以顯示內部');
     assert.equal(V.describe(formOf('sphere')).alt, '均勻球的 3D 示意圖：半徑 R 5.0 nm');
     assert.match(V.describe(formOf('vesicle')).alt, /切開四分之一/);
 });
 
-test('[shape-view] describe：多分散以文字標示（± ＝ 寬度 × 平均值；lognormal 只寫寬度）', () => {
+test('[shape-view] describe：多分散以文字標示，各分布的寬度照 sasmodels 的定義說（審查修正 E4）', () => {
     const pd = (type, width) => [{ type: 'togglePd', name: 'radius' }, { type: 'setPdField', name: 'radius', field: 'type', value: type },
         { type: 'setPdField', name: 'radius', field: 'width', value: width }];
     assert.ok(V.describe(formOf('sphere', pd('schulz', '0.1'))).extras.includes('半徑 R = 5.0 ± 0.5 nm（schulz）'));
-    assert.ok(V.describe(formOf('sphere', pd('lognormal', '0.1'))).extras.includes('半徑 R：寬度 0.10（lognormal）'));
+    assert.ok(V.describe(formOf('sphere', pd('gaussian', '0.1'))).extras.includes('半徑 R = 5.0 ± 0.5 nm（gaussian）'));
+    assert.ok(V.describe(formOf('sphere', pd('rectangle', '0.1'))).extras.includes('半徑 R = 5.0 ± 0.5 nm（rectangle）'));
+    // lognormal：中心值是中位數，寬度是 ln R 的 σ（不是 σ／R）
+    assert.ok(V.describe(formOf('sphere', pd('lognormal', '0.1'))).extras.includes('半徑 R：中位數 5.0 nm，ln 值的 σ = 0.10（lognormal）'));
+    // uniform：寬度是半寬／中心值 → 寫成範圍
+    assert.ok(V.describe(formOf('sphere', pd('uniform', '0.1'))).extras.includes('半徑 R = 4.5–5.5 nm（uniform）'));
+    // boltzmann：寬度是 e 折長度／中心值，不是標準差 → 只寫寬度
+    assert.ok(V.describe(formOf('sphere', pd('boltzmann', '0.1'))).extras.includes('半徑 R：寬度 0.10（boltzmann，e 折長度／中心值）'));
     assert.deepEqual(V.describe(formOf('sphere', pd('gaussian', '0'))).extras, [], '寬度 0 不算');
     assert.deepEqual(V.describe(formOf('sphere', pd('gaussian', '0.2').concat([{ type: 'togglePd', name: 'radius' }]))).extras, [], '收起來的不算');
 });
@@ -370,7 +378,7 @@ test('[shape-view] describe 的 scene 選項：直接用已建好的場景，不
     }
     const html = V.dimsHtml(V.describe(formOf('core_shell_sphere')).dims);
     assert.equal(html, '<dl class="sf-shape-dims"><div class="sf-shape-dim"><dt>核半徑</dt><dd>6.0 nm</dd></div>'
-        + '<div class="sf-shape-dim"><dt>殼厚</dt><dd>1.0 nm</dd></div><div class="sf-shape-dim"><dt>外徑</dt><dd>14.0 nm</dd></div></dl>');
+        + '<div class="sf-shape-dim"><dt>殼厚</dt><dd>1.0 nm</dd></div><div class="sf-shape-dim"><dt>外直徑</dt><dd>14.0 nm</dd></div></dl>');
     assert.equal(V.dimsHtml([{ label: 'a<b', text: '"1" & 2' }]),
         '<dl class="sf-shape-dims"><div class="sf-shape-dim"><dt>a&lt;b</dt><dd>&quot;1&quot; &amp; 2</dd></div></dl>');
     assert.equal(V.dimsHtml([]), '<dl class="sf-shape-dims"></dl>');

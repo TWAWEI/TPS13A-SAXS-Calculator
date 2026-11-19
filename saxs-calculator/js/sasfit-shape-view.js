@@ -15,8 +15,8 @@
  *       { type: 'rotate', dYaw, dPitch }   yaw is kept in [0, 360), pitch within +-PITCH_LIMIT
  *       { type: 'zoom', factor }           zoom times factor, kept inside ZOOM_RANGE
  *       { type: 'reset' }
- *       { type: 'key', key }               ArrowLeft / ArrowRight: yaw -/+ KEY_STEP; ArrowUp / ArrowDown: pitch
- *                                          +/- KEY_STEP; '+' '=': zoom in by KEY_ZOOM; '-': out; '0' 'Home':
+ *       { type: 'key', key }               as a drag in that direction -- ArrowRight / ArrowLeft: yaw -/+ KEY_STEP;
+ *                                          ArrowDown / ArrowUp: pitch +/- KEY_STEP; '+' '=': zoom in by KEY_ZOOM; '-': out; '0' 'Home':
  *                                          reset. Any other key returns THE SAME OBJECT (the caller then leaves
  *                                          the event alone); a key that is handled returns a new one.
  *   pixelsPerAngstrom(scene, view, size) -> number   the bounding sphere of the scene fits into the smaller side
@@ -90,8 +90,9 @@
     const LIGHT = Object.freeze(unit([-0.45, 0.6, 0.66]));
     const LIGHT_ON_SCREEN = Object.freeze([LIGHT[0] / Math.hypot(LIGHT[0], LIGHT[1]), -LIGHT[1] / Math.hypot(LIGHT[0], LIGHT[1])]);
     const KEYS = Object.freeze({
-        ArrowLeft: { type: 'rotate', dYaw: -KEY_STEP, dPitch: 0 }, ArrowRight: { type: 'rotate', dYaw: KEY_STEP, dPitch: 0 },
-        ArrowUp: { type: 'rotate', dYaw: 0, dPitch: KEY_STEP }, ArrowDown: { type: 'rotate', dYaw: 0, dPitch: -KEY_STEP },
+        // the arrows turn the way a drag does (SasFitShape3d): right = a drag to the right (yaw down), down = a drag down (pitch up)
+        ArrowLeft: { type: 'rotate', dYaw: KEY_STEP, dPitch: 0 }, ArrowRight: { type: 'rotate', dYaw: -KEY_STEP, dPitch: 0 },
+        ArrowUp: { type: 'rotate', dYaw: 0, dPitch: -KEY_STEP }, ArrowDown: { type: 'rotate', dYaw: 0, dPitch: KEY_STEP },
         '+': { type: 'zoom', factor: KEY_ZOOM }, '=': { type: 'zoom', factor: KEY_ZOOM }, '-': { type: 'zoom', factor: 1 / KEY_ZOOM },
         0: { type: 'reset' }, Home: { type: 'reset' },
     });
@@ -374,7 +375,12 @@
     const CUT_NOTE = '切開四分之一以顯示內部';
     const CHAIN_NOTE = '圖中是一個代表性構形（固定亂數種子，未考慮排除體積）';
     const CHAIN_ALT = '一個代表性構形';
-    const LOGNORMAL = 'lognormal';
+    // what the width of a distribution means (sasmodels weights.py): the text of the dimension list follows it
+    const PD_TEXTS = Object.freeze({
+        lognormal: (label, centre, width) => label + '：中位數 ' + nm(centre) + ' nm，ln 值的 σ = ' + number(width, WIDTH_DIGITS) + '（lognormal）',
+        uniform: (label, centre, width) => label + ' = ' + nm(centre * (1 - width)) + '–' + nm(centre * (1 + width)) + ' nm（uniform）',
+        boltzmann: (label, centre, width) => label + '：寬度 ' + number(width, WIDTH_DIGITS) + '（boltzmann，e 折長度／中心值）',
+    });
     const WIDTH_DIGITS = 2;
     const FRACTION_DIGITS = 2;
     const CHARGE_DIGITS = 3;
@@ -384,7 +390,7 @@
         ellipsoid: [['極半徑 R_polar', (p) => p.radius_polar, 'radius_polar'], ['赤道半徑 R_equatorial', (p) => p.radius_equatorial, 'radius_equatorial']],
         cylinder: [['半徑 R', (p) => p.radius, 'radius'], ['長度 L', (p) => p.length, 'length']],
         core_shell_sphere: [['核半徑', (p) => p.radius, 'radius'], ['殼厚', (p) => p.thickness, 'thickness'],
-            ['外徑', (p) => 2 * (p.radius + p.thickness), null]],
+            ['外直徑', (p) => 2 * (p.radius + p.thickness), null]],
         vesicle: [['內半徑', (p) => p.radius, 'radius'], ['膜厚', (p) => p.thickness, 'thickness']],
         core_shell_cylinder: [['核半徑', (p) => p.radius, 'radius'], ['殼厚', (p) => p.thickness, 'thickness'],
             ['核長度 L', (p) => p.length, 'length'], ['總長', (p) => p.length + 2 * p.thickness, null]],
@@ -404,13 +410,16 @@
 
     const number = (value, digits) => globalThis.SasFitFormat.display(globalThis.SasFitFormat.number(value, digits));
 
-    /** One sentence per dispersity that takes part: 'R = 5.0 +- 0.5 nm (schulz)'. */
+    /**
+     * One sentence per dispersity that takes part. gaussian, schulz and rectangle: the width is sigma / centre, so
+     * 'R = 5.0 +- 0.5 nm (schulz)'; the others say what their width is (PD_TEXTS).
+     */
     function dispersityLines(form, all) {
         return DIMS[form.model].filter((dim) => dim[2] !== null && has(form.pds, dim[2])).map(([label, , name]) => {
             const pd = form.pds[name];
             const width = all[name + '_pd'];
             if (!pd.open || !isNumber(width) || width <= 0) return null;
-            if (pd.type === LOGNORMAL) return label + '：寬度 ' + number(width, WIDTH_DIGITS) + '（' + pd.type + '）';
+            if (has(PD_TEXTS, pd.type)) return PD_TEXTS[pd.type](label, all[name], width);
             return label + ' = ' + nm(all[name]) + ' ± ' + nm(width * all[name]) + ' nm（' + pd.type + '）';
         }).filter((line) => line !== null);
     }
