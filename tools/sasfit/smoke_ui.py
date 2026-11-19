@@ -119,11 +119,15 @@ JS_TIMINGS = """async () => {
 }"""
 
 JS_AXE = """async ([scope, tags]) => {
+  // scope: 'section' (default: the SAS fitting section and its nav button), 'page' (the whole document),
+  // or a CSS selector / a list of selectors to run axe inside (smoke_m4.py: '#section-iucr')
   const opts = { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations'], preload: false };
-  const context = scope === 'section' ? { include: ['#section-sasfit', '.nav-item[data-section="sasfit"]'] } : document;
+  const mine = scope === 'section' || scope === 'page' ? ['#section-sasfit', '.nav-item[data-section="sasfit"]']
+    : (Array.isArray(scope) ? scope : [scope]);
+  const context = scope === 'page' ? document : { include: mine };
   const r = await axe.run(context, opts);
   const owned = (target) => { const e = document.querySelector(Array.isArray(target) ? target[0] : target);
-    return !!e && !!(e.closest('#section-sasfit') || e.closest('.nav-item[data-section="sasfit"]')); };
+    return !!e && mine.some((selector) => !!e.closest(selector)); };
   return r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => ({
     target: n.target.join(' >> '), mine: owned(n.target), summary: (n.failureSummary || '').replace(/\\s+/g, ' ').slice(0, 320) })) }));
 }"""
@@ -655,7 +659,8 @@ def inject_axe(ctx):
         ctx.axe_error = f'could not load axe from {AXE_URL}: {str(err).splitlines()[0][:200]}'
 
 
-def run_axe(ctx, scope):
+def run_axe(ctx, scope='section'):
+    """scope: 'section', 'page', or a CSS selector (or a list of them) to limit axe to."""
     return ctx.page.evaluate(JS_AXE, [scope, AXE_TAGS])
 
 
