@@ -64,6 +64,7 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-html.js',             // IIFE，只掛 globalThis.SasFitHtml；純 HTML 字串，呼叫時才經 host() 讀 FormUtils／ResultTiles／ChartTheme
     'sasfit-plot-data.js',        // IIFE，只掛 globalThis.SasFitPlotData；圖表 config 的純資料，呼叫時才經 host() 讀 ChartTheme
     'sasfit-plots.js',            // IIFE，只掛 globalThis.SasFitPlots；Chart 實例與誤差棒外掛，頂層不碰 document／Chart
+    'sasfit-shape-geom.js',       // IIFE，只掛 globalThis.SasFitShapeGeom；3D 示意圖的網格與蠕蟲鏈中心線，純函式、無相依
 ]);
 
 /** 以瀏覽器 classic script 的語意執行一個 js/ 檔（共用 globalThis 與頂層宣告）。 */
@@ -114,4 +115,5 @@ module.exports = {
     SasFitHtml: globalThis.SasFitHtml,
     SasFitPlotData: globalThis.SasFitPlotData,
     SasFitPlots: globalThis.SasFitPlots,
+    SasFitShapeGeom: globalThis.SasFitShapeGeom,
 };
