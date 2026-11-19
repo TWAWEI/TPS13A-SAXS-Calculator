@@ -237,7 +237,7 @@
         const name = '<span' + attrs({ class: 'sf-file-text', title: row.fileName }) + '>'
             + esc(globalThis.SasFitHtml.middleEllipsis(row.fileName)) + '</span>';
         return '<tr' + attrs({ class: 'sf-seq-row', 'data-id': row.id }) + '><td class="sf-seq-pick">' + pick + '</td>'
-            + '<th scope="row" class="sf-seq-name">' + name + load + '</th>'
+            + '<th scope="row" class="sf-seq-name"><span class="sf-seq-namebox">' + name + load + '</span></th>'
             + '<td class="sf-seq-num">' + esc(row.condition) + '</td>' + row.cells.map(cellHtml).join('')
             + '<td class="sf-seq-num">' + esc(row.measure) + '</td>' + statusHtml(row) + '</tr>';
     }

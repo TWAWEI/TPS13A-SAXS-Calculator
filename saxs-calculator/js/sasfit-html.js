@@ -701,7 +701,7 @@
     }
 
     globalThis.SasFitHtml = Object.freeze({
-        MISSING,
+        MISSING, WEIGHTING_LABELS,
         fileRowsHtml, paramTableHeadHtml, paramTableHtml, paramErrorCells, openDetails, detailOpen, optionsHtml, modelOptionsHtml,
         sldPanelHtml, sldOutputHtml, weightingOptionsHtml, resultsHtml, resultParamsHtml, fitBarHtml,
         hintsHtml, statusChipHtml, measureHtml, modelInfoHtml, formatValueError, formatNumber, unitText, middleEllipsis,

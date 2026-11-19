@@ -27,6 +27,7 @@ const TABS = [
     { key: 'data', tab: 'sfTabData', panel: 'sfPanelData' },
     { key: 'model', tab: 'sfTabModel', panel: 'sfPanelModel' },
     { key: 'fit', tab: 'sfTabFit', panel: 'sfPanelFit' },
+    { key: 'sequence', tab: 'sfTabSeq', panel: 'sfPanelSeq' },
 ];
 
 const savedDocument = global.document;
@@ -71,7 +72,7 @@ function makeElement(id) {
     return node;
 }
 
-/** 以 index.html 的初始標記為準：第一個分段選中，其餘兩個面板 hidden。 */
+/** 以 index.html 的初始標記為準：第一個分段選中，其餘三個面板 hidden。 */
 function makeDom(Section, omit = []) {
     const elements = new Map(Section.ELEMENT_IDS.filter(id => !omit.includes(id)).map(id => [id, makeElement(id)]));
     TABS.forEach(({ tab, panel }, i) => {
@@ -205,7 +206,7 @@ test('[sasfit-section] 啟動後畫面與初始狀態一致：資料分段選中
 
 test('[sasfit-section] 點分頁鈕：該鈕 aria-selected／tabindex／.active，面板 hidden 互換', () => {
     const { Section, $ } = boot();
-    for (const { key, tab } of [TABS[2], TABS[1], TABS[0]]) {
+    for (const { key, tab } of [TABS[3], TABS[2], TABS[1], TABS[0]]) {
         $(tab).fire('click');
         assert.equal(Section.getState().tab, key);
         assert.deepEqual(tabState($), expectedTabs(key));
@@ -214,9 +215,10 @@ test('[sasfit-section] 點分頁鈕：該鈕 aria-selected／tabindex／.active�
 
 test('[sasfit-section] 方向鍵／Home／End 依 SasFitState.nextTab 移動，焦點移到新分頁，並取消預設捲動', () => {
     const { Section, $ } = boot();
-    const order = TABS.map(t => t.key);      // 頁面實際有的分頁（SasFitState.TABS 可能比頁面多：第四個分頁鈕之後才加入）
+    const order = TABS.map(t => t.key);
+    assert.deepEqual(order, SasFitState.TABS, '頁面的分頁就是 SasFitState.TABS 的四個');
     let current = 'data';
-    for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'Home', 'End', 'ArrowLeft']) {
+    for (const key of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'Home', 'End', 'ArrowLeft']) {
         const next = SasFitState.nextTab(order, current, key);
         const target = $(TABS.find(t => t.key === next).tab);
         const before = target.focusCount;
@@ -261,8 +263,8 @@ test('[sasfit-section] 三個分段模組存在才建立，依序收到同一個
     const { record, Section, $ } = boot({ segments: {} });
     assert.deepEqual(record.created, SEGMENT_GLOBALS);
     // 模組清單：三個分段依序，之後是圖卡的檢視切換與 3D 示意（不是分頁）
-    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.global), SEGMENT_GLOBALS.concat(['SasFitShape3d']));
-    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.key), ['data', 'model', 'fit', 'shape']);
+    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.global), SEGMENT_GLOBALS.concat(['SasFitShape3d', 'SasFitSeqUi']));
+    assert.deepEqual(Section.SEGMENT_MODULES.map(m => m.key), ['data', 'model', 'fit', 'shape', 'sequence']);
     const ctx = record.ctx.SasFitDataUi;
     assert.equal(record.ctx.SasFitParamsUi, ctx);
     assert.equal(record.ctx.SasFitFitUi, ctx);
@@ -435,6 +437,50 @@ test('[sasfit-section] ctx.preview 轉給模型分段；沒有模型分段時是
     assert.doesNotThrow(() => { data.ctx.preview.schedule(); data.ctx.preview.cancel(); });
     assert.equal(data.ctx.preview.last(), null);
     assert.deepEqual(data.ctx.preview.status(), {});
+});
+
+test('[sasfit-section] 第四個分段「序列」：End 到它；缺 sfPanelSeq 時 init 列出缺的 id、不丟例外', () => {
+    const { Section, $ } = boot();
+    $('sfTabs').fire('keydown', { key: 'End' });
+    assert.equal(Section.getState().tab, 'sequence');
+    assert.equal($('sfPanelSeq').hidden, false);
+    assert.equal($('sfWorkspace').getAttribute('data-tab'), 'sequence');
+    $('sfTabs').fire('keydown', { key: 'ArrowRight' });
+    assert.equal(Section.getState().tab, 'data', '四個分頁循環');
+    // 沒有序列模組時由骨架代管空狀態
+    assert.equal($('sfSeqEmpty').hidden, false);
+    assert.equal($('sfSeqWrapper').hidden, true);
+    assert.equal($('sfSeqRun').disabled, true);
+
+    clearSegments();
+    const Fresh = loadSection();
+    makeDom(Fresh, ['sfPanelSeq', 'sfSeqBody']);
+    let ok = null;
+    const errors = captureConsole('error', () => { ok = Fresh.init({ createClient: () => ({}) }); });
+    assert.equal(ok, false);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /sfPanelSeq, sfSeqBody/);
+});
+
+test('[sasfit-section] ctx.sequence 轉給序列分段；沒有序列分段時 running() 是 false、barText() 是空字串', () => {
+    const { record } = boot({ segments: {} });
+    const { sequence } = record.ctx.SasFitFitUi;
+    assert.ok(Object.isFrozen(sequence));
+    assert.equal(sequence.running(), false);
+    assert.equal(sequence.barText(), '');
+
+    clearSegments();
+    const seen = { ctx: null };
+    globalThis.SasFitSeqUi = { create(ctx) { seen.ctx = ctx; return { render() {}, running: () => true, barText: () => '第 2／3 筆' }; } };
+    try {
+        const Section = loadSection();
+        makeDom(Section);
+        assert.equal(Section.init({ createClient: () => ({}) }), true);
+        assert.equal(seen.ctx.sequence.running(), true);
+        assert.equal(seen.ctx.sequence.barText(), '第 2／3 筆');
+    } finally {
+        delete globalThis.SasFitSeqUi;
+    }
 });
 
 test('[sasfit-section] 分段模組的 create 沒有回傳帶 render 的物件：init 回報錯誤並返回，不丟例外', () => {

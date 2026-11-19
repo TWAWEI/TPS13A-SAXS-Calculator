@@ -1,5 +1,5 @@
 /* =============================================
-   TPS13A SAXS Calculator — SAS 模型擬合分頁：圖卡的「曲線｜結構」檢視切換與 3D 結構示意
+   TPS13A SAXS Calculator — SAS 模型擬合分頁：圖卡的「曲線｜結構」檢視切換與 3D 結構示意、序列分段
    （計畫 M4；css/sasfit.css 已接近行數上限，M4 的樣式寫在這裡）。
    只用 css/tokens.css 的 token（不寫色碼）；3D 畫布上的顏色由 js/chart-theme.js 決定。
    排在 sasfit.css、sasfit-params.css 之後載入；選擇器都以 .sf- 開頭或限定在 .sf- 容器內。
@@ -154,4 +154,195 @@
     .sf-workspace[data-tab="model"] .sf-shape-text {
         display: none;
     }
+}
+
+/* ===== 序列分段：選項、執行、趨勢圖、選檔與結果同一張表 ===== */
+/* 設定摘要是以「·」分隔的項目清單（不是段落）：比照擬合列的摘要靠左，不做左右對齊（兩行時字距會被拉開） */
+.sf-seq-settings {
+    margin: 0 0 var(--spacing-sm);
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+.sf-seq-run {
+    margin-top: var(--spacing-md);
+}
+
+.sf-seq-run .stat-sub {
+    flex: 1 1 10rem;
+    margin: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+}
+
+/* [hidden] 要蓋過元件自己的 display */
+.sf-seq-trend[hidden],
+.sf-seq-wrapper[hidden] {
+    display: none;
+}
+
+.sf-seq-trend {
+    margin: var(--spacing-md) 0;
+}
+
+.sf-seq-trend-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.sf-seq-trend-head .form-label {
+    margin: 0;
+    white-space: nowrap;
+}
+
+.sf-seq-trend-head .form-select {
+    flex: 1 1 8rem;
+    width: auto;
+    min-width: 0;
+    max-width: 16rem;
+}
+
+.sf-seq-trend-head .btn {
+    margin-left: auto;
+}
+
+.sf-chart--trend {
+    height: 220px;
+}
+
+.sf-seq-trend .stat-sub:empty {
+    display: none;
+}
+
+.sf-seq-tools {
+    margin-top: var(--spacing-md);
+}
+
+.sf-seq-tools .sf-seq-csv {
+    margin-left: auto;
+}
+
+/* 上限 500 列：表格在自己的框裡上下捲動，表頭固定；欄多時左右捲動也只發生在框內 */
+.sf-seq-wrapper {
+    max-height: min(50vh, 24rem);
+    overflow: auto;
+}
+
+.sf-seq-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-bg-card);
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+
+/* 列內有勾選與按鈕：不套用表格的 hover 底色 */
+.sf-seq-table tbody tr:hover {
+    background: transparent;
+}
+
+.sf-seq-table th,
+.sf-seq-table td {
+    padding: 0.5rem 0.375rem;
+    vertical-align: top;
+}
+
+.sf-seq-table th:first-child,
+.sf-seq-table td:first-child {
+    padding-left: 0.5rem;
+}
+
+.sf-seq-table th:last-child,
+.sf-seq-table td:last-child {
+    padding-right: 0.5rem;
+}
+
+/* 列標題是 th：既有的「最後一列不畫底線」只管 td */
+.sf-seq-table tbody tr:last-child th {
+    border-bottom: none;
+}
+
+.sf-seq-table input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+}
+
+.sf-seq-name {
+    min-width: 10.5rem;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--color-text-primary);
+}
+
+/* 檔名與「載入」鈕：放得下時同一行，放不下時按鈕換到檔名下面；檔名只在整個字放不下時才從中間斷 */
+.sf-seq-namebox {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 0.5rem;
+}
+
+.sf-seq-name .sf-file-text {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+.sf-seq-table .btn-sm {
+    padding: 0.25rem 0.5rem;
+    white-space: nowrap;
+}
+
+/* 數字欄：靠右、等寬數字；誤差在值的下一行，欄寬才不會把表格撐得太寬 */
+.sf-seq-table .sf-seq-num,
+.sf-seq-table thead th:nth-child(n+3) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sf-seq-table thead th:last-child,
+.sf-seq-table .sf-seq-status {
+    text-align: left;
+}
+
+.sf-seq-value {
+    display: block;
+    color: var(--color-text-primary);
+}
+
+.sf-seq-err,
+.sf-seq-mark,
+.sf-seq-sub {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+}
+
+.sf-seq-status {
+    min-width: 8.5rem;
+}
+
+.sf-seq-status .tile-chip {
+    margin: 0 0.25rem 0.125rem 0;
+    white-space: nowrap;
+}
+
+.sf-seq-state {
+    color: var(--color-text-secondary);
+}
+
+.sf-seq-note {
+    display: block;
+    margin-top: 0.125rem;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    text-align: left;
 }

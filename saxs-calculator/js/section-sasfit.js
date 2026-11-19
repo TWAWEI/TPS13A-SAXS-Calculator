@@ -3,8 +3,8 @@
  * design spec 3, 5.1; plan M3 Task 10b). Original code.
  *
  * It owns the page state (SasFitState), the model form (SasFitForm) and the
- * Worker client, switches the three segments (data / model / fit) and hands one
- * context object to the segment modules (the fourth module, 'shape', is the switch
+ * Worker client, switches the four segments (data / model / fit / sequence) and hands one
+ * context object to the segment modules (the module 'shape' is the switch
  * of the plot card and the 3D sketch -- it has no tab). Everything inside a segment -- file
  * list, parameter table, fit controls, charts -- belongs to those modules.
  *
@@ -32,11 +32,13 @@
  *     globalThis.SasFitDataUi   = Object.freeze({ create })     data segment   (key 'data')
  *     globalThis.SasFitParamsUi = Object.freeze({ create })     model segment  (key 'model')
  *     globalThis.SasFitFitUi    = Object.freeze({ create })     fit segment    (key 'fit')
+ *     globalThis.SasFitSeqUi    = Object.freeze({ create })     sequence segment (key 'sequence')
  *     globalThis.SasFitShape3d  = Object.freeze({ create })     plot card: curves | 3D sketch (key 'shape'; not a tab)
  * init calls create(ctx) of each one that exists, in that order, exactly once.
  * create binds the module's own event listeners and returns
  *     { render() }                                   every segment
  *     { render(), schedulePreview(), cancelPreview(), lastPreview(), previewStatus() }   the model segment
+ *     { render(), running(), barText() }             the sequence segment
  * render() draws the segment from ctx.getState() / ctx.getForm(); it must not
  * dispatch, and it must leave alone what did not change: refresh() runs while
  * the user is typing (see setHtml). A module that is not there yet is skipped,
@@ -72,6 +74,9 @@
  *                            is no model segment. last() is the latest preview curve { q, I };
  *                            status() is what SasFitHints.plotStatus needs to know about the
  *                            preview: { computing, paused, previewPoints, allNonFinite, error }
+ *     sequence               { running(), barText() } -> the sequence segment: whether a sequence
+ *                            is running and the progress text the fit bar shows for it; false
+ *                            and '' while there is no sequence segment
  *
  * The state and the form are never modified: every change replaces the frozen
  * object. Non-SasFit globals are read through host() at call time; nothing
@@ -89,6 +94,7 @@
         data: Object.freeze({ tab: 'sfTabData', panel: 'sfPanelData' }),
         model: Object.freeze({ tab: 'sfTabModel', panel: 'sfPanelModel' }),
         fit: Object.freeze({ tab: 'sfTabFit', panel: 'sfPanelFit' }),
+        sequence: Object.freeze({ tab: 'sfTabSeq', panel: 'sfPanelSeq' }),
     });
     const TABLIST_ID = 'sfTabs';
     const WORKSPACE_ID = 'sfWorkspace';       // carries data-tab: the narrow layout keeps the plot in view while the model is edited
@@ -97,9 +103,11 @@
         Object.freeze({ key: 'model', global: 'SasFitParamsUi' }),
         Object.freeze({ key: 'fit', global: 'SasFitFitUi' }),
         Object.freeze({ key: 'shape', global: 'SasFitShape3d' }),         // not a tab: the 3D sketch and the switch of the plot card
+        Object.freeze({ key: 'sequence', global: 'SasFitSeqUi' }),        // last: it draws from what the others have set
     ]);
     const ELEMENT_IDS = Object.freeze([
-        'sfAlert', WORKSPACE_ID, TABLIST_ID, 'sfTabData', 'sfTabModel', 'sfTabFit', 'sfPanelData', 'sfPanelModel', 'sfPanelFit',
+        'sfAlert', WORKSPACE_ID, TABLIST_ID, 'sfTabData', 'sfTabModel', 'sfTabFit', 'sfTabSeq',
+        'sfPanelData', 'sfPanelModel', 'sfPanelFit', 'sfPanelSeq',
         // fit bar (on every tab)
         'sfFitBar', 'sfFitStart', 'sfFitStop', 'sfFitMeasure', 'sfFitSummary', 'sfFitProgress', 'sfFitLive',
         // data segment
@@ -112,6 +120,10 @@
         'sfQMin', 'sfQMinError', 'sfQMax', 'sfQMaxError', 'sfRangeFull', 'sfRangeDefault', 'sfRangeInfo', 'sfWeighting',
         'sfMaxSteps', 'sfMaxStepsError', 'sfFitRevert', 'sfFitRevertNote', 'sfPreFitHints', 'sfFitAlert',
         'sfFitResults', 'sfFitHints', 'sfFitParams',
+        // sequence segment
+        'sfSeqLock', 'sfSeqChain', 'sfSeqSort', 'sfSeqSettings', 'sfSeqHints', 'sfSeqRun', 'sfSeqProgress', 'sfSeqLive',
+        'sfSeqTrendBox', 'sfSeqY', 'sfSeqTrend', 'sfSeqTrendNote', 'sfSeqTrendPng', 'sfSeqAll', 'sfSeqNone', 'sfSeqEmpty',
+        'sfSeqWrapper', 'sfSeqHead', 'sfSeqBody', 'sfSeqCsv',
         // charts
         'sfPlotTitle', 'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
         'sfMainChart', 'sfResidualEmpty', 'sfResidualBox', 'sfResidualChart',
@@ -122,6 +134,7 @@
     const TEXT = Object.freeze({
         empty: '尚未載入資料。',
         needData: '請先載入資料，才能設定擬合範圍並開始擬合。',
+        seqEmpty: '請先載入資料',
         renderFailed: '畫面更新時發生錯誤，部分內容可能不是最新的；請重新整理頁面後再試',
     });
     const LOG = '[sasfit]';
@@ -210,6 +223,13 @@
         fit() {
             el('sfFitStart').disabled = true;
             el('sfFitSummary').textContent = TEXT.needData;
+        },
+        sequence(state) {
+            const empty = !state.files.some((file) => file.dataset !== null);
+            el('sfSeqEmpty').textContent = TEXT.seqEmpty;
+            el('sfSeqEmpty').hidden = !empty;
+            el('sfSeqWrapper').hidden = true;                 // without the module there is nothing to list
+            el('sfSeqRun').disabled = true;
         },
         shape() {},                           // the markup starts in the curve view, which needs no module
     });
@@ -305,6 +325,10 @@
     function buildContext() {
         const model = () => page.segments.model;
         const call = (method, fallback) => () => (model() !== undefined && typeof model()[method] === 'function' ? model()[method]() : fallback);
+        const sequence = (method, fallback) => () => {
+            const segment = page.segments.sequence;
+            return segment !== undefined && typeof segment[method] === 'function' ? segment[method]() : fallback;
+        };
         const ctx = {
             el, getState, dispatch, getForm, setForm, refresh, setHtml,
             deps: page.deps,
@@ -314,6 +338,7 @@
                 last: call('lastPreview', null),
                 status: call('previewStatus', NO_PREVIEW_STATUS),
             }),
+            sequence: Object.freeze({ running: sequence('running', false), barText: sequence('barText', '') }),
         };
         Object.defineProperty(ctx, 'client', { get: getClient, enumerable: true });
         return Object.freeze(ctx);
@@ -341,7 +366,7 @@
     function onTabKey(event) {
         if (NAV_KEYS.indexOf(event.key) < 0) return;
         event.preventDefault();                                   // Home / End would scroll the page
-        // the tabs this page has: SasFitState.TABS may name one whose button is not in the markup yet
+        // the tabs this page has (the same four as SasFitState.TABS)
         const next = globalThis.SasFitState.nextTab(Object.keys(TAB_ELEMENTS), getState().tab, event.key);
         dispatch({ type: TAB_ACTION, tab: next });
         el(TAB_ELEMENTS[next].tab).focus();

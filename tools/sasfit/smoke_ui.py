@@ -170,8 +170,11 @@ class Ctx:
         self.theme('light')
 
 
+TAB_BUTTONS = {'data': '#sfTabData', 'model': '#sfTabModel', 'fit': '#sfTabFit', 'sequence': '#sfTabSeq'}
+
+
 def tab(page, key):
-    page.click({'data': '#sfTabData', 'model': '#sfTabModel', 'fit': '#sfTabFit'}[key])
+    page.click(TAB_BUTTONS[key])
 
 
 def fresh(page, viewport=DESKTOP):
@@ -487,8 +490,8 @@ def check_keyboard(ctx):
         page = ctx.page
         page.focus('#sfTabData')
         notes, ok = [], True
-        for key, want in (('ArrowRight', 'sfTabModel'), ('ArrowRight', 'sfTabFit'), ('ArrowLeft', 'sfTabModel'),
-                          ('End', 'sfTabFit'), ('Home', 'sfTabData')):
+        for key, want in (('ArrowRight', 'sfTabModel'), ('ArrowRight', 'sfTabFit'), ('ArrowRight', 'sfTabSeq'), ('ArrowRight', 'sfTabData'),
+                          ('ArrowLeft', 'sfTabSeq'), ('ArrowLeft', 'sfTabFit'), ('End', 'sfTabSeq'), ('Home', 'sfTabData')):
             page.keyboard.press(key)
             page.wait_for_timeout(80)
             state = page.evaluate("""(w) => ({ focus: document.activeElement.id, sel: document.getElementById(w).getAttribute('aria-selected'),
@@ -498,10 +501,11 @@ def check_keyboard(ctx):
             notes.append(f"{key}->{want}:{'ok' if good else state}")
         wanted = {'data': (['sfFileInput'], ['sfShow_', 'sfActive_', 'sfCond_', 'sfRemove_']),
                   'model': (['sfFitStart', 'sfModel', 'sfFit_radius', 'sfValue_radius', 'sfMore_radius'], []),
-                  'fit': (['sfFitStart', 'sfQMin', 'sfQMax', 'sfWeighting', 'sfMaxSteps'], [])}
+                  'fit': (['sfFitStart', 'sfQMin', 'sfQMax', 'sfWeighting', 'sfMaxSteps'], []),
+                  'sequence': (['sfFitStart', 'sfSeqChain', 'sfSeqSort', 'sfSeqAll', 'sfSeqNone', 'sfSeqWrapper'], ['sfSeqPick_'])}
         for key, (exact, prefixes) in wanted.items():
             tab(page, key)
-            page.focus({'data': '#sfTabData', 'model': '#sfTabModel', 'fit': '#sfTabFit'}[key])
+            page.focus(TAB_BUTTONS[key])
             seen = []
             for _ in range(160):
                 page.keyboard.press('Tab')
@@ -590,7 +594,7 @@ def check_narrow(ctx):
         page.set_viewport_size({'width': 320, 'height': 640})
         page.wait_for_timeout(400)
         notes, ok320, param, stacked = [], True, [1, 0], ''
-        for key in ('data', 'fit', 'model'):
+        for key in ('data', 'fit', 'sequence', 'model'):
             tab(page, key)
             page.wait_for_timeout(200)
             if key == 'model':

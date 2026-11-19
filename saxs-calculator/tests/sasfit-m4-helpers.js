@@ -29,6 +29,10 @@
  *   seqState({ steps, weighting, conditions, form, files, outcome, conditionName, options })
  *                   經 SasFitState.reduce 走完一次序列的狀態（不經執行器）：steps[k] 是第 k 個要擬合的項目的結果——
  *                   fakeResult 的參數，或 { error: 訊息 }；steps 比項目少時，其餘留在 pending。回傳 { state, form, plan }
+ *   seqPage({ script, files, ticks, modules, deps })
+ *                   一份啟動好、含序列分段的頁面（ui.boot），已載入三個合成檔（或 files：addFiles 的項目）並勾選擬合
+ *                   ticks（預設 radius）；client 是 seqClient(script)。另有 refreshes()（ctx.refresh 被分段呼叫的次數）、
+ *                   body()（#sfSeqBody）、rowIds()、pick(id)／load(id)（該列的勾選框與載入鈕）
  */
 const ui = require('./sasfit-ui-helpers.js');
 
@@ -252,4 +256,32 @@ function seqState({ steps = DEFAULT_STEPS, form = sphereForm(), outcome, options
     return { state: S.reduce(state, { type: 'seqSettled', outcome: how }), form, plan };
 }
 
-module.exports = { loadedState, seqState, fakeContext, fakeFrames, fakeCanvas, shapePage, restore, seqDatasets, seqFiles, sphereForm, fakeResult, seqClient, SEQ_FILES };
+const SEQ_MODULES = ['SasFitDataUi', 'SasFitParamsUi', 'SasFitFitUi', 'SasFitSeqUi'];
+const seqEntries = () => seqDatasets().map((dataset, i) => ({ fileName: SEQ_FILES[i], dataset, issues: [], notes: {} }));
+
+function seqPage({ script = [], files = seqEntries(), ticks = ['radius'], modules = SEQ_MODULES, deps = {} } = {}) {
+    const client = seqClient(script);
+    const counts = { refreshes: 0 };
+    // 探針分段：排在最後建立，每次 refresh 都會 render 它一次
+    const realShape = globalThis.SasFitShape3d;
+    globalThis.SasFitShape3d = Object.freeze({ ...realShape, create: () => ({ render() { counts.refreshes += 1; } }) });
+    let page;
+    try {
+        page = ui.boot({ modules, deps: { createClient: () => client, ...deps } });
+    } finally {
+        globalThis.SasFitShape3d = realShape;
+    }
+    if (files.length > 0) page.ctx.dispatch({ type: 'addFiles', files });
+    ticks.forEach((name) => page.ctx.setForm(globalThis.SasFitForm.reduce(page.ctx.getForm(), { type: 'setFit', name, fit: true })));
+    page.ctx.refresh();
+    const body = () => page.$('sfSeqBody');
+    return {
+        ...page, client, body,
+        refreshes: () => counts.refreshes,
+        rowIds: () => body().querySelectorAll('tr').map((row) => row.dataset.id),
+        pick: (id) => page.$(globalThis.SasFitSeqView.pickId(id)),
+        load: (id) => page.$(globalThis.SasFitSeqView.loadId(id)),
+    };
+}
+
+module.exports = { seqPage, seqEntries, loadedState, seqState, fakeContext, fakeFrames, fakeCanvas, shapePage, restore, seqDatasets, seqFiles, sphereForm, fakeResult, seqClient, SEQ_FILES };

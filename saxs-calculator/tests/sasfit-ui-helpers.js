@@ -20,7 +20,10 @@ const JS = path.join(__dirname, '..', 'js');
 const FIXTURES = path.join(__dirname, 'fixtures', 'sasfit', 'dat');
 const MODULE_FILES = Object.freeze({
     SasFitDataUi: 'sasfit-data-ui.js', SasFitParamsUi: 'sasfit-params-ui.js', SasFitFitUi: 'sasfit-fit-ui.js',
+    SasFitSeqUi: 'sasfit-seq-ui.js',
 });
+// 預設載入的三個分段；序列分段（SasFitSeqUi）要在 modules 裡點名才載入，既有測試的頁面因此不變
+const DEFAULT_MODULES = Object.freeze(['SasFitDataUi', 'SasFitParamsUi', 'SasFitFitUi']);
 const ENTITIES = Object.freeze({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#039;': "'" });
 const TAG_RE = /<([a-zA-Z][\w-]*)((?:\s+[\w:-]+(?:="[^"]*")?)*)\s*\/?>([^<]*)|<\/([a-zA-Z][\w-]*)>/g;
 const ATTR_RE = /([\w:-]+)(?:="([^"]*)")?/g;
@@ -247,12 +250,12 @@ function restoreGlobals() {
 }
 
 /**
- * 一份啟動好的頁面。modules：要載入的分段模組全域名稱；其餘不存在（由骨架代管空狀態）。
+ * 一份啟動好的頁面。modules：要載入的分段模組全域名稱（預設資料／模型／擬合三個）；其餘不存在（由骨架代管空狀態）。
  * 回傳 { Section, $, document, client, timers, plots, reads, created, ctx }；ctx 由一個探針分段取得；
  * created.count 是 createClient 被呼叫的次數；sectionActive 為 false 時頁面分頁不是顯示中的那一個；
  * deps：額外交給 SasFitSection.init 的相依（例：3D 示意圖的 raf、createCanvas）。
  */
-function boot({ modules = Object.keys(MODULE_FILES), readFile, extraIds = [], sectionActive = true, deps: extraDeps = {} } = {}) {
+function boot({ modules = DEFAULT_MODULES, readFile, extraIds = [], sectionActive = true, deps: extraDeps = {} } = {}) {
     Object.keys(MODULE_FILES).forEach((name) => { delete globalThis[name]; });
     modules.forEach((name) => loadModule(MODULE_FILES[name]));
     const probe = { ctx: null };

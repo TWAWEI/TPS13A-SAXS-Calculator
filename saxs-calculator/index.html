@@ -469,7 +469,7 @@
             </section>
 
             <!-- sasfit:begin -->
-            <!-- Section: SAS model fitting（M3：資料／模型／擬合三個分段與圖區） -->
+            <!-- Section: SAS model fitting（資料／模型／擬合／序列四個分段與圖區） -->
             <section class="section" id="section-sasfit" aria-labelledby="sfTitle">
                 <div class="page-header">
                     <h1 class="page-title" id="sfTitle">SAS 模型擬合</h1>
@@ -485,9 +485,10 @@
                             <button type="button" class="tab active" id="sfTabData" role="tab" data-tab="data" aria-selected="true" aria-controls="sfPanelData" tabindex="0">資料</button>
                             <button type="button" class="tab" id="sfTabModel" role="tab" data-tab="model" aria-selected="false" aria-controls="sfPanelModel" tabindex="-1">模型</button>
                             <button type="button" class="tab" id="sfTabFit" role="tab" data-tab="fit" aria-selected="false" aria-controls="sfPanelFit" tabindex="-1">擬合</button>
+                            <button type="button" class="tab" id="sfTabSeq" role="tab" data-tab="sequence" aria-selected="false" aria-controls="sfPanelSeq" tabindex="-1">序列</button>
                         </div>
 
-                        <!-- 擬合列：三個分段都看得到（開始／停止、擬合量度、範圍與自由參數的摘要、進度） -->
+                        <!-- 擬合列：四個分段都看得到（開始／停止、擬合量度、範圍與自由參數的摘要、進度；序列進行中顯示序列的進度） -->
                         <div class="sf-fitbar" id="sfFitBar" role="group" aria-label="擬合">
                             <div class="sf-fitbar-actions">
                                 <button type="button" class="btn btn-primary" id="sfFitStart" aria-describedby="sfFitSummary">開始擬合</button>
@@ -661,6 +662,53 @@
                             <div class="sf-results" id="sfFitResults"></div>
                             <div id="sfFitHints" aria-live="polite"></div>
                             <div class="sf-results" id="sfFitParams"></div>
+                        </div>
+
+                        <!-- 分段：序列（選檔與結果同一張表；停止用擬合列的「停止」） -->
+                        <div class="card" id="sfPanelSeq" role="tabpanel" aria-labelledby="sfTabSeq" hidden>
+                            <div class="alert alert--compact alert-info sf-lock" id="sfSeqLock" hidden>擬合進行中，參數與資料已鎖定</div>
+                            <div class="form-list">
+                                <div class="form-group">
+                                    <label class="form-label" for="sfSeqChain">以前一筆結果作為下一筆初值</label>
+                                    <input type="checkbox" id="sfSeqChain" checked>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="sfSeqSort">依條件值排序</label>
+                                    <input type="checkbox" id="sfSeqSort" checked>
+                                </div>
+                            </div>
+                            <p class="stat-sub sf-seq-settings" id="sfSeqSettings"></p>
+                            <div id="sfSeqHints" aria-live="polite"></div>
+                            <div class="sf-actions sf-seq-run">
+                                <button type="button" class="btn btn-primary" id="sfSeqRun" aria-describedby="sfSeqSettings" disabled>執行序列擬合</button>
+                                <p class="stat-sub sf-progress" id="sfSeqProgress"></p>
+                            </div>
+                            <div class="sr-only" id="sfSeqLive" role="status" aria-live="polite"></div>
+
+                            <div class="sf-seq-trend" id="sfSeqTrendBox" hidden>
+                                <div class="sf-seq-trend-head">
+                                    <label class="form-label" for="sfSeqY">趨勢圖的縱軸</label>
+                                    <select class="form-select" id="sfSeqY"></select>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfSeqTrendPng" disabled>PNG</button>
+                                </div>
+                                <div class="chart-container sf-chart--trend">
+                                    <canvas id="sfSeqTrend" role="img" aria-label="尚無可畫的結果"></canvas>
+                                </div>
+                                <p class="stat-sub" id="sfSeqTrendNote"></p>
+                            </div>
+
+                            <div class="sf-actions sf-seq-tools">
+                                <button type="button" class="btn btn-secondary btn-sm" id="sfSeqAll">全選</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="sfSeqNone">全不選</button>
+                                <button type="button" class="btn btn-secondary btn-sm sf-seq-csv" id="sfSeqCsv" disabled>匯出序列結果 CSV</button>
+                            </div>
+                            <p class="stat-sub sf-empty" id="sfSeqEmpty">請先載入資料</p>
+                            <div class="table-wrapper sf-seq-wrapper" id="sfSeqWrapper" tabindex="0" role="region" aria-label="序列擬合的資料與結果" hidden>
+                                <table class="table sf-seq-table">
+                                    <thead id="sfSeqHead"></thead>
+                                    <tbody id="sfSeqBody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -2433,6 +2481,7 @@
     <script src="js/sasfit-data-ui.js?v=5.2"></script>
     <script src="js/sasfit-params-ui.js?v=5.2"></script>
     <script src="js/sasfit-fit-ui.js?v=5.2"></script>
+    <script src="js/sasfit-seq-ui.js?v=5.2"></script>
     <script src="js/section-sasfit.js?v=5.2"></script>
     <script src="js/app.js?v=5.2"></script>
 
