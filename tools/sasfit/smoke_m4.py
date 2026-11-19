@@ -362,7 +362,7 @@ def check_iucr_block(ctx):
         labels = ['Data file', 'Model', 'q-range for fitting', 'Number of points', 'Weighting', 'Reduced χ²', 'Status', 'Assumptions', 'Software']
         missing = [n for n in labels if n not in by_label]
         ok = (rows[0] == [IUCR_HEADING] and not missing and param_ok and by_label['Data file'][2] == 'SYNTH_sphere_10.dat' and by_label['Model'][2] == 'sphere'
-              and 'f ≈ Z' in by_label['Assumptions'][2] and ('v' + version) in by_label['Software'][2] and version == '5.2')
+              and 'f ≈ Z' in by_label['Assumptions'][2] and ('v' + version) in by_label['Software'][2] and version == '5.3')
         return ok, (f"note after sending: {note!r}; heading {rows[0]}; parameter rows {[(n, by_label.get(n, ['', '', '', '?'])[3]) for n, _ in params]}; "
                     f"missing rows: {missing or 'none'}; software {by_label.get('Software', ['', '', '?'])[2]!r}")
     check(ctx, '5b send to IUCr: the block has the heading, data file, model, 5 parameter rows (fixed ones marked), q-range, points, weighting, measure, status, assumptions, software', run)
