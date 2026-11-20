@@ -173,30 +173,6 @@
     line-height: 1.6;
 }
 
-/* Section title rendered as a real <button> (dn/dc unlock trigger).
-   Only neutralises UA button styling that .nav-section-title does not already set —
-   deliberately no `font:`/`color: inherit`, which would out-cascade the rule above. */
-.nav-section-title--button {
-    display: block;
-    width: 100%;
-    background: none;
-    border: 0;
-    text-align: left;
-    font-family: inherit;
-    cursor: pointer;
-}
-
-.nav-section-title--button:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: -2px;
-    border-radius: var(--radius-sm);
-}
-
-.nav-section-title--button[disabled] {
-    cursor: default;
-    opacity: 1;                  /* unlocked state is informational, keep it legible */
-}
-
 .nav-item {
     display: flex;
     align-items: center;
@@ -235,6 +211,45 @@
 .nav-item-text {
     font-size: inherit;
     font-weight: inherit;
+}
+
+/* dn/dc 解鎖鈕（#dndcNavUnlock）：外觀就是一個 .nav-item，但它開的是密碼對話框、不是分頁——
+   沒有 data-section，js/navigation.js 不會接手，也就永遠不會有 .active 膠囊。
+   解鎖後 js/dndc-lock.js 把它設成 disabled（純資訊）：字色維持 .nav-item 的主要文字色，只拿掉 hover 底色。 */
+.nav-item--lock {
+    line-height: 1.5;            /* 鎖的符號用 emoji 字型，行高放著不管會比其他項目高 0.5px */
+}
+
+.nav-item--lock[disabled] {
+    cursor: default;
+}
+
+.nav-item--lock[disabled]:hover {
+    background: none;
+}
+
+/* 解鎖後的四個 dn/dc 分頁是上面那個項目的子項：文字縮排一階，選中膠囊仍然滿寬。
+   收合成 56px 時不縮排（放不下）。 */
+.sidebar:not(.collapsed) .nav-subsection .nav-item[data-section] {
+    padding-left: calc(0.75rem + var(--spacing-md));
+}
+
+/* 收合時解鎖鈕只顯示鎖的狀態符號（其他項目顯示 data-short）。文字由 dndc-lock.js 以 textContent 整段改寫，
+   包不住 span，所以用 font-size: 0 藏字（無障礙名稱仍是完整文字），符號由 ::after 補上；
+   「/ ""」讓輔助科技不重複朗讀，不支援這個語法的瀏覽器用前一行。 */
+.sidebar.collapsed .nav-item--lock {
+    font-size: 0;
+}
+
+.sidebar.collapsed .nav-item--lock::after {
+    content: "🔒";
+    content: "🔒" / "";
+    font-size: 0.875rem;
+}
+
+.sidebar.collapsed .nav-item--lock[disabled]::after {
+    content: "🔓";
+    content: "🔓" / "";
 }
 
 /* ===== Theme toggle（側欄底部「自動／淺色／深色」分段控制；js/theme-toggle.js） ===== */

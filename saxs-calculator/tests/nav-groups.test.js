@@ -1,6 +1,7 @@
 'use strict';
 /**
  * 側欄分組（v5.4）：三個群組的標題、順序，以及每個群組有哪些 data-section（依文件順序）。
+ * v5.5：dn/dc 解鎖鈕改用一般項目的外觀（.nav-item.nav-item--lock），不再是按鈕式的小標題。
  *   13A 工具 → 計算工具（含上鎖的 dn/dc 子群組）→ 輸出
  * dn/dc 的解鎖鈕與四個項目必須留在「計算工具」群組裡面，id 與 aria 屬性不變（js/dndc-lock.js 靠它們）。
  *
@@ -69,10 +70,19 @@ test('[nav-groups] 每個 data-section 在側欄恰好出現一次，而且都�
     assert.deepEqual(all.filter(name => !page.includes(`id="section-${name}"`)), [], '側欄項目沒有對應的 #section-*');
 });
 
-test('[nav-groups] 群組標題是純文字標題（不是按鈕），唯一的按鈕式標題是 dn/dc 解鎖鈕', () => {
+test('[nav-groups] 群組標題都是純文字標題（不是按鈕）：dn/dc 解鎖鈕不再借用標題樣式（v5.5）', () => {
     const titles = [...NAV.matchAll(/<(div|button)\b[^>]*class="nav-section-title[^"]*"[^>]*>([^<]*)</g)]
         .map(m => `${m[1]}:${m[2].trim()}`);
-    assert.deepEqual(titles, ['div:13A 工具', 'div:計算工具', 'button:🔒 dn/dc 工具', 'div:輸出']);
+    assert.deepEqual(titles, ['div:13A 工具', 'div:計算工具', 'div:輸出']);
+});
+
+test('[nav-groups] dn/dc 解鎖鈕長得像一般項目（.nav-item），但不是分頁：沒有 data-section／aria-current／.active（v5.5）', () => {
+    const plain = [...NAV.matchAll(/<button\b[^>]*class="[^"]*\bnav-item\b(?!-)[^"]*"[^>]*>/g)]
+        .map(m => m[0]).filter(tag => !/\sdata-section="/.test(tag));
+    assert.equal(plain.length, 1, '沒有 data-section 的 .nav-item 只能是解鎖鈕');
+    assert.match(plain[0], /\sid="dndcNavUnlock"/);
+    assert.match(plain[0], /\sclass="nav-item nav-item--lock"/);
+    assert.doesNotMatch(plain[0], /\saria-current=|\bactive\b/);
 });
 
 test('[nav-groups] dn/dc 子群組在「計算工具」裡面：解鎖鈕在脂質體之後、四個項目之前，項目預設隱藏', () => {
@@ -92,7 +102,7 @@ test('[nav-groups] dn/dc 解鎖鈕的屬性不變（js/dndc-lock.js 依賴）', 
     const button = (NAV.match(/<button\b[^>]*id="dndcNavUnlock"[^>]*>[^<]*<\/button>/) || [])[0];
     assert.ok(button, '找不到 #dndcNavUnlock');
     assert.match(button, /\stype="button"/);
-    assert.match(button, /\sclass="nav-section-title nav-section-title--button"/);
+    assert.match(button, /\sclass="nav-item nav-item--lock"/);
     assert.match(button, /\saria-haspopup="dialog"/);
     assert.match(button, /\saria-controls="dndcPasswordModal"/);
     assert.match(button, /\saria-expanded="false"/);
