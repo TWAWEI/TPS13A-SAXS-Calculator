@@ -159,6 +159,11 @@
     margin-bottom: var(--spacing-md);
 }
 
+/* 最後一組下面沒有東西要隔開：留著這段 margin 只會讓側欄多捲 12px（v5.4 多了一個組標題） */
+.nav-section:last-child {
+    margin-bottom: 0;
+}
+
 .nav-section-title {
     font-size: 0.75rem;
     font-weight: 600;
