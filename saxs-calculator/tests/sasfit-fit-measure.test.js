@@ -101,6 +101,7 @@ test('plot status: why points are hidden, by plot mode', () => {
     assert.equal(H.plotStatus({ hidden: 19, mode: 'loglog' }).text, '19 點 I ≤ 0 或無效，對數軸無法顯示（不影響擬合）');
     assert.equal(H.plotStatus({ hidden: 19, mode: 'guinier' }).text, '19 點 I ≤ 0 或無效，Guinier 座標（ln I）無法顯示（不影響擬合）');
     assert.equal(H.plotStatus({ hidden: 2, mode: 'kratky' }).text, '2 點的 q 或 I 不是有效數值，無法顯示');
+    assert.equal(H.plotStatus({ hidden: 2, mode: 'porod' }).text, '2 點的 q 或 I 不是有效數值，無法顯示');
     assert.equal(H.plotStatus({ hidden: 2 }).text, '2 點無法顯示');
     assert.equal(H.plotStatus({ hidden: 0, mode: 'loglog' }).text, '');
 });

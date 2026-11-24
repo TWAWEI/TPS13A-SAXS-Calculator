@@ -54,7 +54,7 @@ window.__ui = {
 
 JS_MODE_INFO = """() => {
   const m = __ui.chart('sfMainChart'), r = __ui.chart('sfResidualChart');
-  const x = m.options.scales.x, y = m.options.scales.y, pressed = ['sfModeLogLog', 'sfModeGuinier', 'sfModeKratky']
+  const x = m.options.scales.x, y = m.options.scales.y, pressed = ['sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfModePorod']
     .map((id) => document.getElementById(id).getAttribute('aria-pressed'));
   return { type: m.scales.x.type, title: x.title && x.title.text, yTitle: y.title && y.title.text, pressed,
            left: [m.chartArea.left, r.chartArea.left], right: [m.chartArea.right, r.chartArea.right],
@@ -355,12 +355,12 @@ def check_modes(ctx):
         page = ctx.page
         details, ok, titles = [], True, []
         for mode, button, want in (('log-log', '#sfModeLogLog', 'logarithmic'), ('Guinier', '#sfModeGuinier', 'linear'),
-                                   ('Kratky', '#sfModeKratky', 'linear')):
+                                   ('Kratky', '#sfModeKratky', 'linear'), ('Porod', '#sfModePorod', 'linear')):
             page.click(button)
             page.wait_for_timeout(600)
             i = page.evaluate(JS_MODE_INFO)
             dl, dr = abs(i['left'][0] - i['left'][1]), abs(i['right'][0] - i['right'][1])
-            pressed_ok = i['pressed'] == ['true' if b == button else 'false' for b in ('#sfModeLogLog', '#sfModeGuinier', '#sfModeKratky')]
+            pressed_ok = i['pressed'] == ['true' if b == button else 'false' for b in ('#sfModeLogLog', '#sfModeGuinier', '#sfModeKratky', '#sfModePorod')]
             titles.append((i['title'], i['yTitle']))
             wheel_zoom(page)
             r = page.evaluate(JS_RANGES)
@@ -376,10 +376,10 @@ def check_modes(ctx):
                            f"chartArea.left main/res={i['left'][0]:.2f}/{i['left'][1]:.2f} right={i['right'][0]:.2f}/{i['right'][1]:.2f} "
                            f"zoom: main x={r['main'][0]:.4g}..{r['main'][1]:.4g} residual x={r['residual'][0]:.4g}..{r['residual'][1]:.4g} equal={same}; "
                            f"after reset equal={reset_same}; residual points={i['residualN']}")
-        ok = ok and len(set(titles)) == 3
+        ok = ok and len(set(titles)) == 4
         page.click('#sfModeLogLog')
-        return ok, ' | '.join(details) + f' | (x, y) axis-title pairs distinct={len(set(titles)) == 3}'
-    ctx.check('6 three plot modes: axis type/title, aria-pressed, plot-area alignment <1 px, zoom shared with residual', run)
+        return ok, ' | '.join(details) + f' | (x, y) axis-title pairs distinct={len(set(titles)) == 4}'
+    ctx.check('6 four plot modes: axis type/title, aria-pressed, plot-area alignment <1 px, zoom shared with residual', run)
 
 
 def check_theme(ctx):

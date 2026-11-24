@@ -8,6 +8,9 @@
  *       loglog   x = q,   y = I*f;             bars (I -+ sigma)*f; I <= 0 is hidden
  *       guinier  x = q^2, y = ln I + ln f;     bars -+ sigma/I (symmetric); I <= 0 is hidden; every q is drawn
  *       kratky   x = q,   y = q^2*I*f;         bars -+ q^2*sigma*f; negative I is drawn
+ *       porod    x = q,   y = q^4*I*f;         bars -+ q^4*sigma*f; negative I is drawn. The data as loaded and
+ *                the model as computed: no background is taken off (design spec 15, decision 40), so a flat
+ *                background shows as a rise with q^4 and not as a Porod plateau
  *     A point with a non-finite q or I, or q <= 0, is hidden in every mode. yMin / yMax are null without a
  *     usable sigma (not finite or <= 0); in loglog yMin is null when I - sigma <= 0 and the bar runs to the
  *     bottom of the plot (the error bar plugin of SasFitPlots reads both). With a stride the points 0, k, 2k,
@@ -49,7 +52,7 @@
 (function () {
     'use strict';
 
-    const MODES = Object.freeze(['loglog', 'guinier', 'kratky']);
+    const MODES = Object.freeze(['loglog', 'guinier', 'kratky', 'porod']);
     const DISPLAY_MAX_POINTS = 5000;
     const Y_AXIS_WIDTH = 72;
     const POINT_STYLES = Object.freeze(['circle', 'rect', 'triangle', 'rectRot']);
@@ -71,9 +74,13 @@
     const RESIDUAL_RADIUS = 2;
     const OUT_OF_RANGE = 'outOfRange';
     const AXIS_ROLE = 'grid';
-    const X_TITLES = Object.freeze({ loglog: 'q (Å⁻¹)', guinier: 'q² (Å⁻²)', kratky: 'q (Å⁻¹)' });
-    const Y_TITLES = Object.freeze({ loglog: 'I(q)', guinier: 'ln I(q)', kratky: 'q²·I(q)' });
-    const Y_TITLES_ABSOLUTE = Object.freeze({ loglog: 'I(q) (cm⁻¹)', guinier: 'ln [I(q) / cm⁻¹]', kratky: 'q²·I(q) (Å⁻²·cm⁻¹)' });
+    const X_TITLES = Object.freeze({ loglog: 'q (Å⁻¹)', guinier: 'q² (Å⁻²)', kratky: 'q (Å⁻¹)', porod: 'q (Å⁻¹)' });
+    const Y_TITLES = Object.freeze({ loglog: 'I(q)', guinier: 'ln I(q)', kratky: 'q²·I(q)', porod: 'I(q)·q⁴' });
+    const Y_TITLES_ABSOLUTE = Object.freeze({
+        loglog: 'I(q) (cm⁻¹)', guinier: 'ln [I(q) / cm⁻¹]', kratky: 'q²·I(q) (Å⁻²·cm⁻¹)', porod: 'I(q)·q⁴ (cm⁻¹·Å⁻⁴)',
+    });
+    // the power of q that multiplies I on the two linear plots of I
+    const Q_POWER = Object.freeze({ kratky: 2, porod: 4 });
     const STAGGER_NOTE = '（各組已錯開）';
     const RESIDUAL_TITLE = '(I − I模型)/w';      // the residual of design spec 4.8, w = the weight of the point
     const MODEL_LABEL = '模型';
@@ -92,6 +99,7 @@
 
     const host = () => (typeof window !== 'undefined' ? window : globalThis);
     const isObject = (v) => v !== null && typeof v === 'object';
+    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
     const isLog = (mode) => mode === 'loglog';
     const usableQ = (q) => Number.isFinite(q) && q > 0;
     const xOf = (mode, q) => (mode === 'guinier' ? q * q : q);
@@ -130,6 +138,16 @@
 
     // ------------------------------------------------------------- data points
 
+    /** A point of a q^n * I plot (Kratky n = 2, Porod n = 4): every finite I is drawn, a negative one too. */
+    function powerPoint(n) {
+        return (q, I, sigma, f) => {
+            const qn = Math.pow(q, n);
+            const y = qn * I * f;
+            const half = qn * sigma * f;
+            return { x: q, y, yMin: sigma > 0 ? y - half : null, yMax: sigma > 0 ? y + half : null };
+        };
+    }
+
     /** One data point in a mode, or null when it cannot be shown. sigma is NaN when there is none. */
     const POINT = Object.freeze({
         loglog(q, I, sigma, f) {
@@ -143,11 +161,8 @@
             const half = sigma / I;
             return { x: q * q, y, yMin: sigma > 0 ? y - half : null, yMax: sigma > 0 ? y + half : null };
         },
-        kratky(q, I, sigma, f) {
-            const y = q * q * I * f;
-            const half = q * q * sigma * f;
-            return { x: q, y, yMin: sigma > 0 ? y - half : null, yMax: sigma > 0 ? y + half : null };
-        },
+        kratky: powerPoint(Q_POWER.kratky),
+        porod: powerPoint(Q_POWER.porod),
     });
 
     function transform(mode, data, factor, stride) {
@@ -171,7 +186,7 @@
     /** The y of a model value in a mode; NaN where it cannot be drawn. */
     function curveY(mode, q, I, f) {
         if (!Number.isFinite(I)) return NaN;
-        if (mode === 'kratky') return q * q * I * f;
+        if (has(Q_POWER, mode)) return Math.pow(q, Q_POWER[mode]) * I * f;
         if (!(I > 0)) return NaN;
         return mode === 'guinier' ? Math.log(I) + Math.log(f) : I * f;
     }

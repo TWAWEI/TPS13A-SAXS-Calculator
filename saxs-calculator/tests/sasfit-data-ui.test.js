@@ -304,20 +304,28 @@ test('[sasfit-data-ui] Q 單位：選 nm⁻¹ 後載入的一般檔 q 為 1/10�
 });
 
 // ---------------------------------------------------------------- 圖模式、狀態列、錯開
-test('[sasfit-data-ui] 圖模式三個按鈕：aria-pressed 只有一個為 true，view.mode 跟著變', async () => {
+test('[sasfit-data-ui] 圖模式四個按鈕：aria-pressed 只有一個為 true，view.mode 跟著變', async () => {
     const page = boot();
     await threeFiles(page);
-    const pressed = () => ['sfModeLogLog', 'sfModeGuinier', 'sfModeKratky'].map((id) => page.$(id).getAttribute('aria-pressed'));
-    assert.deepEqual(pressed(), ['true', 'false', 'false']);
+    const pressed = () => ['sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfModePorod'].map((id) => page.$(id).getAttribute('aria-pressed'));
+    assert.deepEqual(pressed(), ['true', 'false', 'false', 'false']);
     page.$('sfModeGuinier').fire('click');
-    assert.deepEqual(pressed(), ['false', 'true', 'false']);
+    assert.deepEqual(pressed(), ['false', 'true', 'false', 'false']);
     assert.equal(page.$('sfModeGuinier').classList.contains('active'), true);
     assert.equal(page.$('sfModeLogLog').classList.contains('active'), false);
     assert.equal(lastView(page).mode, 'guinier');
     assert.match(page.$('sfMainChart').getAttribute('aria-label'), /模式 Guinier/);
     page.$('sfModeKratky').fire('click');
-    assert.deepEqual(pressed(), ['false', 'false', 'true']);
+    assert.deepEqual(pressed(), ['false', 'false', 'true', 'false']);
     assert.equal(page.Section.getState().plotMode, 'kratky');
+    page.$('sfModePorod').fire('click');
+    assert.deepEqual(pressed(), ['false', 'false', 'false', 'true']);
+    assert.equal(page.$('sfModePorod').classList.contains('active'), true);
+    assert.equal(page.$('sfModeKratky').classList.contains('active'), false);
+    assert.equal(page.Section.getState().plotMode, 'porod');
+    assert.equal(lastView(page).mode, 'porod');
+    assert.equal(page.$('sfPlotTitle').textContent, 'I·q⁴ – q');
+    assert.match(page.$('sfMainChart').getAttribute('aria-label'), /模式 Porod/);
 });
 
 test('[sasfit-data-ui] 狀態列來自 SasFitHints.plotStatus：log-log 顯示各顯示中資料的隱藏點數總和', async () => {

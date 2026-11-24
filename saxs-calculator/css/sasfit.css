@@ -515,7 +515,7 @@
 
 /* 模式鈕不換行（「log-log」會在連字號斷開）；放不下時整組工具換到標題下一行 */
 .sf-plot-tools .tab {
-    padding: 0.3125rem 0.75rem;
+    padding: 0.3125rem 0.625rem;
     white-space: nowrap;
 }
 

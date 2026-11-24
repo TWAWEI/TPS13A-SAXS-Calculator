@@ -42,7 +42,7 @@ test('module is frozen; constants of the plan', () => {
     assert.deepEqual([...S.TABS], ['data', 'model', 'fit', 'sequence']);
     assert.deepEqual([...S.PLOT_VIEWS], ['curve', 'shape']);
     assert.ok(Object.isFrozen(S.TABS) && Object.isFrozen(S.PLOT_VIEWS));
-    assert.deepEqual([...S.PLOT_MODES], ['loglog', 'guinier', 'kratky']);
+    assert.deepEqual([...S.PLOT_MODES], ['loglog', 'guinier', 'kratky', 'porod']);
 });
 
 test('initial(): empty, idle, deep-frozen, no stale / forced flags', () => {
@@ -307,7 +307,7 @@ test('setShown, setMaxSteps, setPlotMode, setStagger, setTab, setPlotView valida
         assert.throws(() => S.reduce(s, { type: 'setMaxSteps', value }), /maxSteps/);
     });
     S.PLOT_MODES.forEach((mode) => assert.equal(S.reduce(s, { type: 'setPlotMode', mode }).plotMode, mode));
-    assert.throws(() => S.reduce(s, { type: 'setPlotMode', mode: 'porod' }), /porod/);
+    assert.throws(() => S.reduce(s, { type: 'setPlotMode', mode: 'zimm' }), /zimm/);
     assert.deepEqual({ ...S.reduce(s, { type: 'setStagger', on: true, decades: 0 }).stagger }, { on: true, decades: 0 });
     assert.deepEqual({ ...S.reduce(s, { type: 'setStagger', on: true, decades: 0.5 }).stagger }, { on: true, decades: 0.5 });
     [-1, NaN, Infinity, '1'].forEach((decades) => {

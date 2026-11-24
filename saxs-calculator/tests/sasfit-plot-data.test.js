@@ -45,7 +45,7 @@ const kinds = (config) => config.data.datasets.map((d) => d.sfKind + ':' + (d.tp
 test('SasFitPlotData is one frozen export with the constants of the plan and no DOM, Chart or colour in its source', () => {
     assert.equal(globalThis.SasFitPlotData, P);
     assert.ok(Object.isFrozen(P));
-    assert.deepEqual(P.MODES, ['loglog', 'guinier', 'kratky']);
+    assert.deepEqual(P.MODES, ['loglog', 'guinier', 'kratky', 'porod']);
     assert.deepEqual(P.MODES, S.PLOT_MODES);
     assert.equal(P.DISPLAY_MAX_POINTS, 5000);
     assert.equal(P.Y_AXIS_WIDTH, 72);
@@ -150,6 +150,10 @@ test("transform('kratky'): x = q, y = q^2*I*f, error q^2*sigma*f; negative inten
     assert.equal(odd.points.length, 1);
     near(odd.points[0].y, -0.12);
     assert.equal(odd.hidden, 3, 'only q <= 0 and non-finite values');
+    const porodOdd = P.transform('porod', { q: f64([0, NaN, 0.1, 0.2, -0.1, 0.3]), I: f64([1, 1, NaN, -3, 2, Infinity]), sigma: null }, 1, 1);
+    assert.equal(porodOdd.points.length, 1);
+    near(porodOdd.points[0].y, -0.0048);                      // 0.2^4 * -3
+    assert.equal(porodOdd.hidden, 5, 'porod hides exactly what kratky hides: q <= 0 and non-finite values');
 });
 
 test('transform: an unknown mode or a bad factor throws; the input arrays are not written to', () => {
@@ -173,6 +177,27 @@ test('staggerFactor: dataset k of the display order is multiplied by 10^(k*n); o
 
 // ------------------------------------------------------------------ model curves
 
+test("transform('porod'): x = q, y = q^4*I*f, error q^4*sigma*f, both axes as measured (no background is taken off); negative intensities are drawn", () => {
+    const t = P.transform('porod', DATA, 1, 1);
+    assert.equal(t.points.length, 4);
+    assert.equal(t.hidden, 0);
+    assert.deepEqual(t.points.map((p) => p.x), [0.01, 0.02, 0.05, 0.1]);
+    near(t.points[0].y, 1e-6);                                // 1e-8 * 100
+    near(t.points[0].yMin, 0.9e-6);
+    near(t.points[0].yMax, 1.1e-6);
+    near(t.points[1].y, 8e-6);                                // 1.6e-7 * 50
+    near(t.points[1].yMin, -1.6e-6, 'a bar may go below zero on a linear axis');
+    near(t.points[2].y, -6.25e-6);                            // 6.25e-6 * -1
+    near(t.points[2].yMin, -1.25e-5);
+    near(t.points[2].yMax, 0);
+    near(t.points[3].y, 4e-4);
+    assert.deepEqual([t.points[3].yMin, t.points[3].yMax], [null, null], 'sigma 0: no bar');
+    const ten = P.transform('porod', DATA, 10, 1);
+    near(ten.points[0].y, 1e-5);
+    near(ten.points[0].yMax, 1.1e-5);
+    assert.equal(P.transform('porod', { q: DATA.q, I: DATA.I, sigma: null }, 1, 1).points[0].yMax, null);
+});
+
 test('curve: a model value that cannot be drawn is a gap (NaN), not a missing point; nonFinite counts the non-finite ones', () => {
     const q = f64([0.01, 0.02, 0.03, 0.04, 0.05]);
     const I = f64([10, NaN, 0, -2, Infinity]);
@@ -191,6 +216,13 @@ test('curve: a model value that cannot be drawn is a gap (NaN), not a missing po
     near(kratky.points[3].y, -0.032);                         // 0.0016 * -2 * 10
     assert.deepEqual([kratky.points[1].y, kratky.points[4].y], [NaN, NaN]);
     assert.equal(kratky.nonFinite, 2);
+    const porod = P.curve('porod', q, I, 10);
+    assert.deepEqual(porod.points.map((p) => p.x), [0.01, 0.02, 0.03, 0.04, 0.05]);
+    near(porod.points[0].y, 1e-6);                            // 1e-8 * 10 * 10
+    near(porod.points[2].y, 0);
+    near(porod.points[3].y, -5.12e-5);                        // 2.56e-6 * -2 * 10
+    assert.deepEqual([porod.points[1].y, porod.points[4].y], [NaN, NaN]);
+    assert.equal(porod.nonFinite, 2);
     near(P.curve('loglog', q, I, 100).points[0].y, 1000);
     assert.ok(log.points.every((p) => !('yMin' in p)));
 });
@@ -217,6 +249,8 @@ test('rangeBoxes: two borderless boxes outside the fit range in the neutral role
     assert.deepEqual(boxes.sfRangeLow, { type: 'box', tpsRole: 'outOfRange', xMax: 0.01, borderWidth: 0, drawTime: 'beforeDatasetsDraw' });
     assert.deepEqual(boxes.sfRangeHigh, { type: 'box', tpsRole: 'outOfRange', xMin: 0.2, borderWidth: 0, drawTime: 'beforeDatasetsDraw' });
     assert.deepEqual(P.rangeBoxes('kratky', { qMin: 0.01, qMax: 0.2 }), boxes);
+    assert.deepEqual(P.rangeBoxes('porod', { qMin: 0.01, qMax: 0.2 }), boxes);
+    assert.deepEqual(P.rangeLines('porod', { qMin: 0.01, qMax: 0.2 }), P.rangeLines('kratky', { qMin: 0.01, qMax: 0.2 }));
     const g = P.rangeBoxes('guinier', { qMin: 0.01, qMax: 0.2 });
     near(g.sfRangeLow.xMax, 1e-4);
     near(g.sfRangeHigh.xMin, 0.04);
@@ -239,6 +273,8 @@ test('mainConfig: axis types and titles follow the mode; intensity carries cm^-1
     assert.deepEqual(of(scales('loglog', mixed)), ['logarithmic', 'logarithmic', 'q (Å⁻¹)', 'I(q)']);
     assert.deepEqual(of(scales('guinier', mixed)), ['linear', 'linear', 'q² (Å⁻²)', 'ln I(q)']);
     assert.deepEqual(of(scales('kratky', mixed)), ['linear', 'linear', 'q (Å⁻¹)', 'q²·I(q)']);
+    assert.deepEqual(of(scales('porod', official)), ['linear', 'linear', 'q (Å⁻¹)', 'I(q)·q⁴ (cm⁻¹·Å⁻⁴)']);
+    assert.deepEqual(of(scales('porod', mixed)), ['linear', 'linear', 'q (Å⁻¹)', 'I(q)·q⁴']);
     assert.deepEqual(of(scales('loglog', [])), ['logarithmic', 'logarithmic', 'q (Å⁻¹)', 'I(q)']);
     const s = scales('loglog', official);
     assert.equal(s.x.title.display, true);
@@ -383,6 +419,9 @@ test('mainConfig: the x axis starts on the data range (a wider preview grid does
     assert.equal('min' in log.y, false);
     const kratky = P.mainConfig(view({ mode: 'kratky', series: [serie(0, { active: true })] })).options.scales;
     assert.deepEqual([kratky.x.min, kratky.x.max], [0, Math.max(...qs)]);
+    const porod = P.mainConfig(view({ mode: 'porod', series: [serie(0, { active: true })], preview: wide })).options.scales;
+    assert.deepEqual([porod.x.min, porod.x.max], [0, Math.max(...qs)]);
+    assert.equal('min' in porod.y, false);
     const alone = P.mainConfig(view({ preview: wide })).options.scales;
     assert.equal('min' in alone.x, false);
     assert.equal('max' in alone.x, false);
@@ -426,6 +465,7 @@ test('viewStats: hidden points summed over the shown files, non-finite points of
     assert.deepEqual(P.viewStats(view({ series, preview })), { hidden: 4, displayStride: 1, nonFinite: 2, points: 8 });
     assert.deepEqual(P.viewStats(view({ mode: 'guinier', series })), { hidden: 4, displayStride: 1, nonFinite: 0, points: 8 });
     assert.deepEqual(P.viewStats(view({ mode: 'kratky', series })), { hidden: 0, displayStride: 1, nonFinite: 0, points: 12 });
+    assert.deepEqual(P.viewStats(view({ mode: 'porod', series })), { hidden: 0, displayStride: 1, nonFinite: 0, points: 12 });
     assert.deepEqual(P.viewStats(view()), { hidden: 0, displayStride: 1, nonFinite: 0, points: 0 });
 });
 
@@ -457,6 +497,10 @@ test('residualConfig: the residuals of the active file against q or q^2, NaN ski
     const kratky = P.residualConfig({ ...base, mode: 'kratky' });
     assert.deepEqual(kratky.data.datasets[0].data.map((p) => p.x), [0.02, 0.03]);
     assert.deepEqual([kratky.options.scales.x.type, kratky.options.scales.x.title.text], ['linear', 'q (Å⁻¹)']);
+    const porod = P.residualConfig({ ...base, mode: 'porod' });
+    assert.deepEqual(porod.data.datasets[0].data, kratky.data.datasets[0].data, 'the residuals are not multiplied by q^4');
+    assert.deepEqual([porod.options.scales.x.type, porod.options.scales.y.type, porod.options.scales.x.title.text, porod.options.scales.y.title.text],
+        ['linear', 'linear', 'q (Å⁻¹)', kratky.options.scales.y.title.text]);
 
     const none = P.residualConfig(view({ series: [serie(0, { active: true })] }));
     assert.deepEqual(none.data.datasets[0].data, []);

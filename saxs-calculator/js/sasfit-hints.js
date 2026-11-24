@@ -102,6 +102,7 @@
         loglog: (n) => n + ' 點 I ≤ 0 或無效，對數軸無法顯示（不影響擬合）',
         guinier: (n) => n + ' 點 I ≤ 0 或無效，Guinier 座標（ln I）無法顯示（不影響擬合）',
         kratky: (n) => n + ' 點的 q 或 I 不是有效數值，無法顯示',
+        porod: (n) => n + ' 點的 q 或 I 不是有效數值，無法顯示',
     });
     const BOUND_NAMES = Object.freeze({ lower: '下限', upper: '上限' });
     const STATUS_LABELS = Object.freeze({

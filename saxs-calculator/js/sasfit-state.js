@@ -88,7 +88,7 @@
     const ID_PREFIX = 'd';
     const TABS = Object.freeze(['data', 'model', 'fit', 'sequence']);
     const PLOT_VIEWS = Object.freeze(['curve', 'shape']);
-    const PLOT_MODES = Object.freeze(['loglog', 'guinier', 'kratky']);
+    const PLOT_MODES = Object.freeze(['loglog', 'guinier', 'kratky', 'porod']);
     const DEFAULT_CONDITION_NAME = '條件';                 // design spec 5.2
     const DEFAULT_WEIGHTING = 'sigma';                     // design spec 4.8
     const FALLBACK_WEIGHTING = 'none';

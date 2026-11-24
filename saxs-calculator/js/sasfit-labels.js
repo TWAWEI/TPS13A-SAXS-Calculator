@@ -45,8 +45,8 @@
     });
     const NAME_SEPARATOR = ' — ';
     const MEASURE_NAMES = Object.freeze({ chi2: '約化 χ²', relative: '加權殘差均方' });
-    const MODE_NAMES = Object.freeze({ loglog: 'log-log', guinier: 'Guinier', kratky: 'Kratky' });
-    const PLOT_TITLES = Object.freeze({ loglog: 'I(q)', guinier: 'ln I – q²', kratky: 'q²·I – q' });
+    const MODE_NAMES = Object.freeze({ loglog: 'log-log', guinier: 'Guinier', kratky: 'Kratky', porod: 'Porod' });
+    const PLOT_TITLES = Object.freeze({ loglog: 'I(q)', guinier: 'ln I – q²', kratky: 'q²·I – q', porod: 'I·q⁴ – q' });
     const Q_UNIT = 'Å⁻¹';
     const RANGE_DIGITS = 3;
     const MEASURE_DIGITS = 3;

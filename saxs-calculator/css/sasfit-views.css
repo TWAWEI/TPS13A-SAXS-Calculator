@@ -31,8 +31,50 @@
     display: none;
 }
 
-/* 兩欄但圖卡較窄（視窗 1280、1024：圖卡內寬 420–448 px）：標題、檢視切換、三個模式鈕與「重設縮放」
-   要排在同一行——多一行會讓有擬合結果的曲線檢視在 1024×768 超出欄高。這裡只縮左右留白與間距，字級不變。 */
+/* 兩欄版面（v5.7，四個模式鈕）：標題列一律不折行——多一行會讓有擬合結果的曲線檢視在 1024×768 超出欄高。
+   字型比預期寬時先縮短標題（刪節號），其次才是工具列內「重設縮放」換行。 */
+@container sf (min-width: 860px) {
+    .sf-plot-header {
+        flex-wrap: nowrap;
+    }
+
+    .sf-plot-heading {
+        flex: 1 1 auto;
+    }
+
+    .sf-plot-heading .tabs {
+        flex: none;
+    }
+
+    .sf-plot-heading .card-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+/* 兩欄但圖卡較窄（視窗 1280、1024：圖卡內寬 420–448 px）放不下標題＋四個模式鈕：標題只留給輔助科技
+   （它說的與 y 軸標題、按下的模式鈕相同），「重設縮放」的字縮成「重設」（按鈕的 aria-label 仍是全名）。 */
+@container sf (min-width: 860px) and (max-width: 1039px) {
+    .sf-plot-heading .card-title {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        clip-path: inset(50%);
+    }
+
+    .sf-reset-long {
+        display: none;
+    }
+
+    .sf-plot-header .sf-plot-tools .tab {
+        padding-left: 0.25rem;
+        padding-right: 0.25rem;
+    }
+}
+
+/* 圖卡較窄（視窗 1280、1024，以及單欄）：只縮左右留白與間距，字級不變。 */
 @container sf (max-width: 1039px) {
     .sf-plot-header,
     .sf-plot-heading,
@@ -360,6 +402,13 @@
 
 /* 手機寬度：固定的檔名欄會佔掉半個表格，改成跟著捲動 */
 @container sf (max-width: 480px) {
+    /* 手機：四個模式鈕要排進 218 px 的標題列 */
+    .sf-plot-tools .tab {
+        padding-left: 0.1875rem;
+        padding-right: 0.1875rem;
+        font-size: 0.75rem;
+    }
+
     .sf-seq-table .sf-seq-name {
         position: static;
     }

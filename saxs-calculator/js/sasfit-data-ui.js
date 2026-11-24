@@ -54,7 +54,7 @@
     const THEME_EVENT = 'tps:themechange';
     const MAIN_CANVAS = 'sfMainChart';
     const RESIDUAL_CANVAS = 'sfResidualChart';
-    const MODE_BUTTONS = Object.freeze({ loglog: 'sfModeLogLog', guinier: 'sfModeGuinier', kratky: 'sfModeKratky' });
+    const MODE_BUTTONS = Object.freeze({ loglog: 'sfModeLogLog', guinier: 'sfModeGuinier', kratky: 'sfModeKratky', porod: 'sfModePorod' });
     const FAILED_STATUS = Object.freeze({ text: '無法載入', tone: 'error', measure: null });
     const TEXT = Object.freeze({
         empty: '尚未載入資料。',

@@ -139,7 +139,7 @@
         'sfSeqTrendBox', 'sfSeqY', 'sfSeqTrend', 'sfSeqTrendNote', 'sfSeqTrendPng', 'sfSeqAll', 'sfSeqNone', 'sfSeqEmpty',
         'sfSeqWrapper', 'sfSeqHead', 'sfSeqBody', 'sfSeqCsv',
         // charts
-        'sfPlotTitle', 'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
+        'sfPlotTitle', 'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfModePorod', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
         'sfMainChart', 'sfResidualEmpty', 'sfResidualBox', 'sfResidualChart',
         // plot card: the switch between the curves and the 3D sketch, and the sketch
         'sfViewTabs', 'sfViewCurve', 'sfViewShape', 'sfCurveTools', 'sfCurveView', 'sfShapeTools', 'sfShapeView', 'sfShapeStatus',
