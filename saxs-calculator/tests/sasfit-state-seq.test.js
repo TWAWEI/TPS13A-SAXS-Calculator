@@ -307,7 +307,6 @@ const ALLOWED_IN_SEQUENCE = [
     { type: 'clearNotice' },
     { type: 'dismissRemoved' },
     { type: 'fitProgress', iteration: 1, chi2r: 2 },
-    { type: 'setPlotView', view: 'shape' },
     { type: 'setSeqY', name: 'radius' },
     step('d1', 'done', 'd3'),
     { type: 'seqSettled', outcome: 'stopped' },
@@ -337,7 +336,7 @@ test('the two lists cover every action type; SEQ_RUNNING_ACTIONS is RUNNING_ACTI
     const expected = S.RUNNING_ACTIONS.filter((type) => type !== 'fitSettled').concat(['seqStep', 'seqSettled']);
     assert.deepEqual([...S.SEQ_RUNNING_ACTIONS].sort(), expected.sort());
     assert.ok(Object.isFrozen(S.SEQ_RUNNING_ACTIONS));
-    ['setPlotView', 'setSeqY'].forEach((type) => assert.ok(S.RUNNING_ACTIONS.indexOf(type) >= 0, type));
+    ['setSeqY'].forEach((type) => assert.ok(S.RUNNING_ACTIONS.indexOf(type) >= 0, type));
     ['seqStep', 'seqSettled', 'seqStarted'].forEach((type) => assert.equal(S.RUNNING_ACTIONS.indexOf(type), -1, type));
 });
 
@@ -373,7 +372,7 @@ test('a sequence keeps fit.phase running from seqStarted to seqSettled, whatever
     const actions = [
         { type: 'fitProgress', iteration: 1, chi2r: 5 }, step('d1', 'done', 'd3', { result: RESULT('converged') }),
         { type: 'setTab', tab: 'fit' }, { type: 'fitProgress', iteration: 2, chi2r: 4 },
-        step('d3', 'error', 'd4', { note: 'x' }), { type: 'setPlotView', view: 'shape' },
+        step('d3', 'error', 'd4', { note: 'x' }), { type: 'setSeqY', name: 'radius' },
         step('d4', 'done', null, { result: RESULT('failed') }),
     ];
     actions.forEach((action) => {

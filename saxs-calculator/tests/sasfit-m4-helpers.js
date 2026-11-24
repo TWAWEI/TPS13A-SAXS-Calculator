@@ -6,7 +6,9 @@
  *   fakeFrames()    假的 requestAnimationFrame：raf／cancelRaf、flush(time) 執行目前排著的回呼、pending()、
  *                   requested／cancelled 計數
  *   shapePage(options) 一份啟動好的頁面，3D 需要的相依都已注入：
- *                   frames、observers（observeResize 的 { element, fn }）、canvases（createCanvas 建的假畫布）、
+ *                   frames、observers（observeResize 的 { element, fn }）、visibles（observeVisible 的 { element, fn }）、
+ *                   setVisible(boolean)（等同 IntersectionObserver 回報舞台進出視窗；options.visible 為 false 時啟動後
+ *                   不回報，否則啟動後立刻回報 true）、canvases（createCanvas 建的假畫布）、
  *                   media（matchMedia('(prefers-reduced-motion: reduce)') 回傳的同一個物件；options.reducedMotion
  *                   決定 matches；其他查詢回傳另一個物件，options.coarse 決定它的 matches）、
  *                   captures（舞台目前捕捉中的 pointerId）、
@@ -112,9 +114,10 @@ function bootWith(real, options) {
     }
 }
 
-function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion = false, coarse = false, ratio = 1, size = [575, 414], ...rest } = {}) {
+function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion = false, coarse = false, ratio = 1, size = [575, 414], visible = true, ...rest } = {}) {
     const frames = fakeFrames();
     const observers = [];
+    const visibles = [];
     const canvases = [];
     const queries = [];
     const media = { matches: reducedMotion };
@@ -137,6 +140,7 @@ function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion
             matchMedia: (query) => { queries.push(query); return /reduced-motion/.test(query) ? media : pointer; },
             createCanvas: () => { const canvas = fakeCanvas(); canvases.push(canvas); return canvas; },
             observeResize: (element, fn) => { observers.push({ element, fn }); },
+            observeVisible: (element, fn) => { visibles.push({ element, fn }); },
         },
     });
     const context = fakeContext();
@@ -147,14 +151,17 @@ function shapePage({ modules = ['SasFitDataUi', 'SasFitParamsUi'], reducedMotion
     const captures = [];
     stage.setPointerCapture = (id) => { captures.push(id); };
     stage.releasePointerCapture = (id) => { captures.splice(captures.indexOf(id), 1); };
+    const setVisible = (shown) => visibles.forEach((entry) => entry.fn(shown));
+    if (visible) setVisible(true);
     return {
-        ...page, frames, observers, canvases, queries, media, windowListeners, context, canvas, stage,
+        ...page, frames, observers, visibles, setVisible, canvases, queries, media, windowListeners, context, canvas, stage,
         segment: captured.segment, creates: () => captured.creates, captures,
         paints: () => context.only('clearRect').length,
         builds: () => counters.builds,
         /** 換表單並重繪（等同使用者在參數表改了一格）。 */
         act(action) { page.ctx.setForm(globalThis.SasFitForm.reduce(page.ctx.getForm(), action)); page.ctx.refresh(); },
-        showShape() { page.$('sfViewShape').fire('click'); return frames.flush(); },
+        /** 跑完目前排著的 frame（舞台在畫面上時，重畫就在這裡發生）。 */
+        settle() { return frames.flush(); },
     };
 }
 

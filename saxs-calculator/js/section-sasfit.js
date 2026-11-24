@@ -4,8 +4,8 @@
  *
  * It owns the page state (SasFitState), the model form (SasFitForm) and the
  * Worker client, switches the four segments (data / model / fit / sequence) and hands one
- * context object to the segment modules (the module 'shape' is the switch
- * of the plot card and the 3D sketch -- it has no tab). Everything inside a segment -- file
+ * context object to the segment modules (the module 'shape' is the 3D sketch under the
+ * curves -- it has no tab). Everything inside a segment -- file
  * list, parameter table, fit controls, charts -- belongs to those modules.
  *
  *   SasFitSection.init(deps?) -> boolean
@@ -22,6 +22,8 @@
  *         matchMedia(query)     default: window.matchMedia; { matches: false } where there is none
  *         createCanvas()        default: a new <canvas> element (off screen: the PNG of the 3D sketch)
  *         observeResize(element, fn)   default: a ResizeObserver on the element that calls fn()
+ *         observeVisible(element, fn)  default: an IntersectionObserver on the element that calls fn(true | false)
+ *                               whenever it comes into or leaves the viewport; where there is none, fn(true) once
  *         download(blob, fileName)     default: SasFitExportUi.download (an object URL on a temporary <a download>)
  *         now()                 default: Date.now()
  *         version()             default: SasFitWorkerClient.scriptVersion (the ?v= of the scripts; null without one)
@@ -38,7 +40,7 @@
  *     globalThis.SasFitParamsUi = Object.freeze({ create })     model segment  (key 'model')
  *     globalThis.SasFitFitUi    = Object.freeze({ create })     fit segment    (key 'fit')
  *     globalThis.SasFitSeqUi    = Object.freeze({ create })     sequence segment (key 'sequence')
- *     globalThis.SasFitShape3d  = Object.freeze({ create })     plot card: curves | 3D sketch (key 'shape'; not a tab)
+ *     globalThis.SasFitShape3d  = Object.freeze({ create })     the 3D sketch under the curves (key 'shape'; not a tab)
  *     globalThis.SasFitExportUi = Object.freeze({ create })     export buttons (key 'export'; not a tab)
  * init calls create(ctx) of each one that exists, in that order, exactly once.
  * create binds the module's own event listeners and returns
@@ -114,7 +116,7 @@
         Object.freeze({ key: 'data', global: 'SasFitDataUi' }),
         Object.freeze({ key: 'model', global: 'SasFitParamsUi' }),
         Object.freeze({ key: 'fit', global: 'SasFitFitUi' }),
-        Object.freeze({ key: 'shape', global: 'SasFitShape3d' }),         // not a tab: the 3D sketch and the switch of the plot card
+        Object.freeze({ key: 'shape', global: 'SasFitShape3d' }),         // not a tab: the 3D sketch under the curves
         Object.freeze({ key: 'sequence', global: 'SasFitSeqUi' }),        // after the others: it draws from what they have set
         Object.freeze({ key: 'export', global: 'SasFitExportUi' }),       // not a tab; last: its buttons follow what the others drew
     ]);
@@ -142,9 +144,8 @@
         // charts
         'sfPlotTitle', 'sfModeLogLog', 'sfModeGuinier', 'sfModeKratky', 'sfModePorod', 'sfResetZoom', 'sfPlotStatus', 'sfPreviewNow', 'sfPlotLive',
         'sfMainChart', 'sfResidualEmpty', 'sfResidualBox', 'sfResidualChart',
-        // plot card: the switch between the curves and the 3D sketch, and the sketch
-        'sfViewTabs', 'sfViewCurve', 'sfViewShape', 'sfCurveTools', 'sfCurveView', 'sfShapeTools', 'sfShapeView', 'sfShapeStatus',
-        'sfShapeStage', 'sfShapeCanvas', 'sfShapeHelp', 'sfShapeText', 'sfShapeDims', 'sfShapeExtras', 'sfShapeReset', 'sfShapeSpin', 'sfShapePng',
+        // the two cards of the plot column: the curves, and the 3D sketch under them
+        'sfCurveCard', 'sfShapeCard', 'sfShapeStatus', 'sfShapeStage', 'sfShapeCanvas', 'sfShapeHelp', 'sfShapeText', 'sfShapeDims', 'sfShapeExtras', 'sfShapeReset', 'sfShapeSpin', 'sfShapePng',
     ]);
     const TEXT = Object.freeze({
         empty: '尚未載入資料。',
@@ -189,6 +190,16 @@
         new Observer(() => fn()).observe(element);
     }
 
+    /** fn(true | false) whenever the element comes into or leaves the viewport; fn(true) where the platform cannot tell. */
+    function observeVisible(element, fn) {
+        const Observer = host().IntersectionObserver;
+        if (typeof Observer !== 'function') {
+            fn(true);
+            return;
+        }
+        new Observer((entries) => fn(entries[entries.length - 1].isIntersecting)).observe(element);
+    }
+
     function resolveDeps(given) {
         const g = isObject(given) ? given : {};
         return Object.freeze({
@@ -204,6 +215,7 @@
             matchMedia: g.matchMedia || ((query) => (typeof host().matchMedia === 'function' ? host().matchMedia(query) : NO_MEDIA)),
             createCanvas: g.createCanvas || (() => document.createElement('canvas')),
             observeResize: g.observeResize || observeResize,
+            observeVisible: g.observeVisible || observeVisible,
             download: g.download || ((blob, fileName) => globalThis.SasFitExportUi.download(blob, fileName)),
             now: g.now || (() => Date.now()),
             version: g.version || (() => globalThis.SasFitWorkerClient.scriptVersion),
@@ -251,7 +263,7 @@
             el('sfSeqWrapper').hidden = true;                 // without the module there is nothing to list
             el('sfSeqRun').disabled = true;
         },
-        shape() {},                           // the markup starts in the curve view, which needs no module
+        shape() {},                           // the markup ships the sketch's buttons disabled
         export() {},                          // the markup ships every export button disabled
     });
 

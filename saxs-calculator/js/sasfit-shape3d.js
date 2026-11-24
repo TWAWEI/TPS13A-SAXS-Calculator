@@ -1,7 +1,7 @@
 /**
  * sasfit-shape3d.js -- the 3D structure sketch of the SAS fitting page on a
- * 2D canvas, and the switch of the plot card between the curves and that
- * sketch (design spec 6; plan M4 Tasks 5-7). Original code.
+ * 2D canvas, in its own card under the curves (design spec 5.1, 6; plan M4
+ * Tasks 5-7; v5.8: no switch, decision 42). Original code.
  *
  *   SasFitShape3d.paint(ctx2d, list, { theme, size, bar, background }) -> void
  *       Draws a draw list of SasFitShapeView.drawList in list order (later items cover earlier ones).
@@ -15,21 +15,23 @@
  *                   and the card shows through
  *   SasFitShape3d.create(ctx) -> { render(), exportBlob() -> Promise<Blob | null>, view() }
  *       A segment module of section-sasfit.js (key 'shape'; it is not a tab). create binds the listeners
- *       once. render() shows the view of state.plotView:
- *         'curve'  the curve view and its tools; nothing else happens here -- no mesh is built and the
- *                  canvas context is never asked for
- *         'shape'  the sketch of the form's model: the mesh is rebuilt only when the model or one of its
- *                  dimensions changed (scale, SLDs, dispersity and S(Q) do not rebuild it), the texts under
- *                  the canvas follow every render, and the canvas is painted in one requestAnimationFrame --
- *                  only when the scene, the view, the size or the theme is not what was painted last.
- *                  A model without a fixed shape hides the stage and says so. A form with a field error or
- *                  dimensions that give no solid keep the last picture and say so in #sfShapeStatus.
+ *       once. render() draws the sketch of the form's model: the mesh is rebuilt only when the model or one
+ *       of its dimensions changed (scale, SLDs and dispersity do not rebuild it), the texts under the
+ *       canvas follow every render -- also while the stage is off screen, so that a screen reader never
+ *       reads stale sizes -- and the canvas is painted in one requestAnimationFrame, only while it is ON
+ *       SCREEN (see below) and only when the scene, the view, the size or the theme is not what was
+ *       painted last. A model without a fixed shape hides the stage and says so. A form with a field error
+ *       or dimensions that give no solid keep the last picture and say so in #sfShapeStatus.
  *       exportBlob() a PNG of the sketch as it is turned now: light theme on white, EXPORT_WIDTH pixels wide,
- *                  with the scale bar, drawn on a canvas of its own (ctx.deps.createCanvas); null while the
- *                  curves are shown or there is nothing to draw. The canvas on the page is not touched.
+ *                  with the scale bar, drawn on a canvas of its own (ctx.deps.createCanvas), whether the stage
+ *                  is on screen or not; null when there is nothing to draw. The canvas on the page is not touched.
  *       view()     the current view { yaw, pitch, zoom } (frozen), for tests and the browser smoke test
  *       ctx.deps used here: raf(fn) -> id, cancelRaf(id), createCanvas(), observeResize(element, fn),
- *                  matchMedia(query).
+ *                  observeVisible(element, fn), matchMedia(query).
+ *
+ * On screen: the stage is in the viewport (ctx.deps.observeVisible, an IntersectionObserver), the page
+ * section is the one shown and the document is not hidden. Off screen nothing is painted and no frame is
+ * requested; the canvas keeps its last picture, and the first frame after coming back paints what changed.
  *
  * Turning the sketch (#sfShapeStage; only while the sketch of a model with a shape is shown)
  *   pointer     drag turns it: DRAG_DEG degrees per pixel, the object follows the pointer (dragging right
@@ -48,8 +50,8 @@
  *   #sfShapeReset   the default view
  *   #sfShapeSpin    auto-rotate, off by default: SPIN_DEG_PER_S about the z axis, at most 30 frames a second,
  *               in a requestAnimationFrame loop that exists only while it turns. It pauses -- no frame is
- *               requested -- while the curves are shown, the model has no shape, a fit runs, the document is
- *               hidden, another page section is shown or a pointer is down, and goes on when that is over.
+ *               requested -- while the stage is off screen, the model has no shape, a fit runs or a pointer is
+ *               down, and goes on when that is over.
  *               With prefers-reduced-motion: reduce it is switched off and disabled, and the help says so.
  *   There is no panning. Zoomed in, only the middle is visible: the status line says so.
  *
@@ -68,10 +70,11 @@
  *   bar       bottom left: a line in the edge colour, bar.pixels long from outer edge to outer edge, with its
  *             label above it in the text colour.
  *
- * Redrawing happens on demand only: there is no animation loop but the auto-rotation. Theme changes (tps:themechange) and a new
- * size of the stage (ResizeObserver) ask for one frame; printing repaints at once in the light theme
- * (beforeprint) and back (afterprint), because a canvas is a bitmap that @media print cannot recolour. The
- * backing store is the CSS size times min(devicePixelRatio, MAX_PIXEL_RATIO).
+ * Redrawing happens on demand only: there is no animation loop but the auto-rotation. Theme changes (tps:themechange), a new
+ * size of the stage (ResizeObserver) and coming on screen ask for one frame; printing repaints at once in the
+ * light theme (beforeprint) and back (afterprint), on screen or not (the whole page is printed), because a
+ * canvas is a bitmap that @media print cannot recolour. The backing store is the CSS size times
+ * min(devicePixelRatio, MAX_PIXEL_RATIO).
  *
  * Colours come from ChartTheme only: shade3d for faces and strokes, palette(theme).shapeEdge / .text /
  * .surface for lines, labels and the export background. This file contains no colour value.
@@ -94,7 +97,6 @@
     const EXPORT_WIDTH = 1200;
     const ACTIVE_CLASS = 'active';
     const THEME_EVENT = 'tps:themechange';
-    const VIEWS = Object.freeze({ curve: 'sfViewCurve', shape: 'sfViewShape' });
     const CHAIN_MODEL = 'flexible_cylinder';
     const SECTION_ID = 'section-sasfit';
     const DRAG_CLASS = 'is-dragging';
@@ -107,7 +109,6 @@
     const MEDIA = Object.freeze({ reduced: '(prefers-reduced-motion: reduce)', coarse: '(pointer: coarse)' });
     const NO_POINTERS = Object.freeze({});
     const TEXT = Object.freeze({
-        title: '結構示意',
         noShape: '此模型沒有固定形狀',
         formError: '參數表有錯誤，示意圖未更新',
         noScene: '這組尺寸畫不出形狀，示意圖未更新',
@@ -238,7 +239,15 @@
         });
     }
 
-    const isShown = (ui) => ui.ctx.getState().plotView === 'shape';
+    /** The page section is the one on screen (an element that is not there counts as shown). */
+    function sectionShown(ui) {
+        const section = ui.ctx.el(SECTION_ID);
+        return !section || !isObject(section.classList) || section.classList.contains(ACTIVE_CLASS);
+    }
+
+    /** The stage is in the viewport of a shown page section of a visible document: only then is it painted. */
+    const onScreen = (ui) => ui.store.get().visible && sectionShown(ui)
+        && !(typeof document !== 'undefined' && document.hidden === true);
 
     /** The CSS size of the stage, or null while it has none (hidden, or not laid out yet). */
     function sizeOf(ui) {
@@ -264,10 +273,10 @@
         if (element.textContent !== text) element.textContent = text;
     }
 
-    /** Paint now when the sketch is shown and is not what the canvas already shows; true when it painted. */
-    function draw(ui) {
+    /** Paint now when the sketch is on screen (or `force`: printing) and is not what the canvas already shows; true when it painted. */
+    function draw(ui, force) {
         const { scene, view, painted } = ui.store.get();
-        const size = isShown(ui) && scene !== null ? sizeOf(ui) : null;
+        const size = (force === true || onScreen(ui)) && scene !== null ? sizeOf(ui) : null;
         if (size === null) return false;
         const wanted = signature(ui, size);
         if (wanted === painted) return false;
@@ -294,7 +303,7 @@
     }
 
     function needsDraw(ui) {
-        const size = isShown(ui) && ui.store.get().scene !== null ? sizeOf(ui) : null;
+        const size = onScreen(ui) && ui.store.get().scene !== null ? sizeOf(ui) : null;
         return size !== null && signature(ui, size) !== ui.store.get().painted;
     }
 
@@ -303,20 +312,6 @@
     }
 
     // ------------------------------------------------------------- render
-
-    function renderSwitch(ui, shape) {
-        const { ctx } = ui;
-        Object.keys(VIEWS).forEach((key) => {
-            const button = ctx.el(VIEWS[key]);
-            const pressed = (key === 'shape') === shape;
-            button.setAttribute('aria-pressed', String(pressed));
-            button.classList.toggle(ACTIVE_CLASS, pressed);
-        });
-        ctx.el('sfCurveView').hidden = shape;
-        ctx.el('sfCurveTools').hidden = shape;
-        ctx.el('sfShapeView').hidden = !shape;
-        ctx.el('sfShapeTools').hidden = !shape;
-    }
 
     const matches = (ui, query) => ui.ctx.deps.matchMedia(query).matches === true;
 
@@ -385,19 +380,11 @@
         ctx.setHtml(ctx.el('sfShapeDims'), shapeView.dimsHtml(text.dims));
         setText(ctx.el('sfShapeExtras'), text.extras.join('\n'));
         ctx.el('sfShapeCanvas').setAttribute('aria-label', text.alt);
-        syncTextFocus(ctx.el('sfShapeText'));
-    }
-
-    /** The text box is a tab stop only while it scrolls (a keyboard user must be able to scroll it); else it is skipped. */
-    function syncTextFocus(box) {
-        if (box.scrollHeight > box.clientHeight) box.setAttribute('tabindex', '0');
-        else box.removeAttribute('tabindex');
     }
 
     function renderShape(ui) {
         const { ctx } = ui;
         const form = ctx.getForm();
-        setText(ctx.el('sfPlotTitle'), TEXT.title);                // the data segment wrote the plot mode there
         if (!globalThis.SasFitShapeGeom.hasShape(form.model)) {
             renderNoShape(ui);
             return;
@@ -415,18 +402,16 @@
     }
 
     function render(ui) {
-        const shape = isShown(ui);
-        renderSwitch(ui, shape);
-        if (shape) renderShape(ui);
+        renderShape(ui);
         syncSpin(ui);
     }
 
     // ------------------------------------------------------------- export
 
-    /** The sketch as it is turned now, light on white, on a canvas of its own. */
+    /** The sketch as it is turned now, light on white, on a canvas of its own (on screen or not). */
     function exportBlob(ui) {
         const { scene, view } = ui.store.get();
-        const size = isShown(ui) && scene !== null ? sizeOf(ui) : null;
+        const size = scene !== null ? sizeOf(ui) : null;
         if (size === null) return Promise.resolve(null);
         const canvas = ui.ctx.deps.createCanvas();
         const scale = EXPORT_WIDTH / size.width;
@@ -443,18 +428,6 @@
 
     // ------------------------------------------------------------- events
 
-    function chooseView(ui, view) {
-        const { ctx } = ui;
-        if (ctx.getState().plotView === view) return;
-        ctx.dispatch({ type: 'setPlotView', view });
-        // the charts were updated while their canvases had no size: draw them again now that they are shown
-        if (view === 'curve') ctx.refresh();
-    }
-
-    function bindSwitch(ui) {
-        Object.keys(VIEWS).forEach((view) => ui.ctx.el(VIEWS[view]).addEventListener('click', () => chooseView(ui, view)));
-    }
-
     function setView(ui, view) {
         if (view === ui.store.get().view) return;
         ui.store.set({ view });
@@ -464,21 +437,14 @@
 
     const turn = (ui, action) => setView(ui, globalThis.SasFitShapeView.reduce(ui.store.get().view, action));
 
-    /** The sketch of a model with a shape is on screen: only then the stage answers to pointer, keys and wheel. */
-    const isInteractive = (ui) => isShown(ui) && ui.store.get().scene !== null;
+    /** A model with a shape is drawn: only then the stage answers to pointer, keys and wheel. */
+    const isInteractive = (ui) => ui.store.get().scene !== null;
 
     // ------------------------------------------------------------- auto-rotate
 
-    /** The page section is the one on screen (an element that is not there counts as shown). */
-    function sectionShown(ui) {
-        const section = ui.ctx.el(SECTION_ID);
-        return !section || !isObject(section.classList) || section.classList.contains(ACTIVE_CLASS);
-    }
-
     function canSpin(ui) {
         const { pointers } = ui.store.get();
-        return isInteractive(ui) && ui.ctx.getState().fit.phase !== 'running' && sectionShown(ui)
-            && !(typeof document !== 'undefined' && document.hidden === true)
+        return isInteractive(ui) && ui.ctx.getState().fit.phase !== 'running' && onScreen(ui)
             && Object.keys(pointers).length === 0 && !matches(ui, MEDIA.reduced);
     }
 
@@ -610,21 +576,30 @@
         stage.addEventListener('wheel', (event) => onWheel(ui, event), { passive: false });
         ctx.el('sfShapeSpin').addEventListener('click', () => toggleSpin(ui));
         if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
-            document.addEventListener('visibilitychange', () => syncSpin(ui));
-            document.addEventListener('click', () => syncSpin(ui));        // the sidebar shows or hides the page section
+            const resume = () => { drawSoon(ui); syncSpin(ui); };
+            document.addEventListener('visibilitychange', resume);
+            document.addEventListener('click', resume);         // the sidebar shows or hides the page section
         }
     }
 
     /** Repaint at once in the light theme for the printer, and back afterwards (a frame would come too late). */
     function setPrinting(ui, printing) {
         ui.store.set({ printing });
-        draw(ui);
+        draw(ui, true);
+    }
+
+    /** The stage came into or left the viewport: paint what changed meanwhile, start or pause the rotation. */
+    function setVisible(ui, visible) {
+        ui.store.set({ visible: visible === true });
+        drawSoon(ui);
+        syncSpin(ui);
     }
 
     function bindRedraw(ui) {
         const { ctx, store } = ui;
         ctx.el('sfShapeReset').addEventListener('click', () => setView(ui, globalThis.SasFitShapeView.DEFAULT_VIEW));
         ctx.deps.observeResize(ctx.el('sfShapeStage'), () => drawSoon(ui));
+        ctx.deps.observeVisible(ctx.el('sfShapeStage'), (visible) => setVisible(ui, visible));
         if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
             document.addEventListener(THEME_EVENT, (event) => {
                 const theme = isObject(event.detail) && typeof event.detail.theme === 'string' ? event.detail.theme : null;
@@ -641,9 +616,8 @@
     function create(ctx) {
         const ui = Object.freeze({ ctx, store: makeStore({
             view: globalThis.SasFitShapeView.DEFAULT_VIEW, scene: null, sceneKey: null, painted: null, raf: null, theme: null, printing: false,
-            note: '', stale: false, pointers: NO_POINTERS, spin: false, spinRaf: null, spinTime: null,
+            note: '', stale: false, pointers: NO_POINTERS, spin: false, spinRaf: null, spinTime: null, visible: false,
         }) });
-        bindSwitch(ui);
         bindRedraw(ui);
         bindStage(ui);
         return Object.freeze({ render: () => render(ui), exportBlob: () => exportBlob(ui), view: () => ui.store.get().view });

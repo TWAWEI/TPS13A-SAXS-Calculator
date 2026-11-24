@@ -1,7 +1,7 @@
 'use strict';
 /**
- * sasfit-shape3d.js 的 create：圖卡的「曲線｜結構」切換、3D 區的重畫時機、文字、匯出（計畫 M4 Task 6），
- * 以及互動（Task 7）。stub DOM 與假相依見 tests/sasfit-ui-helpers.js、tests/sasfit-m4-helpers.js。
+ * sasfit-shape3d.js 的 create：3D 區的重畫時機（v5.8：在曲線下面，只在舞台進入視窗時重畫）、文字、匯出
+ * （計畫 M4 Task 6），以及互動（Task 7）。stub DOM 與假相依見 tests/sasfit-ui-helpers.js、tests/sasfit-m4-helpers.js。
  */
 const test = require('node:test');
 const { after } = require('node:test');
@@ -33,65 +33,93 @@ test('[shape3d-ui] 模組匯出 paint 與 create；section-sasfit 把它當第�
         ['data:SasFitDataUi', 'model:SasFitParamsUi', 'fit:SasFitFitUi', 'shape:SasFitShape3d', 'sequence:SasFitSeqUi', 'export:SasFitExportUi']);
     assert.equal(page.observers.length, 1, 'create 只觀察舞台一次');
     assert.equal(page.observers[0].element, page.stage);
+    assert.equal(page.visibles.length, 1, '進出視窗也只觀察舞台一次');
+    assert.equal(page.visibles[0].element, page.stage);
 });
 
-test('[shape3d-ui] 啟動時是曲線檢視：不建網格、不取 context、不排任何 frame', () => {
+// ---------------------------------------------------------------- v5.8：3D 在曲線下面，沒有切換
+test('[shape3d-ui] v5.8 沒有「曲線｜3D 結構」切換：頁面不需要那些元素，3D 在啟動後就建網格並在一個 frame 內畫好', () => {
     const page = m4.shapePage();
-    assert.equal(page.Section.getState().plotView, 'curve');
-    assert.equal(page.$('sfViewCurve').getAttribute('aria-pressed'), 'true');
-    assert.equal(page.$('sfViewShape').getAttribute('aria-pressed'), 'false');
-    assert.ok(page.$('sfViewCurve').classList.contains('active') && !page.$('sfViewShape').classList.contains('active'));
-    assert.deepEqual(['sfCurveView', 'sfCurveTools', 'sfShapeView', 'sfShapeTools'].map((id) => page.$(id).hidden), [false, false, true, true]);
+    for (const id of ['sfViewTabs', 'sfViewCurve', 'sfViewShape', 'sfCurveView', 'sfCurveTools', 'sfShapeView', 'sfShapeTools']) {
+        assert.ok(page.Section.ELEMENT_IDS.indexOf(id) < 0, id);
+    }
+    assert.ok(page.Section.ELEMENT_IDS.indexOf('sfCurveCard') >= 0 && page.Section.ELEMENT_IDS.indexOf('sfShapeCard') >= 0);
+    assert.equal(page.builds(), 1);
+    assert.equal(page.paints(), 0, '重畫合併在 requestAnimationFrame 裡');
+    assert.equal(page.frames.pending(), 1);
+    page.frames.flush();
+    assert.equal(page.paints(), 1);
+    assert.equal(page.$('sfPlotTitle').textContent, globalThis.SasFitLabels.plotTitle('loglog'), '曲線卡的標題歸資料分段，3D 不寫它');
+});
+
+test('[shape3d-ui] 舞台不在視窗內：不取 context、不排 frame、不重畫；文字與替代文字照樣跟著參數（報讀軟體讀得到）；回到視窗內補畫一次', () => {
+    const page = m4.shapePage({ visible: false });
+    assert.equal(page.frames.requested, 0);
+    assert.equal(page.canvas.contexts, 0);
     page.act(setValue('radius', 80));
-    page.act(setModel('core_shell_sphere'));
     page.observers[0].fn();
     page.document.fire('tps:themechange', { theme: 'dark' });
-    assert.equal(page.builds(), 0, '曲線檢視不建網格');
-    assert.equal(page.canvas.contexts, 0, '曲線檢視不取 context');
-    assert.equal(page.frames.requested, 0);
+    assert.equal(page.frames.requested, 0, '不在視窗內：任何改變都不排 frame');
+    assert.equal(page.paints(), 0);
+    assert.equal(page.canvas.getAttribute('aria-label'), '均勻球的 3D 示意圖：半徑 R 8.0 nm');
+    assert.match(page.$('sfShapeDims').innerHTML, /8\.0 nm/);
+    page.setVisible(true);
+    assert.equal(page.frames.pending(), 1);
+    page.frames.flush();
+    assert.equal(page.paints(), 1, '進入視窗：以目前的參數與主題畫一次');
+    page.setVisible(false);
+    page.act(setValue('radius', 90));
+    assert.equal(page.frames.pending(), 0);
+    page.setVisible(true);
+    page.setVisible(true);
+    assert.equal(page.frames.pending(), 1, '連續回報兩次只排一個 frame');
+    page.frames.flush();
+    assert.equal(page.paints(), 2);
+    page.setVisible(false);
+    page.setVisible(true);
+    assert.equal(page.frames.pending(), 0, '沒有改變：回到視窗內不必重畫（畫布保留上一張）');
 });
 
-// ---------------------------------------------------------------- 切換
-test('[shape3d-ui] 按「結構」：dispatch setPlotView、兩個鈕與兩組區塊互換；按「曲線」換回並多重繪一次', () => {
+test('[shape3d-ui] 分頁不是顯示中的那一個、或文件被隱藏：不重畫；回來後補畫', () => {
     const page = m4.shapePage();
-    page.$('sfViewShape').fire('click');
-    assert.equal(page.Section.getState().plotView, 'shape');
-    assert.equal(page.$('sfViewShape').getAttribute('aria-pressed'), 'true');
-    assert.equal(page.$('sfViewCurve').getAttribute('aria-pressed'), 'false');
-    assert.ok(page.$('sfViewShape').classList.contains('active') && !page.$('sfViewCurve').classList.contains('active'));
-    assert.deepEqual(['sfCurveView', 'sfCurveTools', 'sfShapeView', 'sfShapeTools'].map((id) => page.$(id).hidden), [true, true, false, false]);
-    assert.equal(page.$('sfPlotTitle').textContent, '結構示意');
-    const before = page.plots.views.length;
-    page.$('sfViewShape').fire('click');
-    assert.equal(page.plots.views.length, before, '已經是結構檢視：不重繪');
-    page.$('sfViewCurve').fire('click');
-    assert.equal(page.Section.getState().plotView, 'curve');
-    assert.deepEqual(['sfCurveView', 'sfCurveTools', 'sfShapeView', 'sfShapeTools'].map((id) => page.$(id).hidden), [false, false, true, true]);
-    assert.equal(page.plots.views.length, before + 2, '切回曲線後多一次 ctx.refresh()：圖表在隱藏期間的更新要補畫');
-    assert.notEqual(page.$('sfPlotTitle').textContent, '結構示意', '標題交還給資料分段');
+    page.frames.flush();
+    page.$('section-sasfit').classList.remove('active');
+    page.act(setValue('radius', 70));
+    page.frames.flush();
+    assert.equal(page.paints(), 1, '離開本分頁');
+    page.$('section-sasfit').classList.add('active');
+    page.document.fire('click');
+    page.frames.flush();
+    assert.equal(page.paints(), 2, '側欄點回來：補畫');
+    page.document.hidden = true;
+    page.act(setValue('radius', 75));
+    page.frames.flush();
+    assert.equal(page.paints(), 2, '文件被隱藏');
+    page.document.hidden = false;
+    page.document.fire('visibilitychange');
+    page.frames.flush();
+    assert.equal(page.paints(), 3);
 });
 
-test('[shape3d-ui] 擬合進行中也能切換檢視', async () => {
+test('[shape3d-ui] 擬合進行中 3D 照常跟著參數與視角重畫（它不是被鎖定的輸入）', async () => {
     const page = m4.shapePage();
     const input = page.$('sfFileInput');
     input.files = [ui.fixtureFile('SYNTH_sphere_10.dat')];
     input.fire('change');
     await ui.flush();
     await ui.flush();
+    page.frames.flush();
+    const before = page.paints();
     page.ctx.dispatch({ type: 'fitStarted' });
     assert.equal(page.Section.getState().fit.phase, 'running');
-    page.$('sfViewShape').fire('click');
-    assert.equal(page.Section.getState().plotView, 'shape');
+    page.stage.fire('keydown', { key: 'ArrowLeft' });
     page.frames.flush();
-    assert.equal(page.paints(), 1);
-    page.$('sfViewCurve').fire('click');
-    assert.equal(page.Section.getState().plotView, 'curve');
+    assert.equal(page.paints(), before + 1);
 });
 
 // ---------------------------------------------------------------- 有形狀的模型
-test('[shape3d-ui] 切到結構：建網格一次，一個 frame 內重畫一次；畫布的替代文字、尺寸清單、說明都寫入', () => {
+test('[shape3d-ui] 啟動：建網格一次，一個 frame 內重畫一次；畫布的替代文字、尺寸清單、說明都寫入', () => {
     const page = m4.shapePage();
-    page.$('sfViewShape').fire('click');
     assert.equal(page.builds(), 1);
     assert.equal(page.paints(), 0, '重畫合併在 requestAnimationFrame 裡');
     assert.equal(page.frames.pending(), 1);
@@ -114,7 +142,7 @@ test('[shape3d-ui] 切到結構：建網格一次，一個 frame 內重畫一次
 
 test('[shape3d-ui] 再 render 而形狀參數沒變：不重建、不重畫；只改 scale 或 sld：不重建；改 radius：重建並重畫', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     assert.deepEqual([page.builds(), page.paints()], [1, 1]);
     page.ctx.refresh();
     page.ctx.refresh();
@@ -138,7 +166,7 @@ test('[shape3d-ui] 再 render 而形狀參數沒變：不重建、不重畫；�
 
 test('[shape3d-ui] 多分散與 S(Q) 只改文字，不重建網格、不重畫', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.act({ type: 'togglePd', name: 'radius' });
     page.act({ type: 'setPdField', name: 'radius', field: 'width', value: '0.1' });
     page.act({ type: 'setStructure', structure: 'hardsphere' });
@@ -149,7 +177,7 @@ test('[shape3d-ui] 多分散與 S(Q) 只改文字，不重建網格、不重畫'
 
 test('[shape3d-ui] 表單有錯：保留上一張圖並在狀態行說明；改回來後清掉', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     const dims = page.$('sfShapeDims').innerHTML;
     page.act(setValue('radius', 'abc'));
     page.frames.flush();
@@ -169,7 +197,7 @@ test('[shape3d-ui] 表單有錯：保留上一張圖並在狀態行說明；改�
 
 test('[shape3d-ui] 柔性圓柱：狀態行註明是一個代表性構形，清單是粗線；層狀：說明橫向只是示意', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.act(setModel('flexible_cylinder'));
     page.frames.flush();
     assert.equal(page.$('sfShapeStatus').textContent, '圖中是一個代表性構形');
@@ -184,7 +212,7 @@ test('[shape3d-ui] 柔性圓柱：狀態行註明是一個代表性構形，清�
 
 test('[shape3d-ui] 投影不到 2 像素的尺寸在說明裡多一句（比例取預設縮放）', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.act(setModel('core_shell_sphere'));
     page.act(setValue('radius', 2000));
     page.act(setValue('thickness', 1));
@@ -194,7 +222,7 @@ test('[shape3d-ui] 投影不到 2 像素的尺寸在說明裡多一句（比例�
 // ---------------------------------------------------------------- 沒有形狀的模型
 test('[shape3d-ui] 與形狀無關的模型：狀態行「此模型沒有固定形狀」，舞台、說明與文字收起，清空，重設視角停用', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     for (const model of ['guinier', 'guinier_porod', 'power_law', 'mono_gauss_coil', 'gaussian_peak']) {
         page.act(setModel(model));
         page.frames.flush();
@@ -220,7 +248,7 @@ test('[shape3d-ui] 尺寸清單的 HTML 已跳脫（標籤或數值含 < 的假�
     assert.match(html, /&lt;img src=x onerror=1&gt;/);
     assert.match(html, /5\.0 &lt;b&gt;nm&lt;\/b&gt; &amp; &quot;more&quot;/);
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     assert.equal(page.$('sfShapeExtras').htmlSets, 0, '說明不經 innerHTML');
     assert.equal(page.$('sfShapeStatus').htmlSets, 0);
     assert.ok(page.$('sfShapeDims').htmlSets >= 1);
@@ -230,7 +258,7 @@ test('[shape3d-ui] 尺寸清單的 HTML 已跳脫（標籤或數值含 < 的假�
 test('[shape3d-ui] 後備解析度＝CSS 尺寸 × min(devicePixelRatio, 2)，context 以同一個比例縮放', () => {
     for (const [ratio, used] of [[1, 1], [2, 2], [3, 2], [1.5, 1.5]]) {
         const page = m4.shapePage({ ratio });
-        page.showShape();
+        page.settle();
         assert.deepEqual([page.canvas.width, page.canvas.height], [Math.round(575 * used), Math.round(414 * used)], `devicePixelRatio ${ratio}`);
         assert.deepEqual(page.context.only('setTransform')[0].args, [used, 0, 0, used, 0, 0]);
         assert.deepEqual(page.context.only('clearRect')[0].args, [0, 0, 575, 414], '繪製座標是 CSS 像素');
@@ -239,7 +267,7 @@ test('[shape3d-ui] 後備解析度＝CSS 尺寸 × min(devicePixelRatio, 2)，co
 
 test('[shape3d-ui] 尺寸改變：observeResize 的回呼在一個 frame 內重畫一次；尺寸沒變不重畫；尺寸是 0 不畫', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.observers[0].fn();
     page.observers[0].fn();
     assert.equal(page.frames.pending(), 0, '尺寸沒變：不排 frame');
@@ -259,7 +287,7 @@ test('[shape3d-ui] 尺寸改變：observeResize 的回呼在一個 frame 內重�
 
 test('[shape3d-ui] 舞台還沒有尺寸時切到結構：先不畫，尺寸出現後才畫', () => {
     const page = m4.shapePage({ size: [0, 0] });
-    page.showShape();
+    page.settle();
     assert.equal(page.paints(), 0);
     assert.equal(page.builds(), 1);
     [page.stage.clientWidth, page.stage.clientHeight] = [448, 353];
@@ -269,9 +297,9 @@ test('[shape3d-ui] 舞台還沒有尺寸時切到結構：先不畫，尺寸出�
 });
 
 // ---------------------------------------------------------------- 主題與列印
-test('[shape3d-ui] 主題切換：以新主題重畫一次，不重建網格；曲線檢視時不畫', () => {
+test('[shape3d-ui] 主題切換：以新主題重畫一次，不重建網格；不在視窗內時不畫', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     const light = lastFills(page);
     page.document.fire('tps:themechange', { theme: 'dark' });
     assert.equal(page.frames.pending(), 1);
@@ -282,23 +310,28 @@ test('[shape3d-ui] 主題切換：以新主題重畫一次，不重建網格；�
     assert.ok(dark.includes(ChartTheme.shade3d('shapeSolid', 1, 'dark')) || dark.every((colour) => colour !== ChartTheme.shade3d('shapeSolid', 1, 'light')));
     page.document.fire('tps:themechange', { theme: 'dark' });
     assert.equal(page.frames.pending(), 0, '同一個主題：不重畫');
-    page.$('sfViewCurve').fire('click');
+    page.setVisible(false);
     page.document.fire('tps:themechange', { theme: 'light' });
     page.frames.flush();
     assert.equal(page.paints(), 2);
-    page.showShape();
-    assert.equal(page.paints(), 3, '回到結構檢視時以目前的主題補畫');
+    page.setVisible(true);
+    page.settle();
+    assert.equal(page.paints(), 3, '回到視窗內時以目前的主題補畫');
     assert.deepEqual(lastFills(page), light);
 });
 
-test('[shape3d-ui] 列印：beforeprint 立刻以淺色重畫，afterprint 換回；曲線檢視時不畫', () => {
+test('[shape3d-ui] 列印：beforeprint 立刻以淺色重畫，afterprint 換回；不在視窗內也一樣（印的是整頁）', () => {
+    const hidden = m4.shapePage({ visible: false });
+    hidden.document.fire('tps:themechange', { theme: 'dark' });
+    assert.equal(hidden.paints(), 0, '不在視窗內：換主題不畫');
+    hidden.windowListeners.beforeprint[0].fn();
+    assert.equal(hidden.paints(), 1, '不在視窗內：列印仍然同步以淺色畫一次');
+    hidden.windowListeners.afterprint[0].fn();
+    assert.equal(hidden.paints(), 2, '印完換回深色');
     const page = m4.shapePage();
     assert.equal(page.windowListeners.beforeprint.length, 1);
     assert.equal(page.windowListeners.afterprint.length, 1);
-    page.windowListeners.beforeprint[0].fn();
-    assert.equal(page.paints(), 0);
-    page.windowListeners.afterprint[0].fn();
-    page.showShape();
+    page.settle();
     const light = lastFills(page);
     page.document.fire('tps:themechange', { theme: 'dark' });
     page.frames.flush();
@@ -312,11 +345,14 @@ test('[shape3d-ui] 列印：beforeprint 立刻以淺色重畫，afterprint 換�
 });
 
 // ---------------------------------------------------------------- 匯出
-test('[shape3d-ui] exportBlob：離屏畫布、淺色白底、寬 1200、同一個視角與比例尺；畫面上的畫布不被動到', async () => {
+test('[shape3d-ui] exportBlob：離屏畫布、淺色白底、寬 1200、同一個視角與比例尺；畫面上的畫布不被動到；不在視窗內也能匯出', async () => {
+    const hidden = m4.shapePage({ visible: false });
+    const hiddenBlob = await hidden.segment.exportBlob();
+    assert.equal(hiddenBlob.width, 1200, '舞台不在視窗內：照樣以它的尺寸匯出');
+    assert.equal(hidden.paints(), 0, '畫面上的畫布沒有被畫');
     const page = m4.shapePage();
     const { segment } = page;
-    assert.equal(await segment.exportBlob(), null, '曲線檢視：null');
-    page.showShape();
+    page.settle();
     page.document.fire('tps:themechange', { theme: 'dark' });
     page.frames.flush();
     const before = page.context.calls.length;
@@ -346,7 +382,7 @@ const up = (page, id, type = 'pointerup') => page.stage.fire(type, { pointerId: 
 
 test('[shape3d-ui] 拖曳：水平移動改 yaw、垂直移動改 pitch（滑鼠），合併在一個 frame 重畫；放開後結束', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     assert.deepEqual(view(page), V.DEFAULT_VIEW);
     down(page, 1, 100, 100);
     assert.ok(page.stage.classList.contains('is-dragging'));
@@ -374,7 +410,7 @@ test('[shape3d-ui] 拖曳：水平移動改 yaw、垂直移動改 pitch（滑鼠
 
 test('[shape3d-ui] 拖曳：滑鼠只認主鍵；pitch 夾在 ±89°；觸控只改 yaw', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     down(page, 1, 0, 0, { button: 2 });
     move(page, 1, 100, 0);
     assert.deepEqual(view(page), V.DEFAULT_VIEW, '右鍵不旋轉');
@@ -393,7 +429,7 @@ test('[shape3d-ui] 拖曳：滑鼠只認主鍵；pitch 夾在 ±89°；觸控只
 
 test('[shape3d-ui] setPointerCapture 丟例外（合成事件、指標已不在）時拖曳照常運作', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.stage.setPointerCapture = () => { throw new Error('No active pointer with the given id is found.'); };
     page.stage.releasePointerCapture = () => { throw new Error('No active pointer with the given id is found.'); };
     down(page, 9, 10, 10, { pointerType: 'touch' });
@@ -405,7 +441,7 @@ test('[shape3d-ui] setPointerCapture 丟例外（合成事件、指標已不在�
 
 test('[shape3d-ui] 兩指：距離加倍 → zoom 約 ×2，不旋轉；縮回去 → 回到原來的 zoom；夾在範圍內', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     down(page, 1, 100, 100, { pointerType: 'touch' });
     down(page, 2, 200, 100, { pointerType: 'touch' });
     move(page, 2, 300, 100, { pointerType: 'touch' });
@@ -423,7 +459,7 @@ test('[shape3d-ui] 兩指：距離加倍 → zoom 約 ×2，不旋轉；縮回�
 
 test('[shape3d-ui] 鍵盤：方向鍵旋轉、+ − 縮放、0 與 Home 重設，都取消預設行為；其他鍵不處理', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     const key = (name, extra) => page.stage.fire('keydown', { key: name, ...extra });
     const left = key('ArrowRight');
     assert.equal(left.defaultPrevented, true);
@@ -464,7 +500,7 @@ test('[shape3d-ui] 鍵盤：方向鍵旋轉、+ − 縮放、0 與 Home 重設�
 
 test('[shape3d-ui] 滾輪：沒按 Ctrl 不攔截（頁面照常捲動）；Ctrl＋滾輪縮放並取消預設；以 passive: false 註冊', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     assert.deepEqual(page.stage.listenerOptions.wheel, [{ passive: false }]);
     const plain = page.stage.fire('wheel', { deltaY: -120, ctrlKey: false });
     assert.equal(plain.defaultPrevented, false);
@@ -485,7 +521,7 @@ test('[shape3d-ui] 滾輪：沒按 Ctrl 不攔截（頁面照常捲動）；Ctrl
 
 test('[shape3d-ui] 「重設視角」回到預設視角；放大時狀態行提醒只看得到中央', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.stage.fire('keydown', { key: 'ArrowLeft' });
     page.stage.fire('keydown', { key: '+' });
     assert.match(page.$('sfShapeStatus').textContent, /已放大/);
@@ -498,8 +534,11 @@ test('[shape3d-ui] 「重設視角」回到預設視角；放大時狀態行提�
     assert.equal(page.$('sfShapeStatus').textContent, '', '縮小不需要提醒');
 });
 
-test('[shape3d-ui] 曲線檢視或沒有形狀時，舞台上的事件不改視角、不排 frame', () => {
+test('[shape3d-ui] 沒有形狀時，舞台上的事件不改視角、不排 frame', () => {
     const page = m4.shapePage();
+    page.act(setModel('guinier'));
+    page.frames.flush();
+    page.frames.requested = 0;
     down(page, 1, 0, 0);
     move(page, 1, 50, 50);
     up(page, 1);
@@ -512,7 +551,7 @@ test('[shape3d-ui] 曲線檢視或沒有形狀時，舞台上的事件不改視�
 // ---------------------------------------------------------------- 自動旋轉
 test('[shape3d-ui] 自動旋轉預設關閉；按下後 aria-pressed、以 raf 排程，yaw 的增量與時間差成正比', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     assert.equal(spinning(page), false);
     assert.equal(page.$('sfShapeSpin').disabled, false);
     assert.equal(page.frames.pending(), 0, '沒開自動旋轉就沒有任何 frame 在排');
@@ -535,7 +574,7 @@ test('[shape3d-ui] 自動旋轉預設關閉；按下後 aria-pressed、以 raf �
 
 test('[shape3d-ui] 自動旋轉上限 30 fps：太快來的 frame 不畫也不轉；停很久之後不會一次轉一大步', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.$('sfShapeSpin').fire('click');
     page.frames.flush(0);
     page.frames.flush(100);
@@ -555,7 +594,7 @@ test('[shape3d-ui] 自動旋轉上限 30 fps：太快來的 frame 不畫也不�
 
 test('[shape3d-ui] 自動旋轉：再按一次 cancelRaf；任何路徑都只有一個迴圈', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     const spin = page.$('sfShapeSpin');
     spin.fire('click');
     page.ctx.refresh();
@@ -577,26 +616,26 @@ test('[shape3d-ui] 自動旋轉：再按一次 cancelRaf；任何路徑都只有
     assert.equal(page.frames.pending(), 1);
 });
 
-test('[shape3d-ui] 自動旋轉在切回曲線、擬合進行中、頁面隱藏、離開本分頁、拖曳中都停止排程；條件恢復後續轉', async () => {
+test('[shape3d-ui] 自動旋轉在舞台離開視窗、擬合進行中、頁面隱藏、離開本分頁、拖曳中都停止排程；條件恢復後續轉', async () => {
     const page = m4.shapePage();
     const input = page.$('sfFileInput');
     input.files = [ui.fixtureFile('SYNTH_sphere_10.dat')];
     input.fire('change');
     await ui.flush();
     await ui.flush();
-    page.showShape();
+    page.settle();
     page.$('sfShapeSpin').fire('click');
     const running = () => page.frames.pending() === 1;
     const settle = () => { page.frames.flush(0); page.frames.flush(40); page.frames.flush(80); };
     settle();
     assert.ok(running());
 
-    page.$('sfViewCurve').fire('click');
+    page.setVisible(false);
     settle();
-    assert.ok(!running(), '曲線檢視');
+    assert.ok(!running(), '舞台捲出視窗');
     assert.equal(spinning(page), true, '開關的狀態保留');
-    page.$('sfViewShape').fire('click');
-    assert.ok(page.frames.pending() >= 1, '回到結構檢視：續轉');
+    page.setVisible(true);
+    assert.ok(page.frames.pending() >= 1, '回到視窗內：續轉');
     settle();
 
     page.ctx.dispatch({ type: 'fitStarted' });
@@ -634,7 +673,7 @@ test('[shape3d-ui] 自動旋轉在切回曲線、擬合進行中、頁面隱藏�
 
 test('[shape3d-ui] 沒有形狀的模型：自動旋轉停用並停止', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.$('sfShapeSpin').fire('click');
     page.act(setModel('guinier'));
     page.frames.flush(0);
@@ -648,8 +687,7 @@ test('[shape3d-ui] 沒有形狀的模型：自動旋轉停用並停止', () => {
 
 test('[shape3d-ui] prefers-reduced-motion：自動旋轉停用、title 與說明補一句，不排任何 frame', () => {
     const page = m4.shapePage({ reducedMotion: true });
-    assert.deepEqual(page.queries, [], '曲線檢視時不查詢');
-    page.showShape();
+    page.settle();
     assert.ok(page.queries.includes('(prefers-reduced-motion: reduce)'));
     const spin = page.$('sfShapeSpin');
     assert.equal(spin.disabled, true);
@@ -660,14 +698,14 @@ test('[shape3d-ui] prefers-reduced-motion：自動旋轉停用、title 與說明
     assert.equal(page.frames.pending(), 0);
     // 沒有這個設定時：沒有 title，說明是原來那一句
     const normal = m4.shapePage();
-    normal.showShape();
+    normal.settle();
     assert.equal(normal.$('sfShapeSpin').getAttribute('title'), null);
     assert.equal(normal.$('sfShapeHelp').textContent, '拖曳旋轉；Ctrl＋滾輪或兩指縮放；鍵盤：方向鍵旋轉、＋／－縮放、0 重設；按比例繪製（正交投影），不能平移');
 });
 
 test('[shape3d-ui] 開著自動旋轉時系統改成減少動態：下一次重繪就停', () => {
     const page = m4.shapePage();
-    page.showShape();
+    page.settle();
     page.$('sfShapeSpin').fire('click');
     page.media.matches = true;
     page.ctx.refresh();
@@ -680,26 +718,22 @@ test('[shape3d-ui] 開著自動旋轉時系統改成減少動態：下一次重�
 
 test('[shape3d-ui] 說明文字含鍵盤操作；觸控裝置（pointer: coarse）補一句怎麼開始旋轉', () => {
     const fine = m4.shapePage();
-    fine.showShape();
+    fine.settle();
     assert.match(fine.$('sfShapeHelp').textContent, /鍵盤：方向鍵旋轉、＋／－縮放、0 重設/);
     assert.doesNotMatch(fine.$('sfShapeHelp').textContent, /觸控/);
     const page = m4.shapePage({ coarse: true });
-    page.showShape();
+    page.settle();
     assert.match(page.$('sfShapeHelp').textContent, /鍵盤：方向鍵旋轉/);
     assert.match(page.$('sfShapeHelp').textContent, /觸控：先左右拖曳即可旋轉，直接上下滑動是捲動頁面/);
 });
 
-test('[shape3d-ui] 尺寸與說明的框只有在真的會捲動時才是 Tab 停駐點（審查修正 E7）', () => {
+test('[shape3d-ui] v5.8：尺寸與說明不再是固定高度的捲動框，永遠不是 Tab 停駐點', () => {
     const page = m4.shapePage();
     const box = page.$('sfShapeText');
     box.scrollHeight = 300;
     box.clientHeight = 161;
-    page.showShape();
-    assert.equal(box.getAttribute('tabindex'), '0', '內容比框高：鍵盤要捲得到');
-    box.scrollHeight = 120;
-    page.ctx.setForm(globalThis.SasFitForm.reduce(page.ctx.getForm(), { type: 'setValue', name: 'radius', value: '82' }));
-    page.ctx.refresh();
-    assert.equal(box.getAttribute('tabindex'), null, '放得下：不佔一個 Tab 停駐點');
+    page.act(setValue('radius', 82));
+    assert.equal(box.getAttribute('tabindex'), null);
 });
 
 test('[shape3d-ui] create 綁定的監聽器數目固定；section 只建立一次', () => {
@@ -710,8 +744,9 @@ test('[shape3d-ui] create 綁定的監聽器數目固定；section 只建立一�
     const counts = Object.fromEntries(['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'keydown', 'wheel']
         .map((type) => [type, page.stage.listenerCount(type)]));
     assert.deepEqual(counts, { pointerdown: 1, pointermove: 1, pointerup: 1, pointercancel: 1, keydown: 1, wheel: 1 });
-    for (const id of ['sfViewCurve', 'sfViewShape', 'sfShapeReset', 'sfShapeSpin']) assert.equal(page.$(id).listenerCount('click'), 1, id);
+    for (const id of ['sfShapeReset', 'sfShapeSpin']) assert.equal(page.$(id).listenerCount('click'), 1, id);
     assert.equal(page.document.listenerCount('visibilitychange'), 1);
     assert.equal(page.windowListeners.beforeprint.length, 1);
     assert.equal(page.observers.length, 1);
+    assert.equal(page.visibles.length, 1);
 });

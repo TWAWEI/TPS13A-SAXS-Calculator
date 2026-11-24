@@ -29,6 +29,8 @@ import smoke_browser as sb                        # noqa: E402
 import smoke_ui as su                             # noqa: E402
 import check_iucr_copy as cic                     # noqa: E402
 import smoke_m4_js as js                          # noqa: E402  (the page-side scripts)
+import smoke_m4_shape as sh                       # noqa: E402  (v5.8: the 3D card under the curves, the plot column)
+from smoke_m4_shape import check, shape           # noqa: E402
 from playwright.sync_api import sync_playwright   # noqa: E402
 
 TOTAL_TIMEOUT_S = 240
@@ -38,24 +40,12 @@ CONDITION = '濃度 (mg/mL)'
 CONDITION_FILE = '濃度 (mg_mL)'
 TRUTH = (50, 52, 54)
 STEM = 'SYNTH_sphere_10_sphere'
-VIEWPORTS = ((1440, 900), (1280, 800), (1024, 768), (760, 900), (320, 640))
-TWO_COLUMN = VIEWPORTS[:3]
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 WHITE = [255, 255, 255, 255]
 BOM = b'\xef\xbb\xbf'
 IUCR_HEADING = 'Model fitting (analytical scattering model)'
 
 # ----------------------------------------------------------------- helpers
-
-def check(ctx, name, fn):
-    """ctx.check, with the errors of reading a result that is not there (a check after a failed one) turned into a FAIL."""
-    def run():
-        try:
-            return fn()
-        except (IndexError, AttributeError, StopIteration, ZeroDivisionError) as err:
-            raise AssertionError(f'{type(err).__name__}: {err}') from err
-    return ctx.check(name, run)
-
 
 def reload_page(ctx, wrap=False):
     """Reload; optionally wrap the Worker client BEFORE the section creates one; open the section; axe again."""
@@ -87,27 +77,6 @@ def axe(ctx, name, scope='section'):
         nodes = sum(len(v['nodes']) for v in violations)
         return nodes == 0, f'{nodes} violation node(s)' + ''.join('\n' + line for line in su.describe(violations))
     return check(ctx, f'11 axe wcag2a/2aa/21a/21aa, {name}', run)
-
-
-def shape(page, settle=250):
-    page.wait_for_timeout(settle)
-    return page.evaluate(js.JS_SHAPE)
-
-
-def stage_centre(page):
-    box = page.locator('#sfShapeStage').bounding_box()
-    return box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
-
-
-def two_hues(hues, minimum=100, apart=4):
-    """Two populated hue bins (10 degrees each) at least `apart` bins from each other."""
-    strong = [i for i, n in enumerate(hues) if n >= minimum]
-    return any(min((a - b) % 36, (b - a) % 36) >= apart for a in strong for b in strong), [i * 10 for i in strong]
-
-
-def viewport(page, size, wait=400):
-    page.set_viewport_size({'width': size[0], 'height': size[1]})
-    page.wait_for_timeout(wait)
 
 
 # ----------------------------------------------------------------- 1-3: sequence
@@ -379,11 +348,11 @@ def themed_pass(ctx):
         png(ctx, 'main', '#sfMainPng', STEM + '_main.png', theme)
         png(ctx, 'residual', '#sfResidualPng', STEM + '_residual.png', theme)
         axe(ctx, f'fit tab, export row enabled, {theme}')
-        page.click('#sfViewShape')
+        sh.to_stage(page)
         hashes[theme] = shape(page, 400)
         png(ctx, '3D sketch', '#sfShapePng', STEM + '_shape.png', theme)
-        axe(ctx, f'structure view (3D sketch), {theme}')
-        page.click('#sfViewCurve')
+        axe(ctx, f'3D sketch on screen under the curves, {theme}')
+        sh.to_top(page, 150)
     ctx.theme('light')
 
     def run():
@@ -466,153 +435,12 @@ def axe_control(ctx):
     check(ctx, '11 axe negative control for a selector scope (a bad element is reported inside the scope only)', run)
 
 
-# ----------------------------------------------------------------- 12: layout
-
-def check_layout(ctx, measured):
-    def run():
-        page, notes, ok = ctx.page, [], True
-        for size in VIEWPORTS:
-            viewport(page, size)
-            su.tab(page, 'sequence')
-            page.wait_for_timeout(250)
-            seq = page.evaluate(js.JS_LAYOUT)
-            one_line = len(set(seq['tabTops'])) == 1
-            good = (seq['page'][0] <= seq['page'][1] and not seq['wide'] and seq['tabsInside'] and seq['tabList'][0] <= seq['tabList'][1]
-                    and (one_line or size[0] == 320))
-            note = (f"{size[0]}x{size[1]}: page {seq['page'][0]}/{seq['page'][1]}, #sfSeqWrapper {seq['wrapper'][0]}/{seq['wrapper'][1]}, "
-                    f"wider ancestors {seq['wide'] or 'none'}, tabs on {len(set(seq['tabTops']))} line(s)")
-            su.tab(page, 'fit')
-            views = {}
-            for view, button in (('curve', '#sfViewCurve'), ('shape', '#sfViewShape')):
-                page.click(button)
-                page.wait_for_timeout(350)
-                views[view] = page.evaluate(js.JS_LAYOUT)
-                good = good and views[view]['page'][0] <= views[view]['page'][1]
-                if size in TWO_COLUMN:
-                    good = good and views[view]['plots'][0] == views[view]['plots'][1]
-                    note += f", .sf-plots {view} {views[view]['plots'][0]}/{views[view]['plots'][1]}"
-            page.click('#sfViewCurve')
-            measured['canvas'].append((size, views['curve']['main'], views['shape']['shape']))
-            ok = ok and good
-            notes.append(note + ('' if good else '  <-- FAIL'))
-        viewport(page, su.DESKTOP)
-        return ok, ' | '.join(notes)
-    check(ctx, '12 layout: no scrolling inside the plot column (curve and structure views) at 1440/1280/1024; no page-level horizontal overflow at five widths; '
-              'the sequence table scrolls only inside #sfSeqWrapper; the four tabs stay on one line (320 may wrap)', run)
-
-
-# ----------------------------------------------------------------- 7, 8: 3D sketch
-
-def check_shape_view(ctx):
-    def run():
-        page, notes = ctx.page, []
-        su.tab(page, 'model')
-        page.click('#sfViewShape')
-        first = shape(page, 400)
-        hidden = page.evaluate("() => [document.getElementById('sfCurveView').hidden, document.getElementById('sfShapeView').hidden, document.getElementById('sfShapeSpin').disabled]")
-        ok = hidden[:2] == [True, False] and first['painted'] > 500
-        notes.append(f"#sfCurveView hidden={hidden[0]}, canvas {first['size'][0]}x{first['size'][1]}, painted pixels {first['painted']} ({first['colours']} colours)")
-        x, y = stage_centre(page)
-        page.mouse.move(x, y)
-        page.mouse.down()
-        page.mouse.move(x + 80, y, steps=8)
-        page.mouse.up()
-        dragged = shape(page)
-        ok = ok and dragged['hash'] != first['hash']
-        notes.append(f"drag 80 px: hash {first['hash']} -> {dragged['hash']}")
-        page.click('#sfShapeReset')
-        sized = {}
-        for radius in ('50', '100'):
-            page.fill('#sfValue_radius', radius)
-            m, bar = shape(page, 500), page.evaluate(js.JS_BAR_LABEL)
-            sized[radius] = (m, bar, m['width'] / m['bar'] * bar['nm'] if m['bar'] and bar else 0)
-        (m50, b50, d50), (m100, b100, d100) = sized['50'], sized['100']
-        ok = (ok and m50['hash'] != m100['hash'] and (b50['label'] != b100['label'] or abs(m50['bar'] - m100['bar']) > 1)
-              and abs(d50 - 10) < 0.5 and abs(d100 - 20) < 1)
-        notes.append(f"radius 50: bar {b50['label']} = {m50['bar']:.0f} px, sphere {m50['width']:.0f} px = {d50:.2f} nm; "
-                     f"radius 100: bar {b100['label']} = {m100['bar']:.0f} px, sphere {m100['width']:.0f} px = {d100:.2f} nm")
-        su.pick_model(page, 'core_shell_sphere')
-        core = shape(page, 500)
-        both, hues = two_hues(core['hues'])
-        ok = ok and both
-        notes.append(f'core_shell_sphere: hue bins with >= 100 pixels at {hues} degrees')
-        su.pick_model(page, 'flexible_cylinder')
-        chain, status = shape(page, 500), page.inner_text('#sfShapeStatus')
-        ok = ok and chain['painted'] > 500 and '代表性構形' in status
-        notes.append(f"flexible_cylinder: painted {chain['painted']}, status {status!r}")
-        su.pick_model(page, 'guinier')
-        page.wait_for_timeout(400)
-        status = page.inner_text('#sfShapeStatus')
-        ok = ok and '此模型沒有固定形狀' in status
-        notes.append(f'guinier: status {status!r}')
-        page.click('#sfViewCurve')
-        page.wait_for_timeout(400)
-        back = page.evaluate("() => { const c = Chart.getChart('sfMainChart'); return [document.getElementById('sfCurveView').hidden, c.canvas.width, c.canvas.height, "
-                             "c.data.datasets.filter((d) => d.sfKind === 'data' && d.data.length > 0).length]; }")
-        ok = ok and back[0] is False and back[1] > 0 and back[2] > 0 and back[3] > 0
-        notes.append(f'back to the curve: #sfCurveView hidden={back[0]}, canvas {back[1]}x{back[2]}, data datasets {back[3]}')
-        ctx.spin_enabled = hidden[2] is False
-        return ok, '; '.join(notes)
-    check(ctx, '7 3D sketch: structure view replaces the curve, canvas painted, drag repaints, radius 50 -> 100 changes the scale bar (to scale), '
-              'core and shell in two hues, flexible cylinder noted as one conformation, guinier has no shape, curve view comes back', run)
-
-
-def check_shape_keys(ctx, measured):
-    def run():
-        page, notes = ctx.page, []
-        su.pick_model(page, 'core_shell_cylinder')           # the longest parameter table: the page can scroll (the window must stay
-                                                              # tall enough for the plot column, or the wheel scrolls inside that column)
-        page.click('#sfViewShape')
-        page.evaluate('() => window.scrollTo(0, 0)')
-        page.focus('#sfShapeStage')
-        page.keyboard.press('Home')
-        start, scroll0 = shape(page, 400), page.evaluate(js.JS_SCROLL)
-        measured['frame'] = page.evaluate(js.JS_FRAME_TIME)
-        page.keyboard.press('Home')
-        page.keyboard.press('ArrowLeft')
-        left, scroll1 = shape(page), page.evaluate(js.JS_SCROLL)
-        page.keyboard.press('ArrowDown')
-        down, scroll2 = shape(page), page.evaluate(js.JS_SCROLL)
-        ok = scroll0[2] > 300 and left['hash'] != start['hash'] and down['hash'] != left['hash'] and scroll1[:2] == scroll0[:2] == scroll2[:2]
-        notes.append(f"ArrowLeft: hash {start['hash']} -> {left['hash']}, ArrowDown -> {down['hash']}, scroll {scroll0[:2]} -> {scroll1[:2]} -> {scroll2[:2]} "
-                     f"(page can scroll {scroll0[2]} px)")
-        page.keyboard.press('Home')
-        home = shape(page)
-        page.keyboard.press('+')
-        plus = shape(page)
-        ok = ok and plus['height'] > home['height'] + 2
-        notes.append(f"+ key: object {home['width']:.0f}x{home['height']:.0f} -> {plus['width']:.0f}x{plus['height']:.0f} px")
-        page.keyboard.press('Home')
-        x, y = stage_centre(page)
-        page.mouse.move(x, y)
-        page.mouse.wheel(0, 240)
-        page.wait_for_timeout(600)
-        wheel, scroll3 = shape(page), page.evaluate(js.JS_SCROLL)
-        ok = ok and scroll3[1] > scroll0[1] and wheel['hash'] == home['hash']
-        notes.append(f"plain wheel: scrollY {scroll0[1]} -> {scroll3[1]}, canvas unchanged={wheel['hash'] == home['hash']}")
-        page.evaluate('() => window.scrollTo(0, 0)')
-        page.wait_for_timeout(500)
-        x, y = stage_centre(page)
-        page.mouse.move(x, y)
-        page.keyboard.down('Control')
-        page.mouse.wheel(0, -240)
-        page.keyboard.up('Control')
-        zoomed, scroll4 = shape(page, 400), page.evaluate(js.JS_SCROLL)
-        ok = ok and zoomed['height'] > home['height'] + 2 and scroll4[1] == 0
-        notes.append(f"Ctrl + wheel: object height {home['height']:.0f} -> {zoomed['height']:.0f} px, scrollY {scroll4[1]}")
-        page.click('#sfShapeReset')
-        page.click('#sfViewCurve')
-        return ok, '; '.join(notes)
-    check(ctx, '8a 3D keyboard and wheel: arrow keys rotate without scrolling the page, + enlarges, a plain wheel scrolls the page and does not zoom, Ctrl + wheel zooms', run)
-
-
 def check_reduced_motion(ctx):
     def run():
         page = ctx.page
         page.emulate_media(reduced_motion='reduce')
         try:
             reload_page(ctx)
-            page.click('#sfViewShape')
             page.wait_for_timeout(400)
             got = page.evaluate("() => { const b = document.getElementById('sfShapeSpin'); return [b.disabled, b.getAttribute('title'), b.getAttribute('aria-pressed')]; }")
         finally:
@@ -717,12 +545,14 @@ def print_measurements(measured):
     for size, main, sketch in measured['canvas']:
         print(f"      {size[0]}x{size[1]}: main chart canvas {main[2]}x{main[3]} CSS px ({main[0]}x{main[1]} backing), "
               f"3D canvas {sketch[2]}x{sketch[3]} CSS px ({sketch[0]}x{sketch[1]} backing)")
+    for size, steps in measured['scroll']:
+        print(f"      scrolling at {size[0]}x{size[1]} (scrollY, curve card top, 3D card top): " + ' '.join(f'({y},{c},{t})' for y, c, t in steps))
 
 
 # ----------------------------------------------------------------- driver
 
 def run_all(base_url):
-    report, measured = sb.Report(), {'canvas': []}
+    report, measured = sb.Report(), {'canvas': [], 'scroll': []}
     OUT.mkdir(parents=True, exist_ok=True)
     su.SHOTS.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
@@ -762,9 +592,11 @@ def run_all(base_url):
                 ctx.theme('light')
                 axe_control(ctx)
                 su.open_section(page)
-                check_layout(ctx, measured)
-                check_shape_view(ctx)
-                check_shape_keys(ctx, measured)
+                sh.check_layout(ctx, measured)
+                sh.check_scroll(ctx, measured)
+                sh.check_shape_view(ctx)
+                sh.check_shape_keys(ctx, measured)
+                sh.check_offscreen(ctx)
                 check_stop(ctx)
                 check_reduced_motion(ctx)
                 check_versions(ctx)

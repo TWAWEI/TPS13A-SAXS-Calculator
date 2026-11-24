@@ -732,34 +732,23 @@
                         </div>
                     </div>
 
-                    <!-- 右欄：圖（寬螢幕時捲動固定；窄螢幕時排在最上面） -->
+                    <!-- 右欄：曲線卡在上、3D 結構示意卡在下（v5.8：不再切換，兩張卡同時在畫面上）。
+                         兩欄時曲線卡在左欄很長時捲動固定（.sf-curve-track 的範圍內），3D 卡接在後面；窄螢幕時兩張卡排在最上面 -->
                     <div class="sf-plots">
-                        <div class="card">
-                            <div class="card-header sf-plot-header">
-                                <div class="sf-plot-heading">
-                                    <div class="tabs tabs--inline" id="sfViewTabs" role="group" aria-label="圖區內容">
-                                        <button type="button" class="tab active" id="sfViewCurve" aria-pressed="true">曲線</button>
-                                        <button type="button" class="tab" id="sfViewShape" aria-pressed="false">3D 結構</button>
-                                    </div>
+                        <div class="sf-curve-track">
+                            <div class="card sf-curve-card" id="sfCurveCard">
+                                <div class="card-header sf-plot-header">
                                     <h2 class="card-title" id="sfPlotTitle">I(q)</h2>
-                                </div>
-                                <div class="sf-plot-tools" id="sfCurveTools">
-                                    <div class="tabs tabs--inline" role="group" aria-label="主圖模式">
-                                        <button type="button" class="tab active" id="sfModeLogLog" data-mode="loglog" aria-pressed="true">log-log</button>
-                                        <button type="button" class="tab" id="sfModeGuinier" data-mode="guinier" aria-pressed="false">Guinier</button>
-                                        <button type="button" class="tab" id="sfModeKratky" data-mode="kratky" aria-pressed="false">Kratky</button>
-                                        <button type="button" class="tab" id="sfModePorod" data-mode="porod" aria-pressed="false">Porod</button>
+                                    <div class="sf-plot-tools">
+                                        <div class="tabs tabs--inline" role="group" aria-label="主圖模式">
+                                            <button type="button" class="tab active" id="sfModeLogLog" data-mode="loglog" aria-pressed="true">log-log</button>
+                                            <button type="button" class="tab" id="sfModeGuinier" data-mode="guinier" aria-pressed="false">Guinier</button>
+                                            <button type="button" class="tab" id="sfModeKratky" data-mode="kratky" aria-pressed="false">Kratky</button>
+                                            <button type="button" class="tab" id="sfModePorod" data-mode="porod" aria-pressed="false">Porod</button>
+                                        </div>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="sfResetZoom" disabled>重設縮放</button>
                                     </div>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfResetZoom" aria-label="重設縮放" disabled><span>重設<span class="sf-reset-long">縮放</span></span></button>
                                 </div>
-                                <div class="sf-plot-tools" id="sfShapeTools" hidden>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapeReset">重設視角</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapeSpin" aria-pressed="false" disabled>自動旋轉</button>
-                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapePng" aria-label="下載結構示意圖 PNG" disabled>PNG</button>
-                                </div>
-                            </div>
-                            <!-- 曲線檢視：狀態列、主圖、操作說明、殘差 -->
-                            <div id="sfCurveView">
                                 <div class="sf-plot-status">
                                     <p class="stat-sub" id="sfPlotStatus"></p>
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfPreviewNow" hidden>更新曲線</button>
@@ -779,17 +768,25 @@
                                     <canvas id="sfResidualChart" role="img" aria-label="尚無擬合結果"></canvas>
                                 </div>
                             </div>
-                            <!-- 結構檢視：3D 示意圖用主圖的位置，尺寸與說明用殘差圖的位置 -->
-                            <div id="sfShapeView" hidden>
-                                <p class="stat-sub sf-shape-status" id="sfShapeStatus" role="status"></p>
-                                <div class="sf-shape-stage" id="sfShapeStage" tabindex="0" role="group" aria-label="3D 結構示意" aria-describedby="sfShapeDims sfShapeHelp">
-                                    <canvas id="sfShapeCanvas" role="img" aria-label="尚無示意圖"></canvas>
+                        </div>
+                        <!-- 3D 結構示意：狀態行、畫布（含比例尺）、操作說明、尺寸與說明；沒有固定形狀的模型只留狀態行 -->
+                        <div class="card sf-shape-card" id="sfShapeCard">
+                            <div class="card-header sf-plot-header">
+                                <h2 class="card-title" id="sfShapeTitle">3D 結構示意</h2>
+                                <div class="sf-plot-tools">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapeReset">重設視角</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapeSpin" aria-pressed="false" disabled>自動旋轉</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfShapePng" aria-label="下載結構示意圖 PNG" disabled>PNG</button>
                                 </div>
-                                <p class="stat-sub sf-plot-caption sf-shape-help" id="sfShapeHelp">拖曳旋轉；Ctrl＋滾輪或兩指縮放；鍵盤：方向鍵旋轉、＋／－縮放、0 重設；按比例繪製（正交投影），不能平移</p>
-                                <div class="sf-shape-text" id="sfShapeText" role="group" aria-label="尺寸與說明">
-                                    <div id="sfShapeDims"></div>
-                                    <p class="stat-sub sf-shape-extras" id="sfShapeExtras"></p>
-                                </div>
+                            </div>
+                            <p class="stat-sub sf-shape-status" id="sfShapeStatus" role="status"></p>
+                            <div class="sf-shape-stage" id="sfShapeStage" tabindex="0" role="group" aria-label="3D 結構示意" aria-describedby="sfShapeDims sfShapeHelp">
+                                <canvas id="sfShapeCanvas" role="img" aria-label="尚無示意圖"></canvas>
+                            </div>
+                            <p class="stat-sub sf-shape-help" id="sfShapeHelp">拖曳旋轉；Ctrl＋滾輪或兩指縮放；鍵盤：方向鍵旋轉、＋／－縮放、0 重設；按比例繪製（正交投影），不能平移</p>
+                            <div class="sf-shape-text" id="sfShapeText" role="group" aria-label="尺寸與說明">
+                                <div id="sfShapeDims"></div>
+                                <p class="stat-sub sf-shape-extras" id="sfShapeExtras"></p>
                             </div>
                         </div>
                     </div>

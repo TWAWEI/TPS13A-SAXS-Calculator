@@ -40,8 +40,7 @@ test('module is frozen; constants of the plan', () => {
     assert.equal(S.MAX_FILES, 500);
     assert.equal(S.DEFAULT_SHOWN, 8);
     assert.deepEqual([...S.TABS], ['data', 'model', 'fit', 'sequence']);
-    assert.deepEqual([...S.PLOT_VIEWS], ['curve', 'shape']);
-    assert.ok(Object.isFrozen(S.TABS) && Object.isFrozen(S.PLOT_VIEWS));
+    assert.ok(Object.isFrozen(S.TABS));
     assert.deepEqual([...S.PLOT_MODES], ['loglog', 'guinier', 'kratky', 'porod']);
 });
 
@@ -53,7 +52,7 @@ test('initial(): empty, idle, deep-frozen, no stale / forced flags', () => {
         range: null, weighting: 'sigma', weightingUserSet: false, maxSteps: 200, plotMode: 'loglog',
         stagger: { on: false, decades: 1 },
         fit: { phase: 'idle', datasetId: null, iteration: 0, chi2r: null, outcome: null },
-        tab: 'data', nextId: 1, notice: null, removed: null, plotView: 'curve',
+        tab: 'data', nextId: 1, notice: null, removed: null,
         seq: {
             phase: 'idle', selected: {}, options: { chain: true, sort: true }, order: null, rows: {},
             form: null, settings: null, warnings: [], y: null, outcome: null,
@@ -297,7 +296,7 @@ test('setCondition changes only the file entry; setConditionName', () => {
     assert.throws(() => S.reduce(s, { type: 'setConditionName', name: 5 }), /name/);
 });
 
-test('setShown, setMaxSteps, setPlotMode, setStagger, setTab, setPlotView validate their payload', () => {
+test('setShown, setMaxSteps, setPlotMode, setStagger, setTab validate their payload', () => {
     const s = loaded(good('a.dat'), good('b.dat'));
     assert.equal(S.reduce(s, { type: 'setShown', id: 'd2', shown: false }).shown.d2, false);
     assert.throws(() => S.reduce(s, { type: 'setShown', id: 'd2', shown: 1 }), /shown/);
@@ -317,11 +316,14 @@ test('setShown, setMaxSteps, setPlotMode, setStagger, setTab, setPlotView valida
     S.TABS.forEach((tab) => assert.equal(S.reduce(s, { type: 'setTab', tab }).tab, tab));
     assert.equal(S.reduce(s, { type: 'setTab', tab: 'sequence' }).tab, 'sequence');
     assert.throws(() => S.reduce(s, { type: 'setTab', tab: 'export' }), /Unknown tab: export/);
-    assert.equal(s.plotView, 'curve');
-    S.PLOT_VIEWS.forEach((view) => assert.equal(S.reduce(s, { type: 'setPlotView', view }).plotView, view));
-    ['3d', undefined, null, 'Shape'].forEach((view) => {
-        assert.throws(() => S.reduce(s, { type: 'setPlotView', view }), /Unknown plot view/);
-    });
+});
+
+test('v5.8: the plot card has no curve | 3D switch any more -- no plotView in the state, no setPlotView action', () => {
+    const s = loaded(good('a.dat'));
+    assert.equal(Object.hasOwn(s, 'plotView'), false);
+    assert.equal(S.PLOT_VIEWS, undefined);
+    assert.ok(S.ACTION_TYPES.indexOf('setPlotView') < 0 && S.RUNNING_ACTIONS.indexOf('setPlotView') < 0);
+    assert.throws(() => S.reduce(s, { type: 'setPlotView', view: 'shape' }), /Unknown action type: setPlotView/);
 });
 
 test('fit life cycle: started, progress, settled', () => {
@@ -385,7 +387,6 @@ const ALLOWED_WHILE_RUNNING = [
     { type: 'dismissRemoved' },
     { type: 'fitProgress', iteration: 1, chi2r: 2 },
     { type: 'fitSettled', result: null },
-    { type: 'setPlotView', view: 'shape' },
     { type: 'setSeqY', name: 'radius' },
 ];
 const SEQ_PLAN = Object.freeze({ items: [{ id: 'd1', range: { qMin: 0.01, qMax: 0.05 }, note: '', skip: null }], warnings: [] });
@@ -491,7 +492,7 @@ test('every action returns a new deep-frozen state, leaves its input alone and s
         { type: 'rangeDefault' }, { type: 'rangeFull' }, { type: 'setWeighting', mode: 'sqrtI' },
         { type: 'setMaxSteps', value: 30 }, { type: 'setPlotMode', mode: 'guinier' },
         { type: 'setStagger', on: true, decades: 1 }, { type: 'setTab', tab: 'model' },
-        { type: 'setPlotView', view: 'shape' }, { type: 'setSeqSelected', id: 'd2', selected: false },
+        { type: 'setSeqSelected', id: 'd2', selected: false },
         { type: 'setSeqAll', selected: true }, { type: 'setSeqOption', key: 'sort', value: false },
         { type: 'setSeqY', name: 'radius' },
         { type: 'seqStarted', plan: SEQ_PLAN, form: SEQ_FORM, settings: SEQ_SETTINGS },

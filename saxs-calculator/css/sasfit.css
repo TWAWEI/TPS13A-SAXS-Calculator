@@ -6,7 +6,7 @@
    排在 sections.css 之後載入；本檔的選擇器都以 .sf- 開頭或限定在 .sf- 容器內，不影響其他分頁。
    ============================================= */
 
-/* ===== 工作區：左欄操作、右欄圖（寬螢幕時圖區捲動固定） =====
+/* ===== 工作區：左欄操作、右欄圖（曲線卡在上、3D 結構示意卡在下） =====
    斷點看的是「分頁內容的寬度」而不是視窗寬度（container query）：側欄在 1024px 以下會收起來，
    視窗 1024 的內容其實比視窗 1280（有側欄）還寬，用視窗寬度當斷點會在比較寬的那一邊先變單欄。
    ≥ 1040：5fr／7fr；860–1039：9fr／10fr（左欄不小於 26rem，四欄的參數表才放得下）；< 860：單欄，圖在最上面。 */
@@ -27,11 +27,31 @@
     min-width: 0;
 }
 
+/* 右欄（v5.8，決策 42）：沒有欄內捲動，頁面照常捲。右欄與左欄同高（stretch）；曲線卡放在 .sf-curve-track 裡，
+   這一段吃掉左欄比右欄多出來的高度，曲線卡在這一段內捲動固定——左欄很長（例：核殼圓柱＋hayter_msa 的參數表）時，
+   往下改參數仍看得到曲線。3D 卡接在這一段之後，不會滑到固定的曲線卡底下（兩者不重疊）；左欄不比右欄長時，
+   這一段就是曲線卡本身的高度，3D 卡緊接在曲線卡下面，整欄跟著頁面捲動。
+   視窗矮到放不下整張曲線卡時不固定（固定的卡比視窗高，下半部會一直看不到）。 */
 .sf-plots {
-    position: sticky;
-    top: var(--spacing-lg);
-    max-height: calc(100vh - 2 * var(--spacing-lg));
-    overflow-y: auto;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.sf-curve-track {
+    flex: 1 0 auto;
+}
+
+.sf-shape-card {
+    flex: none;
+}
+
+@media (min-height: 700px) {
+    .sf-curve-card {
+        position: sticky;
+        top: var(--spacing-lg);
+    }
 }
 
 @container sf (max-width: 1039px) {
@@ -40,21 +60,31 @@
     }
 }
 
-/* 單欄：圖排在操作區之上。調模型參數時（data-tab="model"）圖固定在視窗頂端，打字時看得到曲線跟著變；
-   此時只留主圖（殘差、操作說明收起來），免得小螢幕被圖佔滿。 */
+/* 單欄：兩張圖卡排在操作區之上（曲線、3D 示意，再來才是操作區）。.sf-plots 與 .sf-curve-track 不產生盒子，
+   兩張卡直接是工作區的格子項目——曲線卡才能在整個工作區的範圍內固定。調模型參數時（data-tab="model"）
+   曲線卡固定在視窗頂端，打字時看得到曲線跟著變；此時只留主圖（殘差、操作說明收起來），免得小螢幕被圖佔滿。
+   3D 卡不固定：往下捲時它與操作區一樣從固定的曲線卡底下經過。 */
 @container sf (max-width: 859px) {
     .sf-workspace {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .sf-plots {
-        order: -1;
-        position: static;
-        max-height: none;
-        overflow-y: visible;
+    .sf-plots,
+    .sf-curve-track {
+        display: contents;
     }
 
-    .sf-workspace[data-tab="model"] .sf-plots {
+    .sf-curve-card,
+    .sf-shape-card {
+        order: -1;
+        min-width: 0;
+    }
+
+    .sf-curve-card {
+        position: static;
+    }
+
+    .sf-workspace[data-tab="model"] .sf-curve-card {
         position: sticky;
         top: 0;
         z-index: 2;
@@ -65,17 +95,14 @@
         scroll-margin-top: calc(clamp(180px, 30vh, 260px) + 11rem);
     }
 
-    /* 視窗 1024px 以下左上角有固定的選單鈕：圖固定在頂端時標題列（檢視切換在最前面）讓開它 */
+    /* 視窗 1024px 以下左上角有固定的選單鈕：曲線卡固定在頂端時標題讓開它 */
     @media (max-width: 1024px) {
-        .sf-workspace[data-tab="model"] .sf-plot-header .sf-plot-heading {
+        .sf-workspace[data-tab="model"] .sf-curve-card .sf-plot-header {
             padding-left: 2.75rem;
         }
     }
 
-    .sf-workspace[data-tab="model"] .sf-plot-subtitle,
-    .sf-workspace[data-tab="model"] .sf-plot-caption,
-    .sf-workspace[data-tab="model"] .sf-residual-empty,
-    .sf-workspace[data-tab="model"] .sf-chart--residual {
+    .sf-workspace[data-tab="model"] .sf-curve-card :is(.sf-plot-subtitle, .sf-plot-caption, .sf-residual-empty, .sf-chart--residual) {
         display: none;
     }
 

@@ -124,3 +124,35 @@ JS_TABLE_TIME = """() => {
   const median = (xs) => [...xs].sort((a, b) => a - b)[3];
   return { rows: rows.length, trs: body.children.length, columns: body.children[0].children.length, chars, html: median(html), dom: median(dom) };
 }"""
+
+# ----------------------------------------------------------------- v5.8: the sketch under the curves (smoke_m4_shape.py)
+
+# Counts the paints of the 3D canvas (paint() starts with clearRect on the canvas's own context) and every
+# requestAnimationFrame request of the page from now on. Idempotent.
+JS_COUNTERS = """() => {
+  if (window.__counts) return true;
+  window.__counts = { paints: 0, frames: 0 };
+  const g = document.getElementById('sfShapeCanvas').getContext('2d'), clear = g.clearRect.bind(g);
+  g.clearRect = (...args) => { window.__counts.paints++; return clear(...args); };
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (fn) => { window.__counts.frames++; return raf(fn); };
+  return true;
+}"""
+JS_COUNTS = "() => ({ ...window.__counts })"
+
+# Where the two plot cards are, in viewport pixels, and whether anything in the plot column scrolls by itself.
+JS_COLUMN = """() => {
+  const rect = (id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom), Math.round(r.height)]; };
+  const plots = document.querySelector('.sf-plots'), nested = [];
+  for (const e of [plots, ...plots.querySelectorAll('*')]) {
+    const oy = getComputedStyle(e).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && e.scrollHeight > e.clientHeight + 1) nested.push(e.id || e.className || e.tagName);
+  }
+  const el = document.documentElement;
+  return { curve: rect('sfCurveCard'), shape: rect('sfShapeCard'), stage: rect('sfShapeStage'), scrollY: Math.round(window.scrollY),
+           innerHeight: window.innerHeight, nested, overflowX: el.scrollWidth - el.clientWidth,
+           curvePosition: getComputedStyle(document.getElementById('sfCurveCard')).position,
+           stickyTop: parseFloat(getComputedStyle(document.getElementById('sfCurveCard')).top) || 0,
+           toggle: ['sfViewTabs', 'sfViewCurve', 'sfViewShape'].filter((id) => document.getElementById(id) !== null),
+           shown: ['sfCurveCard', 'sfShapeCard', 'sfMainChart'].map((id) => document.getElementById(id).getClientRects().length > 0) };
+}"""

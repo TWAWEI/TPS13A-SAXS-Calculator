@@ -83,15 +83,16 @@ JS_ANNOTATIONS = """() => {
   return Object.values(a).filter((b) => b.tpsRole === 'outOfRange').map((b) => ({ xMin: b.xMin, xMax: b.xMax }));
 }"""
 
+# v5.8: the plot column is two cards (curves, then the 3D sketch); the curve card is the one that stays in view
 JS_LAYOUT = """() => {
-  const plots = document.querySelector('.sf-plots'), ctl = document.querySelector('.sf-controls');
+  const curve = document.getElementById('sfCurveCard'), shape = document.getElementById('sfShapeCard'), ctl = document.querySelector('.sf-controls');
   const ws = document.querySelector('.sf-workspace');
-  const p = plots.getBoundingClientRect(), c = ctl.getBoundingClientRect();
+  const p = curve.getBoundingClientRect(), s = shape.getBoundingClientRect(), c = ctl.getBoundingClientRect();
   const el = document.documentElement;
   const canvas = document.getElementById('sfMainChart').getBoundingClientRect();
-  return { position: getComputedStyle(plots).position,
+  return { position: getComputedStyle(curve).position,
            columns: getComputedStyle(ws).gridTemplateColumns.split(' ').length,
-           plotsLeft: p.left, plotsTop: p.top, plotsBottom: p.bottom, controlsRight: c.right, controlsBottom: c.bottom, controlsTop: c.top,
+           plotsLeft: p.left, plotsTop: p.top, plotsBottom: Math.max(p.bottom, s.bottom), controlsRight: c.right, controlsBottom: c.bottom, controlsTop: c.top,
            controlsWidth: c.width, plotsWidth: p.width, canvasWidth: canvas.width, canvasHeight: canvas.height,
            pageOverflow: el.scrollWidth - el.clientWidth, bodyOverflow: document.body.scrollWidth - el.clientWidth };
 }"""
@@ -549,7 +550,8 @@ def check_layout(ctx):
         return ok, (' | '.join([cols('1440x900', wide), cols('1280x800', sizes[1280]), cols('1024x768', sizes[1024]), cols('760x900', sizes[760])])
                     + f" | 760: plots.bottom={sizes[760]['plotsBottom']:.0f} <= controls.top={sizes[760]['controlsTop']:.0f} (plot first); "
                     f"on the model tab the plot is {narrow_model['position']}")
-    ctx.check('13 layout: two columns (plot the wider one) at 1440, 1280 and 1024; one column with the plot first at 760, sticky on the model tab', run)
+    ctx.check('13 layout: two columns (plot the wider one, curve card sticky) at 1440, 1280 and 1024; one column with both plot cards first at 760, '
+              'the curve card sticky on the model tab', run)
 
 
 def check_measurements(ctx):
@@ -611,8 +613,8 @@ def check_narrow(ctx):
             ok320 = ok320 and p['pageOverflow'] <= 0 and p['bodyOverflow'] <= 0
             notes.append(f"{key} {p['pageOverflow']} px")
         page.focus('#sfUpper_radius')                         # a field below the sticky plot must not be scrolled under it
-        seen = page.evaluate("""() => { const f = document.activeElement.getBoundingClientRect(), p = document.querySelector('.sf-plots').getBoundingClientRect();
-            return { top: Math.round(f.top), plotBottom: Math.round(p.bottom), sticky: getComputedStyle(document.querySelector('.sf-plots')).position }; }""")
+        seen = page.evaluate("""() => { const f = document.activeElement.getBoundingClientRect(), p = document.getElementById('sfCurveCard').getBoundingClientRect();
+            return { top: Math.round(f.top), plotBottom: Math.round(p.bottom), sticky: getComputedStyle(document.getElementById('sfCurveCard')).position }; }""")
         ok320 = ok320 and seen['sticky'] == 'sticky' and seen['top'] >= seen['plotBottom'] - 1
         notes.append(f"focused field top {seen['top']} px, below the {seen['sticky']} plot (bottom {seen['plotBottom']} px)")
         page.locator('#sfPdToggle_radius').dispatch_event('click')

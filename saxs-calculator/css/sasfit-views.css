@@ -1,83 +1,42 @@
 /* =============================================
-   TPS13A SAXS Calculator — SAS 模型擬合分頁：圖卡的「曲線｜結構」檢視切換與 3D 結構示意、序列分段
-   （計畫 M4；css/sasfit.css 已接近行數上限，M4 的樣式寫在這裡）。
+   TPS13A SAXS Calculator — SAS 模型擬合分頁：圖卡的標題列、曲線下面的 3D 結構示意卡、序列分段
+   （計畫 M4；v5.8 起 3D 是曲線卡下面的另一張卡，不再切換；css/sasfit.css 已接近行數上限，M4 的樣式寫在這裡）。
    只用 css/tokens.css 的 token（不寫色碼）；3D 畫布上的顏色由 js/chart-theme.js 決定。
    排在 sasfit.css、sasfit-params.css 之後載入；選擇器都以 .sf- 開頭或限定在 .sf- 容器內。
    ============================================= */
 
-/* ===== 圖卡標題列：檢視切換在前、標題在後，永遠在同一行（標題的字換了，切換鈕也不會移動）；
-   工具（曲線的或結構的）放不下時整組換到下一行 ===== */
-.sf-plot-heading {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 0;
-}
-
-.sf-plot-heading .card-title {
-    white-space: nowrap;
-}
-
-/* 中文字的預設行高比旁邊的英文模式鈕高 4 px，會把整個標題列撐高：行高寫明，兩組鈕同高 */
-.sf-plot-heading .tab {
-    padding: 0.3125rem 0.625rem;
-    line-height: 1.2;
+/* ===== 兩張圖卡的標題列：標題在前、工具在後 ===== */
+.sf-plot-header .card-title {
     white-space: nowrap;
 }
 
 /* [hidden] 要蓋過元件自己的 display */
-.sf-plot-tools[hidden],
 .sf-shape-stage[hidden] {
     display: none;
 }
 
-/* 兩欄版面（v5.7，四個模式鈕）：標題列一律不折行——多一行會讓有擬合結果的曲線檢視在 1024×768 超出欄高。
-   字型比預期寬時先縮短標題（刪節號），其次才是工具列內「重設縮放」換行。 */
+/* 兩欄版面：標題列一律不折行。字型比預期寬時先縮短標題（刪節號）。 */
 @container sf (min-width: 860px) {
     .sf-plot-header {
         flex-wrap: nowrap;
     }
 
-    .sf-plot-heading {
-        flex: 1 1 auto;
-    }
-
-    .sf-plot-heading .tabs {
-        flex: none;
-    }
-
-    .sf-plot-heading .card-title {
+    .sf-plot-header .card-title {
+        flex: 0 1 auto;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-}
 
-/* 兩欄但圖卡較窄（視窗 1280、1024：圖卡內寬 420–448 px）放不下標題＋四個模式鈕：標題只留給輔助科技
-   （它說的與 y 軸標題、按下的模式鈕相同），「重設縮放」的字縮成「重設」（按鈕的 aria-label 仍是全名）。 */
-@container sf (min-width: 860px) and (max-width: 1039px) {
-    .sf-plot-heading .card-title {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        margin: -1px;
-        clip-path: inset(50%);
-    }
-
-    .sf-reset-long {
-        display: none;
-    }
-
-    .sf-plot-header .sf-plot-tools .tab {
-        padding-left: 0.25rem;
-        padding-right: 0.25rem;
+    .sf-plot-header .sf-plot-tools {
+        flex: none;
+        flex-wrap: nowrap;
     }
 }
 
 /* 圖卡較窄（視窗 1280、1024，以及單欄）：只縮左右留白與間距，字級不變。 */
 @container sf (max-width: 1039px) {
     .sf-plot-header,
-    .sf-plot-heading,
     .sf-plot-tools {
         gap: 0.375rem;
     }
@@ -93,14 +52,20 @@
     }
 }
 
-/* ===== 結構檢視：狀態行、3D 畫布（主圖的位置與高度）、操作說明、尺寸與說明（殘差圖的位置） ===== */
-/* 與曲線檢視的狀態列同高：切換檢視時畫布與主圖在同一個位置 */
+/* ===== 3D 結構示意卡：狀態行、畫布（與主圖同高）、操作說明、尺寸與說明 ===== */
+/* 狀態行與曲線卡的狀態列同高：文字出現或消失時畫布不會上下跳 */
 .sf-shape-status {
     display: flex;
     align-items: center;
     min-height: 1.875rem;
     margin: 0 0 var(--spacing-xs);
     text-align: left;
+}
+
+/* 沒有固定形狀的模型：卡片只剩標題列與這一行字，不留空白的高度 */
+.sf-shape-card:has(.sf-shape-stage[hidden]) .sf-shape-status {
+    min-height: 0;
+    margin: 0;
 }
 
 .sf-shape-stage {
@@ -116,8 +81,7 @@
     cursor: grabbing;
 }
 
-.sf-shape-stage:focus-visible,
-.sf-shape-text:focus-visible {
+.sf-shape-stage:focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
@@ -135,31 +99,15 @@
     height: 100%;
 }
 
-/* 固定高度＝曲線檢視的「殘差」小標＋殘差圖：圖卡高度不因文字多寡或檢視切換而變；放不下時在自己裡面捲動 */
+/* 操作說明有好幾句，窄的卡片裡會折行：靠左 */
+.sf-shape-help {
+    margin: var(--spacing-xs) 0 0;
+    text-align: left;
+}
+
+/* 尺寸與說明：高度跟著內容（v5.8 起不是固定高度的捲動框，頁面本來就會捲） */
 .sf-shape-text {
-    height: calc(140px + 1.3125rem);
     margin-top: var(--spacing-md);
-    overflow-y: auto;
-    border-radius: var(--radius-sm);
-}
-
-/* 操作說明的行數會變（窄圖卡折行、觸控與「減少動態效果」各多一句）：整個結構檢視的高度固定成
-   「有擬合結果的曲線檢視」的高度，說明多出來的行數由下面的文字框吸收（它本來就能自己捲動），
-   圖欄在 1024×768 才不會因為多一行說明而出現欄內捲動。沒有形狀可畫時（只剩狀態行）不套用。 */
-.sf-plots #sfShapeView:not([hidden]):has(.sf-shape-stage:not([hidden])) {
-    display: flex;
-    flex-direction: column;
-    height: calc(1.875rem + var(--spacing-xs) + clamp(300px, 46vh, 460px) + 1.5rem + var(--spacing-xs) + var(--spacing-md) + 140px + 1.3125rem);
-}
-
-.sf-plots #sfShapeView:has(.sf-shape-stage:not([hidden])) > * {
-    flex: 0 0 auto;
-}
-
-.sf-plots #sfShapeView:has(.sf-shape-stage:not([hidden])) > .sf-shape-text {
-    flex: 1 1 0;
-    height: auto;
-    min-height: 3rem;
 }
 
 .sf-shape-dims {
@@ -198,34 +146,10 @@
     display: none;
 }
 
-/* 操作說明有好幾句，窄的圖卡裡會折行：靠左（.sf-plot-caption 的單行說明是靠右） */
-.sf-shape-help {
-    text-align: left;
-}
-
-/* 單欄版面（寫在一般規則之後才蓋得過）：畫布與主圖同高；圖固定在頂端時（模型分段）只留畫布 */
+/* 單欄版面（寫在一般規則之後才蓋得過）：3D 卡不固定在頂端，畫布可以比固定的主圖高一點 */
 @container sf (max-width: 859px) {
     .sf-shape-stage {
-        height: clamp(180px, 30vh, 260px);
-    }
-
-    /* 單欄時圖卡在一般的文件流裡（頁面本來就會捲動）：文字不限高度，只保留與殘差圖相同的最小高度 */
-    .sf-plots #sfShapeView:not([hidden]):has(.sf-shape-stage:not([hidden])) {
-        display: block;
-        height: auto;
-    }
-
-    .sf-shape-text,
-    .sf-plots #sfShapeView:has(.sf-shape-stage:not([hidden])) > .sf-shape-text {
-        height: auto;
-        min-height: calc(110px + 1.3125rem);
-        overflow-y: visible;
-    }
-
-    .sf-workspace[data-tab="model"] .sf-shape-status,
-    .sf-workspace[data-tab="model"] .sf-shape-help,
-    .sf-workspace[data-tab="model"] .sf-shape-text {
-        display: none;
+        height: clamp(220px, 36vh, 320px);
     }
 }
 

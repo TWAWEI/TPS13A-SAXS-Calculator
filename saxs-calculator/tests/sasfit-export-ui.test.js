@@ -254,10 +254,8 @@ test('[sasfit-export-ui] 趨勢圖 PNG：getChart(sfSeqTrend)，檔名用條件�
     assert.deepEqual(await bytesOf(p.downloads[0].blob), [...PNG]);
 });
 
-test('[sasfit-export-ui] 3D PNG：曲線檢視或模型無形狀時停用；結構檢視時用 3D 分段的 exportBlob', async () => {
+test('[sasfit-export-ui] 3D PNG：模型有形狀就可按（v5.8 沒有檢視切換），用 3D 分段的 exportBlob；無形狀時停用', async () => {
     const p = page();
-    assert.equal(p.$('sfShapePng').disabled, true);
-    p.ctx.dispatch({ type: 'setPlotView', view: 'shape' });
     assert.equal(p.$('sfShapePng').disabled, false);
     const blob = new Blob([PNG], { type: 'image/png' });
     p.shapeBlobs.next = blob;

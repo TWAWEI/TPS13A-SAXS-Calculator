@@ -86,7 +86,7 @@
         noTrend: '尚無趨勢圖',
         noSequence: '尚無序列擬合的結果',
         noVersion: '讀不到頁面版本（腳本網址沒有 ?v=），無法寫入軟體版本；請重新整理頁面',
-        notShape: '切到「結構」檢視且模型有固定形狀時才能匯出',
+        notShape: '此模型沒有固定形狀，沒有 3D 示意圖可匯出',
         sendRunning: '擬合進行中，結束後才能送出',
         sent: (name) => '已送進 IUCr 表格（' + name + '）；再次送出會取代它',
         sendFailed: (message) => '送出失敗：' + message,
@@ -211,7 +211,7 @@
     }
 
     function shapeAvailable(ctx) {
-        return ctx.getState().plotView === 'shape' && globalThis.SasFitShapeGeom.hasShape(ctx.getForm().model);
+        return globalThis.SasFitShapeGeom.hasShape(ctx.getForm().model);
     }
 
     // ------------------------------------------------------------- the builders of each file

@@ -11,7 +11,6 @@
  *             fit: { phase: 'idle' | 'running', datasetId, iteration, chi2r, outcome },
  *             tab, nextId, notice,
  *             removed: { file, index, shown, result, wasActive, seqSelected, seqRow, seqOrderAt } | null,
- *             plotView: 'curve' | 'shape',
  *             seq: { phase: 'idle' | 'running', selected: { id: boolean }, options: { chain, sort },
  *                    order: [id] | null, rows: { id: row }, form, settings, warnings: [string], y, outcome } }
  *   row = { id, state: 'pending' | 'running' | 'done' | 'skipped' | 'error', result: FitResult | null,
@@ -47,7 +46,6 @@
  *           During a sequence the phase stays 'running' from seqStarted to
  *           seqSettled: seqStep stores one row and moves datasetId to the next
  *           dataset in one step, so nothing ever sees 'idle' in between.
- * plotView  what the plot card shows: the curves or the 3D sketch of the model.
  * seq       sequence fitting (design spec 7).
  *   selected  the ticks of the sequence table. A file with data that has no
  *             entry counts as ticked (seqSelectedFiles), so loading files
@@ -87,7 +85,6 @@
     const DEFAULT_SHOWN = 8;
     const ID_PREFIX = 'd';
     const TABS = Object.freeze(['data', 'model', 'fit', 'sequence']);
-    const PLOT_VIEWS = Object.freeze(['curve', 'shape']);
     const PLOT_MODES = Object.freeze(['loglog', 'guinier', 'kratky', 'porod']);
     const DEFAULT_CONDITION_NAME = '條件';                 // design spec 5.2
     const DEFAULT_WEIGHTING = 'sigma';                     // design spec 4.8
@@ -100,7 +97,7 @@
     const IDLE_FIT = Object.freeze({ phase: 'idle', datasetId: null, iteration: 0, chi2r: null, outcome: null });
     const SINGLE_FIT_END = 'fitSettled';
     const RUNNING_ACTIONS = Object.freeze(['setShown', 'setPlotMode', 'setStagger', 'setTab', 'setConditionName',
-        'setCondition', 'clearNotice', 'dismissRemoved', 'fitProgress', SINGLE_FIT_END, 'setPlotView', 'setSeqY']);
+        'setCondition', 'clearNotice', 'dismissRemoved', 'fitProgress', SINGLE_FIT_END, 'setSeqY']);
     const SEQ_RUNNING_ACTIONS = Object.freeze(RUNNING_ACTIONS.filter((type) => type !== SINGLE_FIT_END)
         .concat(['seqStep', 'seqSettled']));
     const SEQ_OPTIONS = Object.freeze(['chain', 'sort']);
@@ -127,7 +124,7 @@
             files: Object.freeze([]), activeId: null, shown: Object.freeze({}), conditionName: DEFAULT_CONDITION_NAME,
             fitResults: Object.freeze({}), range: null, weighting: DEFAULT_WEIGHTING, weightingUserSet: false,
             maxSteps: globalThis.SasFitFitter.DEFAULTS.maxSteps, plotMode: PLOT_MODES[0], stagger: DEFAULT_STAGGER,
-            fit: IDLE_FIT, tab: TABS[0], nextId: 1, notice: null, removed: null, plotView: PLOT_VIEWS[0], seq: IDLE_SEQ,
+            fit: IDLE_FIT, tab: TABS[0], nextId: 1, notice: null, removed: null, seq: IDLE_SEQ,
         });
     }
 
@@ -421,11 +418,6 @@
         return withFields(state, { tab });
     }
 
-    function setPlotView(state, { view }) {
-        if (PLOT_VIEWS.indexOf(view) < 0) throw new Error('Unknown plot view: ' + String(view));
-        return withFields(state, { plotView: view });
-    }
-
     const clearNotice = (state) => withFields(state, { notice: null });
 
     // ------------------------------------------------------------- fit life cycle
@@ -615,7 +607,7 @@
         addFiles, removeFile, undoRemove, dismissRemoved, setActive, setShown, setCondition, setConditionName,
         setRange, rangeDefault, rangeFull, setWeighting, setMaxSteps, setPlotMode, setStagger, setTab, clearNotice,
         fitStarted, fitProgress, fitSettled,
-        setPlotView, setSeqSelected, setSeqAll, setSeqOption, setSeqY, seqStarted, seqStep, seqSettled,
+        setSeqSelected, setSeqAll, setSeqOption, setSeqY, seqStarted, seqStep, seqSettled,
     });
     const ACTION_TYPES = Object.freeze(Object.keys(ACTIONS));
 
@@ -632,7 +624,7 @@
     }
 
     globalThis.SasFitState = Object.freeze({
-        MAX_FILES, DEFAULT_SHOWN, TABS, PLOT_MODES, PLOT_VIEWS, ACTION_TYPES, RUNNING_ACTIONS, SEQ_RUNNING_ACTIONS,
+        MAX_FILES, DEFAULT_SHOWN, TABS, PLOT_MODES, ACTION_TYPES, RUNNING_ACTIONS, SEQ_RUNNING_ACTIONS,
         initial, reduce, capacity, active, shownFiles, seqSelectedFiles, datasetStatus, fullRange, nextTab,
     });
 })();
