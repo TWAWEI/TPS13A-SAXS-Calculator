@@ -14,7 +14,8 @@
  *                   minimum distance of RANDOM_PACKING, from a fixed seed. The SAME points for every packing
  *                   below it, so a change of the volume fraction only resizes the box.
  *         above     'lattice': the densest of sc / bcc / fcc boxes with at least count sites, count of them
- *                   picked by the seed, each point moved from its site by a fixed random vector scaled to the
+ *                   picked by the seed and turned by a fixed random rotation (so that the default view does not
+ *                   look down a lattice row), each point moved from its site by a fixed random vector scaled to the
  *                   room left between neighbours (continuous in the packing; none at the lattice's densest
  *                   packing). packing beyond that is capped (capped: true, packing = the lattice's).
  *   build(model, params, sq) -> ensemble scene | null
@@ -160,7 +161,9 @@
             const j = Math.floor(next() * (i + 1));
             [order[i], order[j]] = [order[j], order[i]];
         }
-        const sites = centred(order.slice(0, count).flatMap((i) => box.sites[i]));
+        const turn = turnOf(next);                                         // the lattice is not lined up with the screen
+        const sites = centred(order.slice(0, count).flatMap((i) => [0, 1, 2].map((k) => turn[3 * k] * box.sites[i][0]
+            + turn[3 * k + 1] * box.sites[i][1] + turn[3 * k + 2] * box.sites[i][2])));
         const jitter = Float64Array.from(Array.from({ length: count }, () => inBall(next)).flat());
         return Object.freeze({ sites, jitter, neighbour: box.neighbour, cap: box.cap });
     }
