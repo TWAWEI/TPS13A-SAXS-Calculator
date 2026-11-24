@@ -3,6 +3,9 @@
 Imported by smoke_m4.py (which sets sys.dont_write_bytecode first); the page-side scripts are in smoke_m4_js.py.
 Every check returns through check(ctx, name, fn): fn() -> (ok, detail), a missing value is a FAIL, not a crash.
 """
+import statistics
+import time
+
 import smoke_m4_js as js
 import smoke_ui as su
 
@@ -298,3 +301,103 @@ def check_offscreen(ctx):
         return ok, '; '.join(notes)
     check(ctx, '15 off screen: idle = 0 animation frames, a parameter edit does not paint the hidden sketch, scrolling it into view paints it once; '
                'auto-rotate pauses off screen and goes on when it comes back', run)
+
+
+# ----------------------------------------------------------------- 16: the ensemble with a structure factor (decision 43)
+
+def structure(page, name, phi=None):
+    page.select_option('#sfStructure', name)
+    page.wait_for_timeout(250)
+    if phi is not None:
+        type_value(page, 'volfraction', phi)
+        page.wait_for_timeout(250)
+
+
+def check_ensemble(ctx, measured):
+    def run():
+        page, notes = ctx.page, []
+        su.tab(page, 'model')
+        plain_sphere(page)
+        to_stage(page)
+        single, one = shape(page, 400), page.evaluate(js.JS_BLOBS)
+        structure(page, 'hardsphere', '0.05')
+        to_stage(page)
+        many, blobs, text = shape(page, 500), page.evaluate(js.JS_BLOBS), page.evaluate(js.JS_EXTRAS)
+        ok = (one['blobs'] == 1 and many['hash'] != single['hash'] and blobs['blobs'] >= 4 and many['painted'] > 500
+              and 'S(Q)：hardsphere 硬球，圖中 12 顆相同的顆粒，φ = 0.050' in text and '有效半徑 R_eff = 5.0 nm，模式：半徑（radius）' in text)
+        notes.append(f"sphere: {one['blobs']} blob; sphere@hardsphere φ 0.05: {blobs['blobs']} separate blobs (largest {blobs['sizes'][:6]}), "
+                     f"canvas changed={many['hash'] != single['hash']}")
+        texts = {}
+        for phi in ('0.0001', '0.2'):
+            type_value(page, 'volfraction', phi)
+            page.wait_for_timeout(300)
+            texts[phi] = page.evaluate(js.JS_EXTRAS)
+        sparse = '體積分率很低，顆粒間距未按比例（實際更疏）'
+        ok = ok and sparse in texts['0.0001'] and sparse not in texts['0.2'] and '未按比例' not in texts['0.2']
+        notes.append(f"not-to-scale sentence at φ 1e-4: {sparse in texts['0.0001']}, at φ 0.2: {sparse in texts['0.2']}")
+        su.pick_model(page, 'core_shell_sphere')
+        structure(page, 'hayter_msa')
+        to_stage(page)
+        msa, text = shape(page, 500), page.evaluate(js.JS_EXTRAS)
+        both, hues = two_hues(msa['hues'], minimum=40)
+        ok = ok and both and 'Debye 屏蔽長度 κ⁻¹ = 20.6 nm' in text and '電荷 19.0 e' in text
+        notes.append(f"core_shell_sphere@hayter_msa: hue bins {hues} (core seen through each cut), text has κ⁻¹ 20.6 nm={'κ⁻¹ = 20.6 nm' in text}")
+        ctx.shot('m4-ensemble-hayter')
+        for theme in ('light', 'dark'):
+            ctx.theme(theme)
+            to_stage(page, 300)
+            measured.setdefault('axe', []).append((theme, su.run_axe(ctx, 'section') if not ctx.axe_error else None))
+        ctx.theme('light')
+        violations = [v for _, found in measured['axe'] for v in (found or [])]
+        ok = ok and not ctx.axe_error and not violations
+        notes.append(f"axe with the ensemble on screen, light and dark: {sum(len(v['nodes']) for v in violations)} violation node(s)")
+        structure(page, '')
+        to_stage(page)
+        back = page.evaluate(js.JS_BLOBS)
+        ok = ok and back['blobs'] == 1
+        notes.append(f'S(Q) off again: {back["blobs"]} blob')
+        plain_sphere(page)
+        to_top(page, 150)
+        return ok, '; '.join(notes)
+    check(ctx, '16 ensemble: sphere@hardsphere draws several separate particles (sphere alone one), the S(Q) lines name the factor, N, φ and R_eff '
+               'with its mode; the not-to-scale sentence at φ 1e-4 and not at 0.2; hayter_msa lists κ⁻¹; axe clean in both themes', run)
+
+
+JS_EDIT = """(value) => { const e = document.getElementById('sfValue_radius'), t0 = performance.now();
+  e.value = value; e.dispatchEvent(new Event('input', { bubbles: true })); return performance.now() - t0; }"""
+
+
+def edit_times(page, values):
+    """Synchronous input handling (the page's refresh, 3D scene and texts included) and the time until the curve follows."""
+    sync, curve = [], []
+    for value in values:
+        before = su.curve_sig(page)
+        t0 = time.time()
+        sync.append(page.evaluate(JS_EDIT, value))
+        su.wait_curve_change(page, before, 20_000)
+        curve.append((time.time() - t0) * 1000)
+        page.wait_for_timeout(150)
+    return statistics.median(sync), statistics.median(curve)
+
+
+def measure_ensemble(ctx, measured):
+    """Item 14: frame time of the heaviest ensemble and what it does to editing (informational, no threshold)."""
+    page = ctx.page
+    try:
+        su.load_files(page, su.SYNTH[:1]) if not page.evaluate("() => SasFitSection.getState().files.length") else None
+        su.pick_model(page, 'core_shell_cylinder')
+        structure(page, 'hardsphere')
+        to_stage(page, 600)
+        measured['ensemble_frame'] = page.evaluate(js.JS_FRAME_TIME)
+        measured['edit_on'] = edit_times(page, ['21', '22', '23', '24', '25'])
+        to_top(page, 400)
+        measured['edit_off'] = edit_times(page, ['26', '27', '28', '29', '30'])
+        structure(page, '')
+        to_stage(page, 400)
+        measured['edit_single'] = edit_times(page, ['31', '32', '33', '34', '35'])
+        type_value(page, 'radius', '20')
+    except Exception as err:                                  # noqa: BLE001 -- informational; printed as missing
+        measured['ensemble_error'] = f'{type(err).__name__}: {str(err).splitlines()[0][:200]}'
+    finally:
+        plain_sphere(page)
+        to_top(page, 150)

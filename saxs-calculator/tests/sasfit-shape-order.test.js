@@ -209,6 +209,60 @@ test('[shape-order] 對照：全部正面依質心深度排序——在這些細
     assert.ok(total.objectAgreed / total.objectCounted >= 0.99);
 });
 
+// ---------------------------------------------------------------- 顆粒群（v5.8，決策 43）
+// 同一個解析形狀放在每個 placement，逐像素取最近的表面（tests/sasfit-shape-oracle.js 的 ensembleHit），
+// 與繪製清單最上層的多邊形比對角色、PART 與「哪一顆」。顆粒用較粗的網格（弦高差較大），邊緣帶取顆粒最小尺寸的 4%。
+const E = globalThis.SasFitShapeEnsemble;
+const ENSEMBLE_VIEWS = O.VIEWS.filter((_, i) => i % 5 === 0);
+const ENSEMBLE_EDGE = 0.04;
+const ENSEMBLE_GRID = 71;
+const ENSEMBLE_CASES = [
+    ['core_shell_sphere', { radius: 60, thickness: 10 }, 70, 0.2],
+    ['vesicle', { radius: 100, thickness: 30 }, 130, 0.2],
+    ['sphere', { radius: 50 }, 50, 0.45],
+    ['core_shell_cylinder', { radius: 30, thickness: 10, length: 200 }, 80, 0.1],
+    ['cylinder', { radius: 40, length: 300 }, 90, 0.05],
+    ['ellipsoid', { radius_polar: 30, radius_equatorial: 120 }, 70, 0.1],
+];
+
+function ensembleSurvey(model, params, reff, phi, listOf) {
+    const scene = E.build(model, params, { structure: 'hardsphere', radiusEffective: reff, volfraction: phi });
+    const shape = O.solid(model, params);
+    const smallest = Math.min(...[0, 1, 2].map((k) => scene.particle.bounds.max[k] - scene.particle.bounds.min[k]));
+    const total = { counted: 0, agreed: 0, objectCounted: 0, objectAgreed: 0, central: 0, centralAgreed: 0 };
+    let worst = { rate: 1, view: null };
+    ENSEMBLE_VIEWS.forEach((view) => {
+        const stats = O.compareEnsemble(shape, scene, view, (size) => listOf(scene, view, size), { edge: ENSEMBLE_EDGE * smallest, grid: ENSEMBLE_GRID });
+        Object.keys(total).forEach((key) => { total[key] += stats[key]; });
+        const rate = stats.objectCounted === 0 ? 1 : stats.objectAgreed / stats.objectCounted;
+        if (rate < worst.rate) worst = { rate, view };
+    });
+    return { scene, total, worst, rate: total.objectAgreed / total.objectCounted };
+}
+
+for (const [model, params, reff, phi] of ENSEMBLE_CASES) {
+    test(`[shape-order] 顆粒群 ${label(model, params)} φ ${phi}：${ENSEMBLE_VIEWS.length} 個視角 × 71×71 點，最上層多邊形＝逐像素最近的表面（含哪一顆）`, () => {
+        const { scene, total, worst, rate } = ensembleSurvey(model, params, reff, phi, ruleList);
+        assert.ok(scene.placements.length >= 8);
+        assert.ok(total.objectCounted > 20000, `有效的畫面點只有 ${total.objectCounted} 個`);
+        assert.ok(rate >= 0.99, `一致率 ${(100 * rate).toFixed(3)}%（最差的視角 ${JSON.stringify(worst.view)}：${(100 * worst.rate).toFixed(2)}%）`);
+        assert.ok(worst.rate >= 0.99, `最差的視角 ${JSON.stringify(worst.view)} 只有 ${(100 * worst.rate).toFixed(2)}%`);
+        assert.equal(total.centralAgreed, total.central, '核與切面的中央區域必須 100% 一致');
+        assert.equal(total.agreed, total.counted, '背景點與顆粒之間也不得出錯');
+    });
+}
+
+test('[shape-order] 顆粒群的鑑別力：顆粒由近到遠畫（反序）過不了同一個判定', () => {
+    const [model, params, reff, phi] = ENSEMBLE_CASES[0];
+    const reversed = ensembleSurvey(model, params, reff, phi, (scene, view, size) => {
+        const list = V.drawList(scene, view, size);
+        const order = list.items.map((item) => item.particle).filter((p, i, all) => i === 0 || p !== all[i - 1]).reverse();
+        const items = order.flatMap((p) => list.items.filter((item) => item.particle === p));
+        return { items, pixelsPerAngstrom: list.pixelsPerAngstrom };
+    });
+    assert.ok(reversed.total.agreed < reversed.total.counted && reversed.worst.rate < 0.99, `反序最差的視角竟有 ${(100 * reversed.worst.rate).toFixed(2)}%`);
+});
+
 // ---------------------------------------------------------------- 決定性與不可變
 test('[shape-order] 同一個場景與視角呼叫兩次，清單逐元素相同；清單與項目都是凍結的；場景不被修改', () => {
     const scene = G.build('core_shell_sphere', { radius: 60, thickness: 10 });

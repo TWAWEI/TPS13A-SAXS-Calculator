@@ -15,8 +15,10 @@
  *                   and the card shows through
  *   SasFitShape3d.create(ctx) -> { render(), exportBlob() -> Promise<Blob | null>, view() }
  *       A segment module of section-sasfit.js (key 'shape'; it is not a tab). create binds the listeners
- *       once. render() draws the sketch of the form's model: the mesh is rebuilt only when the model or one
- *       of its dimensions changed (scale, SLDs and dispersity do not rebuild it), the texts under the
+ *       once. render() draws the sketch of the form's model -- with a structure factor an ensemble of identical
+ *       particles (SasFitShapeEnsemble; decision 43): the scene is rebuilt only when the model, one of its
+ *       dimensions or (with S(Q)) R_eff or the volume fraction changed (scale, SLDs and dispersity do not
+ *       rebuild it), the texts under the
  *       canvas follow every render -- also while the stage is off screen, so that a screen reader never
  *       reads stale sizes -- and the canvas is painted in one requestAnimationFrame, only while it is ON
  *       SCREEN (see below) and only when the scene, the view, the size or the theme is not what was
@@ -360,23 +362,28 @@
     }
 
     /** The scene of the form: the one kept when model and dimensions are the same. null: no solid for these sizes. */
-    function sceneOf(ui, form, params) {
+    /**
+     * The scene of the form: one particle, or with a structure factor the ensemble of SasFitShapeEnsemble (decision
+     * 43). It is kept while the key -- model, sizes, R_eff and volume fraction -- is the same. null: no solid.
+     */
+    function sceneOf(ui, form, params, sq) {
         const { store } = ui;
-        const key = form.model + JSON.stringify(params);
+        const ensemble = globalThis.SasFitShapeEnsemble;
+        const key = ensemble.sceneKey(form.model, params, sq);
         if (key !== store.get().sceneKey) {
-            const scene = globalThis.SasFitShapeGeom.build(form.model, params);
+            const scene = ensemble.sceneFor(form.model, params, sq);
             if (scene === null) return null;
             store.set({ scene, sceneKey: key });
         }
         return store.get().scene;
     }
 
-    function renderTexts(ui, form, scene) {
+    function renderTexts(ui, form, scene, sq) {
         const { ctx } = ui;
         const shapeView = globalThis.SasFitShapeView;
         const size = sizeOf(ui);
         const ppa = size === null ? undefined : shapeView.pixelsPerAngstrom(scene, shapeView.DEFAULT_VIEW, size);
-        const text = shapeView.describe(form, { pixelsPerAngstrom: ppa, scene });
+        const text = shapeView.describe(form, { pixelsPerAngstrom: ppa, scene, sq });
         ctx.setHtml(ctx.el('sfShapeDims'), shapeView.dimsHtml(text.dims));
         setText(ctx.el('sfShapeExtras'), text.extras.join('\n'));
         ctx.el('sfShapeCanvas').setAttribute('aria-label', text.alt);
@@ -391,13 +398,14 @@
         }
         showStage(ui, true);
         const params = globalThis.SasFitShapeView.shapeParams(form);
-        const scene = params === null ? null : sceneOf(ui, form, params);
+        const sq = params === null ? null : globalThis.SasFitShapeEnsemble.sqInfo(form);
+        const scene = params === null ? null : sceneOf(ui, form, params, sq);
         if (scene === null) {                                      // the last picture stays; the status says why
             setNote(ui, params === null ? TEXT.formError : TEXT.noScene, true);
             return;
         }
         setNote(ui, form.model === CHAIN_MODEL ? TEXT.chain : '', false);
-        renderTexts(ui, form, scene);
+        renderTexts(ui, form, scene, sq);
         drawSoon(ui);
     }
 

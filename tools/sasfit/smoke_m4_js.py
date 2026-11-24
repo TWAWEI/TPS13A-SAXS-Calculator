@@ -98,17 +98,26 @@ JS_IUCR_ROWS = """() => ({
   params: AppState.sasfitData ? AppState.sasfitData.params.map((p) => [p.name, !!p.fitted]) : null,
 })"""
 
+# One frame = draw list + paint, 60 frames 3 degrees apart after 5 warm-up frames; the scene the page draws (an ensemble with S(Q)).
+# The canvas is painted back at the default view afterwards (the page itself does not know it was painted here).
 JS_FRAME_TIME = """() => {
-  const f = SasFitSection.getForm(), scene = SasFitShapeGeom.build(f.model, SasFitShapeView.shapeParams(f));
+  const f = SasFitSection.getForm(), sq = SasFitShapeEnsemble.sqInfo(f), scene = SasFitShapeEnsemble.sceneFor(f.model, SasFitShapeView.shapeParams(f), sq);
   const c = document.getElementById('sfShapeCanvas'), g = c.getContext('2d'), size = { width: c.clientWidth, height: c.clientHeight }, times = [];
+  const frame = (yaw) => { const list = SasFitShapeView.drawList(scene, { yaw, pitch: 20, zoom: 1 }, size);
+    SasFitShape3d.paint(g, list, { size, bar: SasFitShapeView.scaleBar(list.pixelsPerAngstrom, size.width) }); return list.items.length; };
+  for (let i = 0; i < 5; i++) frame(45 + i);
+  let items = 0;
   for (let i = 0; i < 60; i++) {
-    const t0 = performance.now(), list = SasFitShapeView.drawList(scene, { yaw: 45 + 3 * i, pitch: 20, zoom: 1 }, size);
-    SasFitShape3d.paint(g, list, { size, bar: SasFitShapeView.scaleBar(list.pixelsPerAngstrom, size.width) });
+    const t0 = performance.now();
+    items = frame(45 + 3 * i);
     g.getImageData(0, 0, 1, 1);
     times.push(performance.now() - t0);
   }
+  frame(45);
   times.sort((a, b) => a - b);
-  return { model: f.model, median: times[30], max: times[59], faces: scene.objects.reduce((n, m) => n + m.faces.length, 0), canvas: [c.width, c.height] };
+  const faces = scene.kind === 'ensemble' ? scene.info.faces : scene.objects.reduce((n, m) => n + m.faces.length, 0);
+  return { model: f.model + (f.structure ? '@' + f.structure : ''), median: times[30], p90: times[54], max: times[59], faces, items,
+           count: scene.kind === 'ensemble' ? scene.info.count : 1, canvas: [c.width, c.height] };
 }"""
 
 JS_TABLE_TIME = """() => {
@@ -156,3 +165,33 @@ JS_COLUMN = """() => {
            toggle: ['sfViewTabs', 'sfViewCurve', 'sfViewShape'].filter((id) => document.getElementById(id) !== null),
            shown: ['sfCurveCard', 'sfShapeCard', 'sfMainChart'].map((id) => document.getElementById(id).getClientRects().length > 0) };
 }"""
+
+# Connected groups of painted pixels on the 3D canvas (4-neighbour, every second pixel, the scale bar corner left out):
+# one particle is one group; an ensemble of separated particles is several.
+JS_BLOBS = """() => {
+  const c = document.getElementById('sfShapeCanvas'), w = c.width, h = c.height, ratio = w / c.clientWidth;
+  const d = c.getContext('2d').getImageData(0, 0, w, h).data, step = 2, cols = Math.floor(w / step), rows = Math.floor(h / step);
+  const bg = [d[0], d[1], d[2], d[3]], barRight = 200 * ratio, barTop = h - 40 * ratio;
+  const ink = new Uint8Array(cols * rows);
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const px = x * step, py = y * step, i = 4 * (py * w + px);
+    if (px <= barRight && py >= barTop) continue;
+    if (d[i] !== bg[0] || d[i + 1] !== bg[1] || d[i + 2] !== bg[2] || d[i + 3] !== bg[3]) ink[y * cols + x] = 1;
+  }
+  const seen = new Uint8Array(cols * rows), sizes = [];
+  for (let start = 0; start < ink.length; start++) {
+    if (!ink[start] || seen[start]) continue;
+    let n = 0; const stack = [start]; seen[start] = 1;
+    while (stack.length) {
+      const at = stack.pop(), x = at % cols, y = (at - x) / cols; n++;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const k = ny * cols + nx; if (ink[k] && !seen[k]) { seen[k] = 1; stack.push(k); }
+      }
+    }
+    sizes.push(n);
+  }
+  return { blobs: sizes.filter((n) => n >= 20).length, sizes: sizes.sort((a, b) => b - a).slice(0, 14) };
+}"""
+
+JS_EXTRAS = "() => document.getElementById('sfShapeExtras').innerText"

@@ -129,7 +129,7 @@ test('module: frozen, the constants and the model list of the plan', () => {
     assert.deepEqual([...G.SHAPE_MODELS], ['sphere', 'ellipsoid', 'cylinder', 'core_shell_sphere', 'vesicle',
         'core_shell_cylinder', 'flexible_cylinder', 'lamellar']);
     assert.ok(Object.isFrozen(G.PART) && Object.isFrozen(G.SHAPE_MODELS));
-    assert.deepEqual(Object.keys(G).sort(), ['LATERAL_FACTOR', 'MAX_FACES', 'PART', 'SEED', 'SHAPE_MODELS',
+    assert.deepEqual(Object.keys(G).sort(), ['DETAILS', 'LATERAL_FACTOR', 'MAX_FACES', 'PART', 'SEED', 'SHAPE_MODELS',
         'build', 'hasShape', 'prng', 'wormChain']);
 });
 
@@ -341,6 +341,77 @@ test('cut faces are divided at least twice along the radial direction', () => {
     faceIndices(shell, PART.CUT_A).forEach((f) => shell.faces[f].forEach((v) => radii.add(Math.round(norm(point(shell, v)) * 1e6) / 1e6)));
     assert.ok(radii.size >= 3, 'radial levels: ' + Array.from(radii).join(', '));
     assert.deepEqual([Math.min(...radii), Math.max(...radii)], [100, 130]);
+});
+
+// ------------------------------------------------------------------ detail levels (v5.8: an ensemble draws coarser meshes)
+
+/** Volume tolerance of a level: the polygons of a coarser grid cut more off the curved surfaces. */
+const DETAIL_VOLUME = { fine: 0.02, medium: 0.03, coarse: 0.06 };
+const COARSER = ['medium', 'coarse'];
+
+test('detail levels: fine, medium, coarse; fine is the default and gives the same scene; an unknown level is an Error', () => {
+    assert.deepEqual([...G.DETAILS], ['fine', 'medium', 'coarse']);
+    assert.ok(Object.isFrozen(G.DETAILS));
+    G.SHAPE_MODELS.forEach((model) => {
+        assert.deepEqual(G.build(model, defaults(model), { detail: 'fine' }), G.build(model, defaults(model)), model);
+        assert.deepEqual(G.build(model, defaults(model), {}), G.build(model, defaults(model)), model + ' without detail');
+    });
+    ['', 'Fine', 'high', 3, null].forEach((detail) => {
+        assert.throws(() => G.build('sphere', { radius: 50 }, { detail }), /detail/, String(detail));
+    });
+    // a tube has no grid: the detail does not change it
+    const tube = defaults('flexible_cylinder');
+    assert.deepEqual(G.build('flexible_cylinder', tube, { detail: 'coarse' }), G.build('flexible_cylinder', tube));
+});
+
+test('detail levels: every curved model has fewer faces at each coarser level; the default sphere is 48x32, 24x16, 16x12', () => {
+    const faces = (model, detail) => G.build(model, defaults(model), { detail }).objects.reduce((n, m) => n + m.faces.length, 0);
+    MESH_MODELS.filter((model) => model !== 'lamellar').forEach((model) => {
+        const [fine, medium, coarse] = G.DETAILS.map((detail) => faces(model, detail));
+        assert.ok(fine > medium && medium > coarse, model + ': ' + [fine, medium, coarse].join(' > '));
+    });
+    assert.deepEqual(G.DETAILS.map((detail) => faces('sphere', detail)), [48 * 32, 24 * 16, 16 * 12]);
+    assert.deepEqual(G.DETAILS.map((detail) => faces('lamellar', detail)), [6, 6, 6]);
+});
+
+COARSER.forEach((detail) => {
+    CASES.forEach(([model, params]) => {
+        test(`mesh [${detail}] ${label(model, params)}: closed manifold, outward, volume within ${DETAIL_VOLUME[detail] * 100}%, bounds are the physical size`, () => {
+            const scene = G.build(model, params, { detail });
+            const expected = VOLUMES[model](params);
+            assert.equal(scene.objects.length, expected.length);
+            scene.objects.forEach((mesh, k) => {
+                const report = edgeReport(mesh);
+                assert.deepEqual(report.bad.slice(0, 5), [], mesh.role + ': edges not shared by two faces in opposite directions');
+                assert.equal(mesh.vertices.length / 3 - report.edges + mesh.faces.length, 2, mesh.role + ': Euler characteristic');
+                mesh.faces.forEach((face, f) => assert.ok(faceInfo(mesh, f).area > 0, 'face ' + f + ' has no area'));
+                close(volume(mesh), expected[k], DETAIL_VOLUME[detail], mesh.role + ' volume');
+            });
+            const size = SIZES[model](params);
+            extent(scene).forEach((e, k) => close(e, size[k], 1e-9, 'xyz'[k] + ' extent'));
+            let far = 0;
+            scene.objects.forEach((mesh) => { for (let v = 0; v < mesh.vertices.length / 3; v++) far = Math.max(far, norm(point(mesh, v))); });
+            assert.equal(scene.radius, far);
+            assert.ok(isDeepFrozen(scene));
+        });
+    });
+    SHELL_CASES.forEach(([model, params]) => {
+        test(`cut [${detail}] ${label(model, params)}: cut faces in their half planes facing +y / +x, no face in the wedge or across x = 0 / y = 0`, () => {
+            const scene = G.build(model, params, { detail });
+            const shell = shellOf(scene);
+            const eps = 1e-9 * scene.radius;
+            facesOf(shell, PART.CUT_A).forEach((f) => assert.ok(f.pts.every((p) => p[1] === 0 && p[0] >= 0) && Math.abs(f.normal[1] - 1) <= 1e-12));
+            facesOf(shell, PART.CUT_B).forEach((f) => assert.ok(f.pts.every((p) => p[0] === 0 && p[1] >= 0) && Math.abs(f.normal[0] - 1) <= 1e-12));
+            assert.ok(facesOf(shell, PART.CUT_A).length > 0 && facesOf(shell, PART.CUT_B).length > 0);
+            scene.objects.forEach((mesh) => facesOf(mesh).forEach((f) => {
+                [0, 1].forEach((k) => {
+                    const values = f.pts.map((pt) => pt[k]);
+                    assert.equal(Math.min(...values) < 0 && Math.max(...values) > 0, false, mesh.role + ' crosses ' + 'xy'[k] + ' = 0');
+                });
+                if (mesh.role === 'shapeShell') assert.equal(f.centroid[0] > eps && f.centroid[1] > eps, false, 'a shell face inside the removed wedge');
+            }));
+        });
+    });
 });
 
 // ------------------------------------------------------------------ degenerate and invalid input

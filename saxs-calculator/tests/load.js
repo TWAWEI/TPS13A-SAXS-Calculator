@@ -66,6 +66,8 @@ const LOAD_ORDER = Object.freeze([
     'sasfit-plots.js',            // IIFE，只掛 globalThis.SasFitPlots；Chart 實例與誤差棒外掛，頂層不碰 document／Chart
     'sasfit-shape-geom.js',       // IIFE，只掛 globalThis.SasFitShapeGeom；3D 示意圖的網格與蠕蟲鏈中心線，純函式、無相依
     'sasfit-shape-view.js',       // IIFE，只掛 globalThis.SasFitShapeView；3D 的視角、投影、繪製順序、比例尺與文字，呼叫時才讀其他 SasFit 模組
+    'sasfit-sq-derived.js',       // IIFE，只掛 globalThis.SasFitSqDerived；結構因子示意要的有效半徑與 Debye 長度（移植自 sasmodels），呼叫時才讀其他 SasFit 模組
+    'sasfit-shape-ensemble.js',   // IIFE，只掛 globalThis.SasFitShapeEnsemble；有結構因子時的顆粒群：排列、按比例的箱子、場景與說明文字，呼叫時才讀其他 SasFit 模組
     'sasfit-shape3d.js',          // IIFE，只掛 globalThis.SasFitShape3d；3D 的 Canvas 繪製，頂層不碰 document，呼叫時才經 host() 讀 ChartTheme
     'sasfit-sequence.js',         // IIFE，只掛 globalThis.SasFitSequence；序列擬合的排程、起始值規則與執行器（client 由呼叫端注入），呼叫時才讀其他 SasFit 模組
     'sasfit-seq-view.js',         // IIFE，只掛 globalThis.SasFitSeqView；序列表與趨勢圖的資料與 HTML 字串，呼叫時才經 host() 讀 FormUtils／ChartTheme
@@ -125,6 +127,8 @@ module.exports = {
     SasFitPlots: globalThis.SasFitPlots,
     SasFitShapeGeom: globalThis.SasFitShapeGeom,
     SasFitShapeView: globalThis.SasFitShapeView,
+    SasFitSqDerived: globalThis.SasFitSqDerived,
+    SasFitShapeEnsemble: globalThis.SasFitShapeEnsemble,
     SasFitShape3d: globalThis.SasFitShape3d,
     SasFitSequence: globalThis.SasFitSequence,
     SasFitSeqView: globalThis.SasFitSeqView,

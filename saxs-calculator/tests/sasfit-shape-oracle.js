@@ -13,6 +13,13 @@
  *   byCentroidDepth(scene, view, size, ppa) -> 對照用的錯誤實作：全部正面依質心深度由遠到近排序
  *   VIEWS                  固定的 200 個視角：yaw 每 30°（12 個）× pitch −75°…75°（15 個）＋ 20 個固定種子的亂數視角
  *
+ * 顆粒群（v5.8，決策 43）：
+ *   ensembleHit(shape, placements, view, [X, Y]) -> { role, part, particle } | null
+ *       同一個解析形狀放在每個 placement（centre、row-major 的 rotation：世界＝rotation·局部＋centre）；
+ *       射線轉進各顆粒自己的座標，取 τ 最小的那一顆——逐像素的深度判定，與繪製清單的順序規則無關。
+ *   compareEnsemble(shape, scene, view, listOf, options?) -> 與 compare 相同的統計，判定多比一個「哪一顆」；
+ *       options：{ grid = 61, edge（邊緣帶，Å；預設顆粒外接直徑的 EDGE 倍）}
+ *
  * 視角慣例（本檔自己推導，與被測模組的實作無關）：觀察者在物體座標的 v＝(cos p cos y, cos p sin y, sin p) 方向；
  * 畫面的右＝(−sin y, cos y, 0)，上＝(−sin p cos y, −sin p sin y, cos p)。
  * 射線：點(τ)＝o − τ·v（o 在過原點、垂直 v 的平面上），τ 小的先被看到。
@@ -121,16 +128,37 @@ function shellHit(shape, o, v) {
     return hits.length > 0 ? hits[0] : null;
 }
 
+/** 射線 o − τv 最先碰到的表面：{ role, part, tau } | null。 */
+function hitAlong(shape, o, v) {
+    if (shape.single !== undefined) {
+        const body = shape.single(o, v);
+        return body === null ? null : { role: 'shapeSolid', part: PART.SOLID, tau: body[0] };
+    }
+    const shell = shellHit(shape, o, v);
+    const core = shape.withCore ? shape.inner(o, v) : null;
+    if (core !== null && (shell === null || core[0] < shell.tau)) return { role: 'shapeCore', part: PART.SOLID, tau: core[0] };
+    return shell === null ? null : { role: 'shapeShell', part: shell.part, tau: shell.tau };
+}
+
 function firstHit(shape, view, [X, Y]) {
     const { right, up, toward } = axes(view);
     const o = [0, 1, 2].map((k) => X * right[k] + Y * up[k]);
-    if (shape.single !== undefined) {
-        return shape.single(o, toward) === null ? null : { role: 'shapeSolid', part: PART.SOLID };
-    }
-    const shell = shellHit(shape, o, toward);
-    const core = shape.withCore ? shape.inner(o, toward) : null;
-    if (core !== null && (shell === null || core[0] < shell.tau)) return { role: 'shapeCore', part: PART.SOLID };
-    return shell === null ? null : { role: 'shapeShell', part: shell.part };
+    const hit = hitAlong(shape, o, toward);
+    return hit === null ? null : { role: hit.role, part: hit.part };
+}
+
+/** 局部座標＝rotationᵀ·(世界 − centre)；rotation 是 row-major。 */
+const toLocal = (r, a) => [r[0] * a[0] + r[3] * a[1] + r[6] * a[2], r[1] * a[0] + r[4] * a[1] + r[7] * a[2], r[2] * a[0] + r[5] * a[1] + r[8] * a[2]];
+
+function ensembleHit(shape, placements, view, [X, Y]) {
+    const { right, up, toward } = axes(view);
+    const o = [0, 1, 2].map((k) => X * right[k] + Y * up[k]);
+    let best = null;
+    placements.forEach(({ centre, rotation }, particle) => {
+        const hit = hitAlong(shape, toLocal(rotation, [o[0] - centre[0], o[1] - centre[1], o[2] - centre[2]]), toLocal(rotation, toward));
+        if (hit !== null && (best === null || hit.tau < best.tau)) best = { ...hit, particle };
+    });
+    return best === null ? null : { role: best.role, part: best.part, particle: best.particle };
 }
 
 // ---------------------------------------------------------------- 繪製清單 → 每個畫面點最上層的多邊形
@@ -270,4 +298,72 @@ function views() {
     return Object.freeze(list.map(Object.freeze));
 }
 
-module.exports = { PART, GRID, VIEWS: views(), axes, solid, firstHit, topmost, contains, compare, byCentroidDepth, gridPoints };
+// ---------------------------------------------------------------- 顆粒群
+
+const sameIn = (a, b) => (a === null || b === null ? a === b : a.role === b.role && a.part === b.part && a.particle === b.particle);
+
+/** 規則網格上每個點最上層的多邊形（{ role, part, particle }）：只掃多邊形外框涵蓋的格點。 */
+function topmostOnGrid(items, grid) {
+    const top = new Array(grid.n * grid.n).fill(null);
+    items.forEach((item) => {
+        if (item.kind !== 'polygon') return;
+        const p = item.points;
+        let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
+        for (let i = 0; i < p.length; i += 2) {
+            x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]);
+            y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]);
+        }
+        const [i0, i1] = [Math.max(0, Math.ceil((x0 - grid.x0) / grid.dx)), Math.min(grid.n - 1, Math.floor((x1 - grid.x0) / grid.dx))];
+        const [j0, j1] = [Math.max(0, Math.ceil((y0 - grid.y0) / grid.dy)), Math.min(grid.n - 1, Math.floor((y1 - grid.y0) / grid.dy))];
+        const hit = { role: item.role, part: item.part, particle: item.particle };
+        for (let i = i0; i <= i1; i++) {
+            for (let j = j0; j <= j1; j++) {
+                if (contains(p, grid.x0 + i * grid.dx, grid.y0 + j * grid.dy)) top[i * grid.n + j] = hit;
+            }
+        }
+    });
+    return top;
+}
+
+/** 與 compare 相同的統計；畫面點是 options.grid（預設 61）× 同數目的規則網格，判定比較角色、PART 與哪一顆。 */
+function compareEnsemble(shape, scene, view, listOf, options = {}) {
+    const size = { width: 600, height: 600 };
+    const list = listOf(size);
+    const ppa = list.pixelsPerAngstrom;
+    const n = options.grid || 61;
+    const extent = extentOf(scene, view);
+    const step = [(extent.x1 - extent.x0) / n, (extent.y1 - extent.y0) / n];
+    const at = (i, j) => [extent.x0 + step[0] * (i + 0.5), extent.y1 - step[1] * (j + 0.5)];
+    const [sx0, sy0] = [size.width / 2 + ppa * at(0, 0)[0], size.height / 2 - ppa * at(0, 0)[1]];
+    const tops = topmostOnGrid(list.items, { n, x0: sx0, y0: sy0, dx: ppa * step[0], dy: ppa * step[1] });
+    const edge = options.edge === undefined ? EDGE * scene.particle.radius * 2 : options.edge;          // Angstrom
+    const stats = { counted: 0, agreed: 0, objectCounted: 0, objectAgreed: 0, central: 0, centralAgreed: 0, misses: [] };
+    const hitAt = (point) => ensembleHit(shape, scene.placements, view, point);
+    const steadyAt = (point, hit, distance) => NEIGHBOURS.every(([dx, dy]) => sameIn(hit, hitAt([point[0] + dx * distance, point[1] + dy * distance])));
+    for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+            const point = at(i, j);
+            const hit = hitAt(point);
+            if (!steadyAt(point, hit, edge)) continue;
+            const got = tops[i * n + j];
+            const ok = sameIn(hit, got);
+            stats.counted += 1;
+            stats.agreed += ok ? 1 : 0;
+            if (hit !== null || got !== null) {
+                stats.objectCounted += 1;
+                stats.objectAgreed += ok ? 1 : 0;
+            }
+            const special = hit !== null && (hit.role === 'shapeCore' || hit.part === PART.CUT_A || hit.part === PART.CUT_B);
+            if (special && steadyAt(point, hit, CENTRAL * edge)) {
+                stats.central += 1;
+                stats.centralAgreed += ok ? 1 : 0;
+            }
+            if (!ok) stats.misses.push({ point, expected: hit, got });
+        }
+    }
+    return stats;
+}
+
+module.exports = {
+    PART, GRID, VIEWS: views(), axes, solid, firstHit, topmost, contains, compare, byCentroidDepth, gridPoints, ensembleHit, compareEnsemble,
+};

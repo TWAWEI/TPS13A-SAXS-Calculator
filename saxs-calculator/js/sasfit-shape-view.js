@@ -22,11 +22,13 @@
  *   pixelsPerAngstrom(scene, view, size) -> number   the bounding sphere of the scene fits into the smaller side
  *                          of size with a margin of MARGIN; it does not depend on the rotation
  *   drawList(scene, view, size) -> { items, pixelsPerAngstrom }     size = { width, height } in pixels
+ *       scene: a scene of SasFitShapeGeom.build or an ensemble of SasFitShapeEnsemble.build
  *       items in draw order (later ones cover earlier ones):
- *         { kind: 'polygon', points: [x0, y0, x1, y1, ...], role, k, part }
+ *         { kind: 'polygon', points: [x0, y0, x1, y1, ...], role, k, part[, particle] }
  *         { kind: 'stroke', points: [x0, y0, x1, y1], width, role, k, depth, fill: [{ points, width, k }] }
  *       role is the mesh's ('shapeSolid' | 'shapeCore' | 'shapeShell'), k the Lambert brightness in [0, 1]
- *       (no ambient term: ChartTheme.shade3d adds it), part the face's SasFitShapeGeom.PART.
+ *       (no ambient term: ChartTheme.shade3d adds it), part the face's SasFitShapeGeom.PART, particle (ensembles
+ *       only) the index of the placement the polygon belongs to.
  *   scaleBar(pixelsPerAngstrom, width) -> { nm, pixels, label } | null
  *       the largest length of the 1-2-5 series that is no longer than BAR_SHARE of the width
  *   nm(angstrom) -> '5.0'   Angstrom as nm with one decimal (two significant figures below 0.1 nm, where one
@@ -34,10 +36,11 @@
  *                          toFixed of the sketch.
  *   shapeParams(form) -> { name: number } | null    the dimensions SasFitShapeGeom.build needs; null when the
  *                          model has no shape or the form has a field error
- *   describe(form, { pixelsPerAngstrom, scene }?) -> { title, dims: [{ label, text }], extras: [string], alt } | null
+ *   describe(form, { pixelsPerAngstrom, scene, sq }?) -> { title, dims: [{ label, text }], extras: [string], alt } | null
  *       plain text (the caller escapes it or writes it with textContent); null as for shapeParams.
  *       pixelsPerAngstrom (at the default zoom): dimensions drawn smaller than MIN_PIXELS get a sentence;
- *       scene: the scene already built for these parameters (else it is built here for its notToScale)
+ *       scene: the scene already built for these parameters (else SasFitShapeEnsemble.sceneFor builds it here);
+ *       sq: SasFitShapeEnsemble.sqInfo(form) when the caller has it (else it is worked out here)
  *   dimsHtml(dims) -> '<dl class="sf-shape-dims">...</dl>'   the only HTML of the sketch; every text in it goes
  *                          through FormUtils.escapeHtml
  *
@@ -54,6 +57,13 @@
  *      Inside a group nothing overlaps (one convex solid, or one plane), so there is no sorting at all.
  * tests/sasfit-shape-order.test.js checks this against analytic ray casting from 200 directions.
  *
+ * An ensemble (a structure factor: SasFitShapeEnsemble) is drawn particle by particle, far to near by the depth
+ * of each particle's centre, each particle in the order above in its own frame (the view direction turned into
+ * it). The bounding spheres of the particles never overlap, and for two disjoint spheres the one whose centre
+ * is nearer is nearer along every ray that meets both: this order between particles is exact. Depth cue: the
+ * brightness k of a particle is scaled by 1 - DEPTH_DIM x its depth within the ensemble (0 for the nearest,
+ * 1 for the farthest), so the far ones are a little darker -- through ChartTheme.shade3d, no other colour.
+ *
  * A tube (flexible_cylinder) is drawn as thick lines: one stroke per segment of the centreline, far to near.
  * The projection of a chain of spheres and cylinders is exactly the union of those round-capped strokes, so it
  * is to scale. k = the sine of the angle between the segment and the light (the mean brightness of a
@@ -65,7 +75,7 @@
  *
  * Nothing given is modified; what is returned is frozen. A scene's face normals are computed once and kept in
  * a WeakMap (scenes are frozen and never change). Pure: no DOM, no timers, no colours. SasFitShapeGeom,
- * SasFitForm, SasFitJobs, SasFitFormat and SasFitLabels are read at call time, FormUtils through host().
+ * SasFitForm, SasFitJobs, SasFitFormat, SasFitLabels and SasFitShapeEnsemble are read at call time, FormUtils through host().
  */
 
 (function () {
@@ -77,6 +87,7 @@
     const KEY_ZOOM = 1.1;
     const PITCH_LIMIT = 89;
     const MARGIN = 0.08;                      // of the smaller side, on each side of the bounding sphere
+    const DEPTH_DIM = 0.25;                   // how much darker the farthest particle of an ensemble is
     const BAR_SHARE = 0.3;
     const BAR_STEPS = Object.freeze([5, 2, 1]);
     const ANGSTROM_PER_NM = 10;
@@ -161,8 +172,9 @@
     }
 
     function assertScene(scene) {
-        if (!isObject(scene) || (scene.kind !== 'mesh' && scene.kind !== 'tube') || !isNumber(scene.radius) || scene.radius <= 0) {
-            throw new Error('drawList needs a scene of SasFitShapeGeom.build');
+        const kinds = ['mesh', 'tube', 'ensemble'];
+        if (!isObject(scene) || kinds.indexOf(scene.kind) < 0 || !isNumber(scene.radius) || scene.radius <= 0) {
+            throw new Error('drawList needs a scene of SasFitShapeGeom.build or SasFitShapeEnsemble.build');
         }
     }
 
@@ -174,10 +186,13 @@
     }
 
     /** The projection of one view: screen position and depth (larger = nearer) of the point at `at` of `coords`. */
-    function projector(view, size, ppa) {
-        const { right, up, toward } = basis(view);
-        const cx = size.width / 2;
-        const cy = size.height / 2;
+    const projector = (view, size, ppa) => projectorOf(basis(view), [size.width / 2, size.height / 2], ppa);
+
+    /**
+     * The projection with screen axes given in the coordinates of what is drawn ({ right, up, toward }) and the
+     * screen position [cx, cy] of its origin.
+     */
+    function projectorOf({ right, up, toward }, [cx, cy], ppa) {
         return Object.freeze({
             toward,
             x: (c, at) => cx + ppa * (c[at] * right[0] + c[at + 1] * right[1] + c[at + 2] * right[2]),
@@ -243,17 +258,23 @@
 
     const ORDERS = 7;
 
-    function polygonItem(mesh, face, part, k, project) {
+    function polygonItem(mesh, face, part, k, project, particle) {
         const points = new Array(2 * face.length);
         for (let i = 0; i < face.length; i++) {
             points[2 * i] = project.x(mesh.vertices, 3 * face[i]);
             points[2 * i + 1] = project.y(mesh.vertices, 3 * face[i]);
         }
-        return Object.freeze({ kind: 'polygon', points: Object.freeze(points), role: mesh.role, k, part });
+        const item = { kind: 'polygon', points: Object.freeze(points), role: mesh.role, k, part };
+        return Object.freeze(particle === undefined ? item : { ...item, particle });
     }
 
-    /** The faces of one mesh that face the viewer, put into `groups` by their place in the draw order. */
-    function collectMesh(mesh, project, groups) {
+    /**
+     * The faces of one mesh that face the viewer, put into `groups` by their place in the draw order.
+     * placed (ensembles): { particle, dim } -- the index the items carry and the depth-cue factor of their k.
+     */
+    function collectMesh(mesh, project, groups, placed) {
+        const particle = isObject(placed) ? placed.particle : undefined;
+        const keep = isObject(placed) ? 1 - placed.dim : 1;
         const { normals, centres } = measuresOf(mesh);
         const { toward } = project;
         const frontA = toward[1] > 0;
@@ -263,14 +284,33 @@
             if (dot(n, toward) <= 0) return;                       // a back face of a closed mesh
             const part = mesh.part[f];
             const order = orderOf(part, centres[3 * f], centres[3 * f + 1], frontA, frontB);
-            groups[order].push(polygonItem(mesh, face, part, brightness(project.turn(n)), project));
+            groups[order].push(polygonItem(mesh, face, part, keep * brightness(project.turn(n)), project, particle));
         });
     }
 
-    function meshItems(scene, project) {
+    function meshItems(scene, project, placed) {
         const groups = Array.from({ length: ORDERS }, () => []);
-        scene.objects.forEach((mesh) => collectMesh(mesh, project, groups));
+        scene.objects.forEach((mesh) => collectMesh(mesh, project, groups, placed));
         return groups.flat();
+    }
+
+    /** a turned by the transpose of the row-major rotation r: an axis of the view in the particle's own frame. */
+    const intoFrame = (r, a) => [r[0] * a[0] + r[3] * a[1] + r[6] * a[2], r[1] * a[0] + r[4] * a[1] + r[7] * a[2],
+        r[2] * a[0] + r[5] * a[1] + r[8] * a[2]];
+
+    /** The polygons of every particle of an ensemble: particles far to near, each in its own rule order. */
+    function ensembleItems(scene, view, size, ppa) {
+        const axes = basis(view);
+        const depths = scene.placements.map(({ centre }) => dot(centre, axes.toward));
+        const [far, near] = [Math.min(...depths), Math.max(...depths)];
+        const order = depths.map((_, i) => i).sort((i, j) => depths[i] - depths[j] || i - j);
+        return order.flatMap((particle) => {
+            const { centre, rotation } = scene.placements[particle];
+            const frame = { right: intoFrame(rotation, axes.right), up: intoFrame(rotation, axes.up), toward: intoFrame(rotation, axes.toward) };
+            const origin = [size.width / 2 + ppa * dot(centre, axes.right), size.height / 2 - ppa * dot(centre, axes.up)];
+            const dim = near > far ? DEPTH_DIM * (near - depths[particle]) / (near - far) : 0;
+            return meshItems(scene.particle, projectorOf(frame, origin, ppa), { particle, dim });
+        });
     }
 
     // ------------------------------------------------------------- tube
@@ -341,6 +381,7 @@
 
     function drawList(scene, view, size) {
         const ppa = pixelsPerAngstrom(scene, view, size);
+        if (scene.kind === 'ensemble') return Object.freeze({ items: Object.freeze(ensembleItems(scene, view, size, ppa)), pixelsPerAngstrom: ppa });
         const project = projector(view, size, ppa);
         const items = scene.kind === 'tube' ? tubeItems(scene, project, ppa) : meshItems(scene, project);
         return Object.freeze({ items: Object.freeze(items), pixelsPerAngstrom: ppa });
@@ -373,6 +414,7 @@
     // ------------------------------------------------------------- texts
 
     const CUT_NOTE = '切開四分之一以顯示內部';
+    const ENSEMBLE_PD_NOTE = '多分散：每顆顆粒都畫成中心值的大小';
     const CHAIN_NOTE = '圖中是一個代表性構形（固定亂數種子，未考慮排除體積）';
     const CHAIN_ALT = '一個代表性構形';
     // what the width of a distribution means (sasmodels weights.py): the text of the dimension list follows it
@@ -382,8 +424,6 @@
         boltzmann: (label, centre, width) => label + '：寬度 ' + number(width, WIDTH_DIGITS) + '（boltzmann，e 折長度／中心值）',
     });
     const WIDTH_DIGITS = 2;
-    const FRACTION_DIGITS = 2;
-    const CHARGE_DIGITS = 3;
     /** model -> the lines of the dimension list: [label, the value in Angstrom from the parameters]. */
     const DIMS = Object.freeze({
         sphere: [['半徑 R', (p) => p.radius, 'radius']],
@@ -424,12 +464,12 @@
         }).filter((line) => line !== null);
     }
 
-    function structureLine(form, all) {
+    /** The lines about S(Q) (SasFitShapeEnsemble.lines), and the dispersity note when an ensemble is drawn. */
+    function structureLines(form, scene, sq, dispersity) {
         if (form.structure === null) return [];
-        const parts = ['φ = ' + number(all.volfraction, FRACTION_DIGITS)];
-        parts.push(isNumber(all.radius_effective) ? 'R_eff = ' + nm(all.radius_effective) + ' nm' : 'R_eff 由模型決定');
-        if (isNumber(all.charge)) parts.push('電荷 ' + number(all.charge, CHARGE_DIGITS) + ' e');
-        return ['S(Q)：' + form.structure + '，' + parts.join('，')];
+        const ensemble = isObject(scene) && scene.kind === 'ensemble';
+        const lines = globalThis.SasFitShapeEnsemble.lines(sq, ensemble ? scene.info : null);
+        return lines.concat(ensemble && dispersity.length > 0 ? [ENSEMBLE_PD_NOTE] : []);
     }
 
     function smallLines(form, params, ppa) {
@@ -439,10 +479,11 @@
             .map(([label, value]) => label + ' ' + nm(value) + ' nm 在這個比例下小於 ' + MIN_PIXELS + ' 像素');
     }
 
-    function altText(form, title, dims) {
+    function altText(form, title, dims, scene) {
         const notes = [];
         if (CUT_MODELS.indexOf(form.model) >= 0) notes.push(CUT_NOTE);
         if (form.model === 'flexible_cylinder') notes.push(CHAIN_ALT);
+        if (isObject(scene) && scene.kind === 'ensemble') notes.push(scene.info.count + ' 顆相同顆粒的排列（S(Q)：' + scene.info.structure + '）');
         const sizes = dims.map((dim) => dim.label + ' ' + dim.text).join('、');
         return title + '的 3D 示意圖：' + sizes + notes.map((note) => '；' + note).join('');
     }
@@ -451,14 +492,17 @@
         const params = shapeParams(form);
         if (params === null) return null;
         const given = isObject(options) ? options : {};
-        const scene = isObject(given.scene) ? given.scene : globalThis.SasFitShapeGeom.build(form.model, params);
+        const ensemble = globalThis.SasFitShapeEnsemble;
+        const sq = has(given, 'sq') ? given.sq : ensemble.sqInfo(form);
+        const scene = isObject(given.scene) ? given.scene : ensemble.sceneFor(form.model, params, sq);
         const all = globalThis.SasFitJobs.params(form);
         const title = globalThis.SasFitLabels.MODEL_NAMES[form.model] || form.model;
         const dims = DIMS[form.model].map(([label, value]) => Object.freeze({ label, text: nm(value(params)) + ' nm' }));
+        const dispersity = dispersityLines(form, all);
         const extras = (form.model === 'flexible_cylinder' ? [CHAIN_NOTE] : []).concat(
-            scene === null ? [] : scene.notToScale, dispersityLines(form, all), structureLine(form, all),
+            scene === null ? [] : scene.notToScale, dispersity, structureLines(form, scene, sq, dispersity),
             smallLines(form, params, given.pixelsPerAngstrom));
-        return Object.freeze({ title, dims: Object.freeze(dims), extras: Object.freeze(extras), alt: altText(form, title, dims) });
+        return Object.freeze({ title, dims: Object.freeze(dims), extras: Object.freeze(extras), alt: altText(form, title, dims, scene) });
     }
 
     /** The dimension list of describe() as a definition list; labels and values are escaped. */
@@ -469,7 +513,7 @@
     }
 
     globalThis.SasFitShapeView = Object.freeze({
-        DEFAULT_VIEW, ZOOM_RANGE, KEY_STEP, KEY_ZOOM, PITCH_LIMIT, MARGIN, LIGHT, CHAIN_NOTE,
+        DEFAULT_VIEW, ZOOM_RANGE, KEY_STEP, KEY_ZOOM, PITCH_LIMIT, MARGIN, LIGHT, CHAIN_NOTE, DEPTH_DIM,
         viewDirection, basis, reduce, pixelsPerAngstrom, drawList, scaleBar, nm, shapeParams, describe, dimsHtml,
     });
 })();

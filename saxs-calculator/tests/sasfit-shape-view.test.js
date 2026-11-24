@@ -338,13 +338,73 @@ test('[shape-view] describe：多分散以文字標示，各分布的寬度照 s
     assert.deepEqual(V.describe(formOf('sphere', pd('gaussian', '0.2').concat([{ type: 'togglePd', name: 'radius' }]))).extras, [], '收起來的不算');
 });
 
-test('[shape-view] describe：S(Q) 以文字標示；有效半徑由模型決定時照寫；hayter_msa 另列電荷', () => {
+test('[shape-view] describe：S(Q) 的幾行（v5.8：顆粒群；R_eff 是模型交給 S(Q) 的數字並寫明模式，hayter_msa 另列電荷與 κ⁻¹）', () => {
     const hard = V.describe(formOf('sphere', [{ type: 'setStructure', structure: 'hardsphere' }, { type: 'setRadiusMode', mode: 0 }]));
-    assert.ok(hard.extras.includes('S(Q)：hardsphere，φ = 0.20，R_eff = 5.0 nm'), hard.extras.join('｜'));
+    assert.ok(hard.extras.includes('S(Q)：hardsphere 硬球，圖中 12 顆相同的顆粒，φ = 0.20'), hard.extras.join('｜'));
+    assert.ok(hard.extras.includes('有效半徑 R_eff = 5.0 nm，模式：自行輸入'), hard.extras.join('｜'));
     const derived = V.describe(formOf('sphere', [{ type: 'setStructure', structure: 'hardsphere' }]));
-    assert.ok(derived.extras.includes('S(Q)：hardsphere，φ = 0.20，R_eff 由模型決定'), derived.extras.join('｜'));
+    assert.ok(derived.extras.includes('有效半徑 R_eff = 5.0 nm，模式：半徑（radius）'), derived.extras.join('｜'));
     const msa = V.describe(formOf('core_shell_sphere', [{ type: 'setStructure', structure: 'hayter_msa' }]));
-    assert.ok(msa.extras.some((line) => /^S\(Q\)：hayter_msa，φ = 0\.019，R_eff 由模型決定，電荷 19\.0 e$/.test(line)), msa.extras.join('｜'));
+    assert.ok(msa.extras.some((line) => /^S\(Q\)：hayter_msa Hayter–Penfold MSA（帶電球），圖中 12 顆相同的顆粒，φ = 0\.019$/.test(line)), msa.extras.join('｜'));
+    assert.ok(msa.extras.some((line) => /^電荷 19\.0 e，Debye 屏蔽長度 κ⁻¹ = 20\.6 nm/.test(line)), msa.extras.join('｜'));
+    assert.match(msa.alt, /12 顆相同顆粒的排列（S\(Q\)：hayter_msa）/);
+    assert.ok(!V.describe(formOf('sphere')).extras.some((line) => /S\(Q\)|R_eff/.test(line)), '沒有 S(Q)：沒有這幾行');
+});
+
+test('[shape-view] describe：顆粒群又有多分散時說明每顆都畫成中心值（單一顆粒時沒有這一句）', () => {
+    const pd = [{ type: 'togglePd', name: 'radius' }, { type: 'setPdField', name: 'radius', field: 'width', value: '0.1' }];
+    const many = V.describe(formOf('sphere', pd.concat([{ type: 'setStructure', structure: 'hardsphere' }])));
+    assert.ok(many.extras.includes('半徑 R = 5.0 ± 0.5 nm（gaussian）'));
+    assert.ok(many.extras.includes('多分散：每顆顆粒都畫成中心值的大小'), many.extras.join('｜'));
+    assert.ok(!V.describe(formOf('sphere', pd)).extras.includes('多分散：每顆顆粒都畫成中心值的大小'));
+});
+
+// ---------------------------------------------------------------- 顆粒群的繪製清單（v5.8，決策 43）
+const ENSEMBLE = (model, params, phi = 0.2) => globalThis.SasFitShapeEnsemble.build(model, params,
+    { structure: 'hardsphere', radiusEffective: globalThis.SasFitSqDerived.radiusEffective(model, { ...params, radius_effective_mode: 1 }), volfraction: phi });
+
+test('[shape-view] 顆粒群：每個多邊形帶 particle；顆粒依中心深度由遠到近；每顆內部是單一顆粒的規則順序', () => {
+    const scene = ENSEMBLE('core_shell_sphere', { radius: 60, thickness: 10 });
+    const view = { yaw: 45, pitch: 20, zoom: 1 };
+    const { items, pixelsPerAngstrom } = V.drawList(scene, view, SIZE);
+    assert.equal(pixelsPerAngstrom, V.pixelsPerAngstrom(scene, view, SIZE));
+    const toward = V.viewDirection(view);
+    const seen = items.map((item) => item.particle).filter((p, i, all) => i === 0 || p !== all[i - 1]);
+    assert.equal(new Set(seen).size, seen.length, 'each particle is one run of items');
+    assert.equal(seen.length, scene.placements.length);
+    const depths = seen.map((p) => dot(scene.placements[p].centre, toward));
+    assert.ok(depths.every((d, i) => i === 0 || d >= depths[i - 1]), 'far to near');
+    // the items of one particle: the rule order of a single particle drawn at that place
+    const single = V.drawList(scene.particle, view, SIZE);
+    const first = items.filter((item) => item.particle === seen[0]);
+    assert.deepEqual(first.map((item) => item.role + ':' + item.part), single.items.map((item) => item.role + ':' + item.part));
+    assert.ok(Object.isFrozen(items[0]) && Object.isFrozen(items[0].points));
+});
+
+test('[shape-view] 顆粒群：深度提示只經 k——同一個面，越遠的顆粒越暗；最近的那一顆與單一顆粒相同', () => {
+    const scene = ENSEMBLE('sphere', { radius: 50 });
+    const view = { yaw: 45, pitch: 20, zoom: 1 };
+    const { items } = V.drawList(scene, view, SIZE);
+    const order = items.map((item) => item.particle).filter((p, i, all) => i === 0 || p !== all[i - 1]);
+    const ks = (p) => items.filter((item) => item.particle === p).map((item) => item.k);
+    const [far, near] = [ks(order[0]), ks(order[order.length - 1])];
+    const single = V.drawList(scene.particle, view, SIZE).items.map((item) => item.k);
+    assert.deepEqual(near, single);
+    far.forEach((k, i) => assert.ok(k <= near[i] && k >= near[i] * (1 - V.DEPTH_DIM) - 1e-12));
+    assert.ok(far.some((k, i) => k < near[i]));
+});
+
+test('[shape-view] 顆粒群：預設縮放以整群的外接球為準，比例尺量的是顆粒的大小；整群都在畫面內', () => {
+    const scene = ENSEMBLE('cylinder', { radius: 20, length: 400 });
+    for (const view of [{ yaw: 45, pitch: 20, zoom: 1 }, { yaw: 200, pitch: -60, zoom: 1 }]) {
+        const { items, pixelsPerAngstrom: ppa } = V.drawList(scene, view, SIZE);
+        assert.ok(close(ppa, (1 - 2 * V.MARGIN) * 400 / (2 * scene.radius)));
+        items.forEach((item) => {
+            for (let i = 0; i < item.points.length; i += 2) {
+                assert.ok(item.points[i] >= 0 && item.points[i] <= SIZE.width && item.points[i + 1] >= 0 && item.points[i + 1] <= SIZE.height);
+            }
+        });
+    }
 });
 
 test('[shape-view] describe：投影不到 2 像素的尺寸另加一句（給了 pixelsPerAngstrom 才判斷）', () => {

@@ -4,7 +4,10 @@
  * worm-like chain (design spec 6; plan M4 Task 3). Original code.
  *
  *   hasShape(model)       true for the 8 models of SHAPE_MODELS
- *   build(model, params)  -> scene | null. Lengths in Angstrom, z is the symmetry axis, the origin is the centre.
+ *   build(model, params, { detail }?) -> scene | null. Lengths in Angstrom, z is the symmetry axis, the origin is the centre.
+ *       detail: one of DETAILS -- 'fine' (default: the single particle), 'medium' or 'coarse' (an ensemble of
+ *       particles draws many small ones: SasFitShapeEnsemble picks the finest level its face budget allows).
+ *       Anything else is an Error. A tube has no grid and ignores it.
  *       params: the model's dimensions by their sasmodels names (radius, thickness, length, radius_polar,
  *       radius_equatorial, kuhn_length); everything else in it is ignored. null when the model has no shape,
  *       a dimension is missing, not a finite number or negative, nothing solid is left, or a size overflows.
@@ -42,7 +45,8 @@
  * (the material is on the y < 0 side of CUT_A and on the x < 0 side of CUT_B). The inner wall of the shell is
  * CAVITY (its normals point into the hollow), its outer surface OUTER.
  *
- * The grid. Core, inner wall and outer surface use the same azimuths (AZIMUTH steps from 0, a multiple of 4)
+ * The grid (one per detail level, GRIDS: fine 48 azimuth x 32 polar steps, medium 24 x 16, coarse 16 x 12).
+ * Core, inner wall and outer surface use the same azimuths (steps from 0, a multiple of 4)
  * and the same polar angles or axial levels, so their vertices lie exactly on the planes x = 0 and y = 0, on
  * the poles and on the equator: no face crosses a cut plane, the bounds are exactly the physical size, and
  * the error of a shell's volume does not depend on its thickness. Vertices are welded by position, which is
@@ -83,17 +87,16 @@
     const LAMELLAR_NOTE = '層狀模型的橫向為無限延伸，圖中的寬度只是示意';
     const COARSE_NOTE = '鏈很長（L／b ≥ 200）：圖中每一段代表多個 Kuhn 長度，整體大小按比例，輪廓長度只是示意';
 
-    const AZIMUTH = 48;                           // steps round the axis; a multiple of 4
-    const POLAR = 32;                             // steps from pole to pole; even (the equator is a grid line)
-    const CUT_STEPS = 2;                          // steps across the thickness of a shell
-    const CAP_STEPS = 4;                          // rings of a cylinder's end face
-    const SIDE_STEPS = 8;                         // steps along a cylinder's side
-    const WHOLE = Object.freeze([0, AZIMUTH]);
-    const KEPT = Object.freeze([AZIMUTH / 4, AZIMUTH]);                 // what the quarter cut leaves
-    const CUTS = Object.freeze([
-        Object.freeze({ part: PART.CUT_A, at: 0, normal: Object.freeze([0, 1, 0]) }),
-        Object.freeze({ part: PART.CUT_B, at: AZIMUTH / 4, normal: Object.freeze([1, 0, 0]) }),
-    ]);
+    // per level: azimuth = steps round the axis (a multiple of 4), polar = steps from pole to pole (even: the
+    // equator is a grid line), cut = steps across the thickness of a shell, cap = rings of a cylinder's end
+    // face, side = steps along a cylinder's side
+    const GRID_STEPS = Object.freeze({
+        fine: Object.freeze({ azimuth: 48, polar: 32, cut: 2, cap: 4, side: 8 }),
+        medium: Object.freeze({ azimuth: 24, polar: 16, cut: 2, cap: 2, side: 2 }),
+        coarse: Object.freeze({ azimuth: 16, polar: 12, cut: 2, cap: 2, side: 2 }),
+    });
+    const DETAILS = Object.freeze(Object.keys(GRID_STEPS));
+    const DEFAULT_DETAIL = DETAILS[0];
     const CHAIN = Object.freeze({ perKuhn: 8, min: 16, max: 200 });
     const UINT32 = 4294967296;
     const MULBERRY_STEP = 0x6D2B79F5;
@@ -113,9 +116,23 @@
         return [Math.cos(angle), Math.sin(angle)];
     }
 
-    const AZIMUTHS = Object.freeze(Array.from({ length: AZIMUTH + 1 }, (_, i) => turn(i, AZIMUTH)));
-    const POLARS = Object.freeze(Array.from({ length: POLAR + 1 }, (_, j) => turn(j, 2 * POLAR)));      // pole to pole
-    const POLAR_INDEX = Object.freeze(POLARS.map((_, j) => j));
+    /** The angles and ranges of one detail level; the quarter cut keeps the azimuths from a quarter turn to a full one. */
+    function makeGrid({ azimuth, polar, cut, cap, side }) {
+        const polars = Object.freeze(Array.from({ length: polar + 1 }, (_, j) => turn(j, 2 * polar)));      // pole to pole
+        return Object.freeze({
+            cutSteps: cut, capSteps: cap, sideSteps: side, polars,
+            azimuths: Object.freeze(Array.from({ length: azimuth + 1 }, (_, i) => turn(i, azimuth))),
+            polarIndex: Object.freeze(polars.map((_, j) => j)),
+            whole: Object.freeze([0, azimuth]),
+            kept: Object.freeze([azimuth / 4, azimuth]),
+            cuts: Object.freeze([
+                Object.freeze({ part: PART.CUT_A, at: 0, normal: Object.freeze([0, 1, 0]) }),
+                Object.freeze({ part: PART.CUT_B, at: azimuth / 4, normal: Object.freeze([1, 0, 0]) }),
+            ]),
+        });
+    }
+
+    const GRIDS = Object.freeze(Object.fromEntries(DETAILS.map((detail) => [detail, makeGrid(GRID_STEPS[detail])])));
 
     /** n + 1 values from `from` to `to`, both ends exact. */
     function levels(from, to, n) {
@@ -124,9 +141,9 @@
 
     const isMonotone = (values) => values.every((v, k) => k === 0 || v !== values[k - 1]);
 
-    /** The point [rho, z] of the half plane, turned to azimuth step i. (+ 0 turns -0 into 0.) */
-    function place([rho, z], i) {
-        const [cos, sin] = AZIMUTHS[i];
+    /** The point [rho, z] of the half plane, turned to azimuth step i of the grid. (+ 0 turns -0 into 0.) */
+    function place(grid, [rho, z], i) {
+        const [cos, sin] = grid.azimuths[i];
         return [rho * cos + 0, rho * sin + 0, z + 0];
     }
 
@@ -185,18 +202,19 @@
      * The surface a profile sweeps over the azimuth steps [from, to]. The profile runs from the top of the
      * axis round the outside of the solid to the bottom; `inward` turns the faces over (a cavity wall).
      */
-    function revolve(mesh, profile, [from, to], part, inward) {
+    function revolve(mesh, grid, profile, [from, to], part, inward) {
         for (let j = 0; j + 1 < profile.length; j++) {
             for (let i = from; i < to; i++) {
-                const quad = [place(profile[j], i), place(profile[j + 1], i), place(profile[j + 1], i + 1), place(profile[j], i + 1)];
+                const quad = [place(grid, profile[j], i), place(grid, profile[j + 1], i), place(grid, profile[j + 1], i + 1),
+                    place(grid, profile[j], i + 1)];
                 mesh.face(inward ? quad.reverse() : quad, part);
             }
         }
     }
 
     /** A flat cut face: cells of the half plane, placed at the cut's azimuth and facing its normal. */
-    function section(mesh, cells, cut) {
-        cells.forEach((cell) => mesh.face(facing(cell.map((p) => place(p, cut.at)), cut.normal), cut.part));
+    function section(mesh, grid, cells, cut) {
+        cells.forEach((cell) => mesh.face(facing(cell.map((p) => place(grid, p, cut.at)), cut.normal), cut.part));
     }
 
     /** The quads between neighbouring levels of two lists; at(u, v) -> [rho, z]. */
@@ -211,8 +229,8 @@
     }
 
     /** Pole-to-pole profile of an ellipse with semi-axes rho (equator) and z (pole); a circle when they are equal. */
-    const arc = (rho, z) => POLARS.map(([cos, sin]) => [rho * sin, z * cos]);
-    const onArc = (r, j) => [r * POLARS[j][1], r * POLARS[j][0]];
+    const arc = (grid, rho, z) => grid.polars.map(([cos, sin]) => [rho * sin, z * cos]);
+    const onArc = (grid) => (r, j) => [r * grid.polars[j][1], r * grid.polars[j][0]];
     const flat = (rho, z) => [rho, z];
 
     /** Closed profile of a cylinder: the top face outwards, down the side, the bottom face back to the axis. */
@@ -223,50 +241,50 @@
     }
 
     /** One whole solid of revolution, every face SOLID. */
-    function solid(profile, role) {
+    function solid(grid, profile, role) {
         const mesh = meshBuilder();
-        revolve(mesh, profile, WHOLE, PART.SOLID, false);
+        revolve(mesh, grid, profile, grid.whole, PART.SOLID, false);
         return mesh.finish(role);
     }
 
-    const ball = (rho, z, role) => solid(arc(rho, z), role);
-    const can = (radius, length, role) => solid(
-        canProfile(levels(0, radius, CAP_STEPS), levels(length / 2, -length / 2, SIDE_STEPS)), role);
+    const ball = (grid, rho, z, role) => solid(grid, arc(grid, rho, z), role);
+    const can = (grid, radius, length, role) => solid(grid,
+        canProfile(levels(0, radius, grid.capSteps), levels(length / 2, -length / 2, grid.sideSteps)), role);
 
     // ------------------------------------------------------------- shells with the quarter cut away
 
     /** Inner wall, outer surface and the two cut faces of a shell, from its two profiles and the cells between them. */
-    function cutShell(innerProfile, outerProfile, cells) {
+    function cutShell(grid, innerProfile, outerProfile, cells) {
         const mesh = meshBuilder();
-        revolve(mesh, innerProfile, KEPT, PART.CAVITY, true);
-        CUTS.forEach((cut) => section(mesh, cells, cut));
-        revolve(mesh, outerProfile, KEPT, PART.OUTER, false);
+        revolve(mesh, grid, innerProfile, grid.kept, PART.CAVITY, true);
+        grid.cuts.forEach((cut) => section(mesh, grid, cells, cut));
+        revolve(mesh, grid, outerProfile, grid.kept, PART.OUTER, false);
         return mesh.finish(ROLE.shell);
     }
 
     /** null when the thickness is too small to separate the levels in double precision. */
-    function sphereShell(inner, outer) {
-        const radii = levels(inner, outer, CUT_STEPS);
+    function sphereShell(grid, inner, outer) {
+        const radii = levels(inner, outer, grid.cutSteps);
         if (!isMonotone(radii)) return null;
-        return cutShell(arc(inner, inner), arc(outer, outer), gridCells(radii, POLAR_INDEX, onArc));
+        return cutShell(grid, arc(grid, inner, inner), arc(grid, outer, outer), gridCells(radii, grid.polarIndex, onArc(grid)));
     }
 
     /**
      * The shell of a core-shell cylinder. Its cut face is a frame (outer rectangle minus the core's), made of
      * three bands: over the top, down the side, under the bottom. null as for sphereShell.
      */
-    function cylinderShell(radius, thickness, length) {
+    function cylinderShell(grid, radius, thickness, length) {
         const half = length / 2;
-        const coreRho = levels(0, radius, CAP_STEPS);
-        const wallRho = levels(radius, radius + thickness, CUT_STEPS);
-        const coreZ = levels(half, -half, SIDE_STEPS);
-        const topZ = levels(half + thickness, half, CUT_STEPS);
-        const bottomZ = levels(-half, -half - thickness, CUT_STEPS);
+        const coreRho = levels(0, radius, grid.capSteps);
+        const wallRho = levels(radius, radius + thickness, grid.cutSteps);
+        const coreZ = levels(half, -half, grid.sideSteps);
+        const topZ = levels(half + thickness, half, grid.cutSteps);
+        const bottomZ = levels(-half, -half - thickness, grid.cutSteps);
         if (!isMonotone(wallRho) || !isMonotone(topZ)) return null;
         const allRho = coreRho.concat(wallRho.slice(1));
         const allZ = topZ.concat(coreZ.slice(1), bottomZ.slice(1));
         const frame = gridCells(allRho, topZ, flat).concat(gridCells(wallRho, coreZ, flat), gridCells(allRho, bottomZ, flat));
-        return cutShell(canProfile(coreRho, coreZ), canProfile(allRho, allZ), frame);
+        return cutShell(grid, canProfile(coreRho, coreZ), canProfile(allRho, allZ), frame);
     }
 
     /** A box centred on the origin; half = its half sizes along x, y, z. */
@@ -330,20 +348,20 @@
     const sizes = (...values) => (values.every(isPositive) ? values : null);
 
     /** Core (optional) and cut shell between the radii `inner` and inner + thickness. */
-    function coreShellSphere(inner, thickness, withCore) {
+    function coreShellSphere(grid, inner, thickness, withCore) {
         const outer = inner + thickness;
         if (!Number.isFinite(outer)) return null;
-        if (inner === 0) return outer > 0 ? meshScene([ball(outer, outer, ROLE.shell)]) : null;
-        const shell = thickness > 0 ? sphereShell(inner, outer) : null;
-        return meshScene((withCore ? [ball(inner, inner, ROLE.core)] : []).concat(shell === null ? [] : [shell]));
+        if (inner === 0) return outer > 0 ? meshScene([ball(grid, outer, outer, ROLE.shell)]) : null;
+        const shell = thickness > 0 ? sphereShell(grid, inner, outer) : null;
+        return meshScene((withCore ? [ball(grid, inner, inner, ROLE.core)] : []).concat(shell === null ? [] : [shell]));
     }
 
-    function coreShellCylinder(radius, thickness, length) {
+    function coreShellCylinder(grid, radius, thickness, length) {
         const outer = sizes(radius + thickness, length + 2 * thickness);
         if (outer === null) return null;
-        if (radius === 0 || length === 0) return meshScene([can(outer[0], outer[1], ROLE.shell)]);
-        const shell = thickness > 0 ? cylinderShell(radius, thickness, length) : null;
-        return meshScene([can(radius, length, ROLE.core)].concat(shell === null ? [] : [shell]));
+        if (radius === 0 || length === 0) return meshScene([can(grid, outer[0], outer[1], ROLE.shell)]);
+        const shell = thickness > 0 ? cylinderShell(grid, radius, thickness, length) : null;
+        return meshScene([can(grid, radius, length, ROLE.core)].concat(shell === null ? [] : [shell]));
     }
 
     function tubeScene(length, kuhnLength, radius) {
@@ -356,35 +374,45 @@
         });
     }
 
-    /** model -> { names: the dimensions it needs, scene(...those) -> scene | null } */
+    /** model -> { names: the dimensions it needs, scene(grid, ...those) -> scene | null } */
     const BUILDERS = Object.freeze({
-        sphere: { names: ['radius'], scene: (r) => sizes(r) && meshScene([ball(r, r, ROLE.solid)]) },
+        sphere: { names: ['radius'], scene: (g, r) => sizes(r) && meshScene([ball(g, r, r, ROLE.solid)]) },
         ellipsoid: {
             names: ['radius_polar', 'radius_equatorial'],
-            scene: (polar, equatorial) => sizes(polar, equatorial) && meshScene([ball(equatorial, polar, ROLE.solid)]),
+            scene: (g, polar, equatorial) => sizes(polar, equatorial) && meshScene([ball(g, equatorial, polar, ROLE.solid)]),
         },
-        cylinder: { names: ['radius', 'length'], scene: (r, l) => sizes(r, l) && meshScene([can(r, l, ROLE.solid)]) },
-        core_shell_sphere: { names: ['radius', 'thickness'], scene: (r, t) => coreShellSphere(r, t, true) },
-        vesicle: { names: ['radius', 'thickness'], scene: (r, t) => coreShellSphere(r, t, false) },
+        cylinder: { names: ['radius', 'length'], scene: (g, r, l) => sizes(r, l) && meshScene([can(g, r, l, ROLE.solid)]) },
+        core_shell_sphere: { names: ['radius', 'thickness'], scene: (g, r, t) => coreShellSphere(g, r, t, true) },
+        vesicle: { names: ['radius', 'thickness'], scene: (g, r, t) => coreShellSphere(g, r, t, false) },
         core_shell_cylinder: { names: ['radius', 'thickness', 'length'], scene: coreShellCylinder },
         flexible_cylinder: {
             names: ['length', 'kuhn_length', 'radius'],
-            scene: (l, b, r) => sizes(l, b, r) && tubeScene(l, b, r),
+            scene: (g, l, b, r) => sizes(l, b, r) && tubeScene(l, b, r),
         },
         lamellar: {
             names: ['thickness'],
-            scene: (t) => sizes(t, LATERAL_FACTOR * t)
+            scene: (g, t) => sizes(t, LATERAL_FACTOR * t)
                 && meshScene([box([LATERAL_FACTOR * t / 2, LATERAL_FACTOR * t / 2, t / 2], ROLE.solid)], [LAMELLAR_NOTE]),
         },
     });
 
     const hasShape = (model) => SHAPE_MODELS.indexOf(model) >= 0;
 
-    function build(model, params) {
+    /** The grid of options.detail (default fine); an unknown level is a programming error. */
+    function gridOf(options) {
+        const detail = isObject(options) && options.detail !== undefined ? options.detail : DEFAULT_DETAIL;
+        if (typeof detail !== 'string' || !Object.prototype.hasOwnProperty.call(GRIDS, detail)) {
+            throw new Error('build: detail must be one of ' + DETAILS.join(', ') + ', got ' + String(detail));
+        }
+        return GRIDS[detail];
+    }
+
+    function build(model, params, options) {
+        const grid = gridOf(options);
         if (!hasShape(model)) return null;
         const builder = BUILDERS[model];
         const values = dimensions(params, builder.names);
-        return values === null ? null : builder.scene(...values);
+        return values === null ? null : builder.scene(grid, ...values);
     }
 
     // ------------------------------------------------------------- worm-like chain
@@ -473,6 +501,6 @@
     }
 
     globalThis.SasFitShapeGeom = Object.freeze({
-        MAX_FACES, SEED, LATERAL_FACTOR, PART, SHAPE_MODELS, hasShape, build, prng, wormChain,
+        MAX_FACES, SEED, LATERAL_FACTOR, PART, SHAPE_MODELS, DETAILS, hasShape, build, prng, wormChain,
     });
 })();

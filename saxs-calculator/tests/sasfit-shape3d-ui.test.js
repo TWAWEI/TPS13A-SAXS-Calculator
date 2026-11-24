@@ -164,15 +164,33 @@ test('[shape3d-ui] 再 render 而形狀參數沒變：不重建、不重畫；�
     assert.equal(page.canvas.getAttribute('aria-label'), '均勻球的 3D 示意圖：半徑 R 8.2 nm');
 });
 
-test('[shape3d-ui] 多分散與 S(Q) 只改文字，不重建網格、不重畫', () => {
+test('[shape3d-ui] 多分散只改文字；選了 S(Q) 改畫顆粒群（重建、重畫一次），φ 改變時重排，取消 S(Q) 回到單一顆粒', () => {
     const page = m4.shapePage();
     page.settle();
     page.act({ type: 'togglePd', name: 'radius' });
     page.act({ type: 'setPdField', name: 'radius', field: 'width', value: '0.1' });
+    page.frames.flush();
+    assert.deepEqual([page.builds(), page.paints()], [1, 1], '多分散不重建');
+    assert.equal(page.$('sfShapeExtras').textContent, '半徑 R = 5.0 ± 0.5 nm（gaussian）');
     page.act({ type: 'setStructure', structure: 'hardsphere' });
     page.frames.flush();
-    assert.deepEqual([page.builds(), page.paints()], [1, 1]);
-    assert.equal(page.$('sfShapeExtras').textContent, '半徑 R = 5.0 ± 0.5 nm（gaussian）\nS(Q)：hardsphere，φ = 0.20，R_eff 由模型決定');
+    assert.ok(page.builds() > 1);
+    assert.equal(page.paints(), 2);
+    assert.equal(page.$('sfShapeExtras').textContent, ['半徑 R = 5.0 ± 0.5 nm（gaussian）', 'S(Q)：hardsphere 硬球，圖中 12 顆相同的顆粒，φ = 0.20',
+        '有效半徑 R_eff = 5.0 nm，模式：半徑（radius）', '多分散：每顆顆粒都畫成中心值的大小'].join('\n'));
+    assert.match(page.canvas.getAttribute('aria-label'), /12 顆相同顆粒的排列（S\(Q\)：hardsphere）/);
+    const ensembleBuilds = page.builds();
+    page.act({ type: 'setPdField', name: 'radius', field: 'width', value: '0.2' });
+    page.frames.flush();
+    assert.deepEqual([page.builds(), page.paints()], [ensembleBuilds, 2], 'φ 與 R_eff 沒變：不重建');
+    page.act(setValue('volfraction', 0.1));
+    page.frames.flush();
+    assert.equal(page.paints(), 3, 'φ 改變：箱子變了，重畫');
+    page.act({ type: 'setStructure', structure: null });
+    page.frames.flush();
+    assert.equal(page.paints(), 4);
+    assert.equal(page.$('sfShapeExtras').textContent, '半徑 R = 5.0 ± 1.0 nm（gaussian）');
+    assert.doesNotMatch(page.canvas.getAttribute('aria-label'), /顆相同顆粒/);
 });
 
 test('[shape3d-ui] 表單有錯：保留上一張圖並在狀態行說明；改回來後清掉', () => {

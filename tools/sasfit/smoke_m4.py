@@ -528,11 +528,17 @@ def measure_table(ctx, measured):
 def print_measurements(measured):
     print('14 measurements (informational, no threshold)')
     f, t = measured.get('frame'), measured.get('table')
-    if f:
-        print(f"      3D redraw of one frame ({f['model']}, {f['faces']} faces, canvas {f['canvas'][0]}x{f['canvas'][1]}, 60 frames 3 degrees apart): "
-              f"median {f['median']:.2f} ms, max {f['max']:.2f} ms")
-    else:
-        print('      3D redraw time: NOT MEASURED (check 8a did not get that far)')
+    for label, frame in (('single particle', f), ('heaviest ensemble', measured.get('ensemble_frame'))):
+        if frame:
+            print(f"      3D redraw of one frame, {label} ({frame['model']}, {frame['count']} x particle, {frame['faces']} faces, {frame['items']} drawn, "
+                  f"canvas {frame['canvas'][0]}x{frame['canvas'][1]}, 60 frames 3 degrees apart): median {frame['median']:.2f} ms, "
+                  f"90th percentile {frame['p90']:.2f} ms, max {frame['max']:.2f} ms")
+        else:
+            print(f"      3D redraw time, {label}: NOT MEASURED ({measured.get('ensemble_error', 'the check did not get that far')})")
+    for key, label in (('edit_on', 'ensemble on screen'), ('edit_off', 'ensemble off screen'), ('edit_single', 'no S(Q), single particle on screen')):
+        if key in measured:
+            sync, curve = measured[key]
+            print(f"      editing radius (core_shell_cylinder, {label}): input handling {sync:.1f} ms, curve updated after {curve:.0f} ms (medians of 5)")
     if t:
         print(f"      sequence table of {t['rows']} synthetic files ({t['trs']} <tr> with their note rows) x {t['columns']} columns: SasFitSeqView.bodyHtml median {t['html']:.2f} ms "
               f"({t['chars']} chars), innerHTML into a detached tbody median {t['dom']:.2f} ms (7 runs)")
@@ -597,6 +603,8 @@ def run_all(base_url):
                 sh.check_shape_view(ctx)
                 sh.check_shape_keys(ctx, measured)
                 sh.check_offscreen(ctx)
+                sh.check_ensemble(ctx, measured)
+                sh.measure_ensemble(ctx, measured)
                 check_stop(ctx)
                 check_reduced_motion(ctx)
                 check_versions(ctx)
