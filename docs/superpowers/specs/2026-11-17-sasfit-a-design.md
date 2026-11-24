@@ -16,7 +16,7 @@
 1. 讀官方 TPS13A `.dat`（含檔頭）與一般 2–4 欄文字檔；可一次載入多個。
 2. 15 個模型（§4.1）：形狀 8＋與形狀無關 5＋結構因子 2；多分散度（寬度可擬合）；低 Q 冪律附加項。
 3. 單組資料 Levenberg–Marquardt 擬合，含參數誤差、χ²ᵣ、殘差。
-4. 主圖三種模式：log-log、Guinier（ln I vs q²）、Kratky（q²I vs q）；殘差圖。
+4. 主圖四種模式：log-log、Guinier（ln I vs q²）、Kratky（q²I vs q）、Porod（I·q⁴ vs q，v5.7）；殘差圖。
 5. 多組資料疊圖（可錯開）。
 6. 序列擬合與參數趨勢圖。
 7. 3D 結構示意圖（8 個形狀模型）。
@@ -84,11 +84,12 @@
 | `js/sasfit-sequence.js` | 序列擬合的排程、每檔範圍、起始值規則、執行器（client 由呼叫端注入；M4；純） | jobs、weighting、hints |
 | `js/sasfit-seq-view.js` | 序列表（選檔＋結果）的列與 HTML、趨勢圖的資料與 config（M4；純） | sequence、format |
 | `js/sasfit-export.js` | 匯出共用工具：`num`、CSV 儲存格、註解列、檔名、data URL → 位元組、軟體字串、由 FitResult 取參數列、擬合曲線 CSV（M4；純） | — |
-| `js/sasfit-report.js` | 報告 TXT、序列結果 CSV（M4；純） | export、seq-view |
+| `js/sasfit-sasview.js` | 擬合結果 → SasView「Paste Params」參數文字、可否表示的判斷、每筆擬合的注意事項（v5.7；純） | export、form |
+| `js/sasfit-report.js` | 報告 TXT、序列結果 CSV（M4；純） | export、seq-view、sasview |
 | `js/sasfit-iucr.js` | `AppState.sasfitData` 物件、可否送出的判斷、「Model fitting」列的 HTML（M4；純） | export |
 | `js/sasfit-data-ui.js`、`sasfit-params-ui.js`、`sasfit-fit-ui.js` | M3 的三個分段（DOM） | 以上 |
 | `js/sasfit-seq-ui.js` | 序列分段：選項、執行／停止、表格、趨勢圖、點列載入（M4；DOM） | sequence、seq-view |
-| `js/sasfit-export-ui.js` | 匯出與「送進 IUCr 表格」按鈕、下載、各圖 PNG（M4；DOM） | export、report、iucr |
+| `js/sasfit-export-ui.js` | 匯出、「送進 IUCr 表格」與「複製 SasView 參數」按鈕、下載、剪貼簿、各圖 PNG（M4、v5.7；DOM） | export、report、iucr、sasview |
 | `js/section-sasfit.js` | 分頁 UI 串接（四個分段的註冊、`ctx`） | 以上全部 |
 | `js/section-iucr.js` | IUCr 頁（既有）；M4 加 `setIUCrModelFit`、`renderIUCrModelFit`、`iucrCopySource`、`iucrExecCopy` | iucr |
 | `css/sasfit-views.css` | M4 的樣式：檢視切換、3D 區、序列分段、匯出列、IUCr 擬合段（`sasfit.css` 已近行數上限） | — |
@@ -321,7 +322,7 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 ```
 ┌─ 側欄 ─┬────── 左欄：操作 ──────┬──────────── 右欄：圖（sticky，較寬）────────────┐
-│        │ [資料][模型][擬合][序列] │ [曲線│3D 結構] I(q) [log-log│Guinier│Kratky] [重設縮放] │
+│        │ [資料][模型][擬合][序列] │ [曲線│3D 結構] I(q) [log-log│Guinier│Kratky│Porod] [重設縮放] │
 │        │ ┌ 擬合列（四個分段都在）┐ │  空心資料點（誤差棒）＋墨色的模型曲線             │
 │        │ │[開始擬合][停止]      │ │  灰色區＋虛線＝擬合範圍外                        │
 │        │ │ χ²ᵣ 1.02 已收斂 5 步 │ │  操作說明           [主圖 PNG][殘差 PNG]         │
@@ -407,12 +408,14 @@ wasm 匯出的 1D 入口為 sasmodels 生成碼的 `<model>_Iq`，參數順序�
 
 ### 5.6 圖區
 
-- 主圖模式：log-log（I vs q，雙對數）、Guinier（ln I vs q²，線性軸）、Kratky（q²I vs q，線性軸）。三種模式套用到所有顯示中的資料與其模型曲線。圖卡標題跟著模式（I(q)／ln I – q²／q²·I – q）。
+- 主圖模式：log-log（I vs q，雙對數）、Guinier（ln I vs q²，線性軸）、Kratky（q²I vs q，線性軸）、Porod（I·q⁴ vs q，線性軸；v5.7）。四種模式套用到所有顯示中的資料與其模型曲線。圖卡標題跟著模式（I(q)／ln I – q²／q²·I – q／I·q⁴ – q）。
+- **Porod 模式（v5.7；決策 40）**：y ＝ I·q⁴、誤差棒 σ·q⁴、模型曲線同乘 q⁴，作法與 Kratky 完全相同（負的 I 照畫；只有 q ≤ 0 或 q、I 不是有限值的點不畫；x 軸從 0 到資料的最大 q；擬合範圍灰區與虛線、縮放、PNG 都一樣）。**不扣背景**：畫的是載入的資料與算出來的模型，所以平的背景在圖上是隨 q⁴ 上升的曲線，不是 Porod 平台。y 軸標題「I(q)·q⁴」，全部是官方檔時「I(q)·q⁴ (cm⁻¹·Å⁻⁴)」。殘差圖不變（x 用 q，殘差不乘 q⁴）。
+- **標題列與四個模式鈕（v5.7）**：兩欄版面的標題列一律不折行（`flex-wrap: nowrap`）。圖卡內寬 ≥ 約 575 px（視窗 1440）時標題與四顆鈕同列，餘 17–19 px；字型較寬時標題先以刪節號縮短。圖卡內寬 420–448 px（視窗 1280、1024；容器 860–1039 px）放不下標題：標題改成只給輔助科技（視覺上隱藏，它說的與 y 軸標題、按下的模式鈕相同），「重設縮放」顯示為「重設」（`aria-label` 仍是全名），模式鈕左右留白 0.25rem，餘 32／60 px。實測（有擬合結果、曲線與 3D 兩種檢視、四種模式）：`.sf-plots` 的 scrollHeight ＝ clientHeight ＝ 759／713／698（1440×900／1280×800／1024×768），標題列高 32 px。單欄：760 寬同一列；320 寬模式鈕組 203 px（標題列 218 px），字級 0.75rem。
 - **曲線與資料點（修正批次 B；決策 27）**：擬合對象的模型曲線（擬合曲線與預覽）用自己的角色色 `ChartTheme` 的 `modelCurve`（墨色：淺色 #1D1D1F、深色 #F5F5F7），線寬 2 px，圖例有一項「模型」；其他檔的曲線仍是各自的系列色、1.5 px。資料點空心（填色透明、外框 1 px），半徑 2（擬合對象）／1.5（其他）。誤差棒畫在資料點之前，不透明度取自主題的 `errorBarAlpha`。
 - 疊圖：沿用 8 色系列，第 9 組起重複色並改虛線；有擬合結果者畫曲線。圖例精簡（小標記、靠左），超過 6 組時隱藏（檔案清單已有色樣）。
 - **預設軸範圍**：x 軸取資料的 q 範圍（預覽用較寬的網格時不把軸撐開）；Guinier 預設只看低 q——到擬合對象的強度降到低 q 水準的十分之一為止，且不超過擬合範圍上限，y 軸取窗內資料的範圍。縮放中換資料不動使用者的視野；「重設縮放」回到當時資料的預設範圍。
 - **擬合範圍**：範圍外灰色之外，再加兩條虛線（`reference` 角色）——只靠灰色的對比是 1.25:1，遠端桌面下看不出來。
-- 殘差圖：r_i（§4.8），y 軸標題「(I − I模型)/w」，x 軸跟隨主圖模式（log-log、Kratky 用 q；Guinier 用 q²）；只畫擬合對象。沒有殘差時整張圖收成一行「尚無擬合結果」。
+- 殘差圖：r_i（§4.8），y 軸標題「(I − I模型)/w」，x 軸跟隨主圖模式（log-log、Kratky、Porod 用 q；Guinier 用 q²）；只畫擬合對象。沒有殘差時整張圖收成一行「尚無擬合結果」。
 - **縮放（chartjs-plugin-zoom 2.2.0；決策 28）**：Ctrl＋滾輪或兩指縮放、拖曳框選放大、Shift＋拖曳平移；**單純的滾輪捲動頁面**（圖是 sticky 的大區塊，滾輪被它吃掉就捲不動參數表）。「重設縮放」只有縮放中才可按，狀態列此時寫「已縮放」；圖下有一行操作說明。PNG 匯出一律淺色白底。「主圖 PNG」「殘差 PNG」兩顆按鈕與操作說明同一列（圖下，M4）；3D 的 PNG 在結構檢視的工具列，趨勢圖的在序列分段；四者都經 Blob＋object URL 下載（Chart.js 的 data URL 先解成位元組，不 fetch）。對數橫軸在繪圖區窄於 260 px（手機）時只留約 4 個刻度文字，不互相重疊。
 - **canvas 的替代文字**帶著結果：主圖「N 組資料，模式…，擬合對象：…，模型 …，約化 χ² 1.02（已收斂），擬合範圍 q …」；殘差圖「… 的殘差，N 點，範圍 a 至 b，|殘差| > 3 的有 k 點」。
 - **暫停的預覽有三種狀態**：尚未更新「即時預覽已暫停（多分散網格過大），曲線尚未更新；按「更新曲線」重算」→ 計算中「計算中…」→ 已手動更新「曲線已更新（手動）；再改參數後需再按「更新曲線」」。「預覽以 N 點計算」只在它描述的就是畫面上那條曲線時出現。
@@ -443,7 +446,7 @@ M2 的科學審查與程式審查（2026-11-18）指出，下列情況擬合器�
 
 **修正批次 A 新增（M3 審查，2026-11-18）**
 14. 顯示的誤差 ≥ |數值| 的擬合參數（貼邊界者除外，它有自己的提示）列在一則警告提示「下列參數的誤差大於數值（與 0 無法區分，或無法由這組資料決定）：…」（提示 id `undetermined`，§5.4 數字格式第 2 點）。
-15. 圖區狀態列說明點為什麼沒畫：log-log「N 點 I ≤ 0 或無效，對數軸無法顯示（不影響擬合）」、Guinier「…Guinier 座標（ln I）無法顯示（不影響擬合）」、Kratky「N 點的 q 或 I 不是有效數值，無法顯示」。
+15. 圖區狀態列說明點為什麼沒畫：log-log「N 點 I ≤ 0 或無效，對數軸無法顯示（不影響擬合）」、Guinier「…Guinier 座標（ln I）無法顯示（不影響擬合）」、Kratky 與 Porod（v5.7）「N 點的 q 或 I 不是有效數值，無法顯示」。
 16. 開始擬合時若還有預覽在 Worker 裡計算，進度列先顯示「等待預覽完成…」，直到第一個進度或結果（不中止 Worker，否則已載入的 wasm 要重新載入）。
 17. 擬合結果寫不進參數表時在擬合分段顯示錯誤提示，且不顯示「參數已改動」。
 
@@ -521,12 +524,13 @@ M4 實作並經審查修正後的規則（決策 34–36、39）。
 - 未送出前此段在畫面上顯示「尚未送入擬合結果」，但**空的段落不進「複製表格」**（否則這句話會被貼進投稿表格）。
 - **「複製表格」**（決策 31）：內容取自表格的複本——q-range／Exposure time／Temperature 三個輸入框換成**目前的值**（文字節點），複製出去的 HTML 不留 `<input>`；HTML 與純文字兩種都帶。Clipboard API 不可用或被拒時的後備路徑（`execCommand('copy')`）以一次性的 `copy` 監聽器寫入同一份 HTML 與純文字，兩條路內容完全相同；`execCommand` 回報成功才顯示「已複製」。
 
-## 9. 匯出（`sasfit-export.js`、`sasfit-report.js`、`sasfit-export-ui.js`）
+## 9. 匯出（`sasfit-export.js`、`sasfit-report.js`、`sasfit-sasview.js`、`sasfit-export-ui.js`）
 
 | 檔案 | 檔名 | 內容 |
 |---|---|---|
 | 擬合曲線 CSV | `<資料名>_<模型>_fit.csv` | 註解列，表頭 `q,I,sigma,I_model,residual,in_fit`，然後**每一個**資料點（含範圍外的）；`in_fit` 取 Worker 自己的選點（`SasFitWeighting.select`），不由殘差是否有限推斷 |
-| 報告 TXT | `<資料名>_<模型>_report.txt` | 資料檔名與檔頭（能量與換算的波長、q_start、厚度、SF、透射率…）；模型、S(Q) 組合與有效半徑模式；多分散設定（分布、寬度、npts、nsigmas、cutoff）；各參數；χ²、量度、自由度、點數、q 範圍、權重；演算法與設定、迭代數、狀態與旗標、強相關；註記（f ≈ Z、hayter_msa、貼邊界、誤差大於數值）；軟體與版本 |
+| 報告 TXT | `<資料名>_<模型>_report.txt` | 資料檔名與檔頭（能量與換算的波長、q_start、厚度、SF、透射率…）；模型、S(Q) 組合與有效半徑模式；多分散設定（分布、寬度、npts、nsigmas、cutoff）；各參數；χ²、量度、自由度、點數、q 範圍、權重；演算法與設定、迭代數、狀態與旗標、強相關；註記（f ≈ Z、hayter_msa、貼邊界、誤差大於數值）；軟體與版本；最後一段 `[SasView parameter text]`（v5.7，見下） |
+| SasView 參數文字（v5.7） | 不是檔案：「複製 SasView 參數」寫進剪貼簿 | SasView「Edit → Copy Params／Paste Params」格式的一行文字（見下） |
 | 序列結果 CSV | `<條件名>_sequence.csv` | 序列表的每一列（序列自己的結果，§7）：序號、檔名、條件值、各參數與顯示的誤差、量度、dof、迭代數、狀態碼與狀態文字、q 範圍、初值來源、註記 |
 | PNG | `…_main.png`、`…_residual.png`、`…_shape.png`、`<條件名>_trend.png` | 主圖、殘差、3D、趨勢圖；淺色白底（深色主題下也是） |
 
@@ -536,6 +540,12 @@ M4 實作並經審查修正後的規則（決策 34–36、39）。
 - **文字儲存格**：以 `= + - @`、Tab 或 CR 開頭的文字前置單引號（公式注入防護）；含 `#` 的文字加引號（pandas 會在未加引號的 # 處截斷）；儲存格裡的換行換成一個空白（一列就是一行）。數字儲存格不處理（負數仍是數字）。
 - **檔名**（`safeName`）：NFC；去掉路徑與**已知的資料副檔名**（`.dat`／`.txt`／`.csv`，不分大小寫；`sample.v2` 的 `.v2` 是檔名的一部分）；`\ / : * ? " < > |`、控制字元、雙向控制字元與落單的代理碼位換成底線；去頭尾的空白與點；Windows 保留名前置底線；以 UTF-8 位元組計上限 120。條件名稱不當檔名處理（`mg/mL` → `mg_mL`）。
 - **報告的波長**以 hc ＝ 12.398 keV·Å 換算並印出算式（`12.398 / E`），與「SAXS 結構參數」頁同一個常數，兩頁顯示相同的波長（決策 38）。共變異的說明寫 `(J^T J)^-1`。
+- **SasView 參數文字（v5.7；決策 41；`SasFitSasView`）**：擬合分段匯出列的第四顆鈕「複製 SasView 參數」，啟用條件與 CSV／TXT 相同（有結果、不在擬合中；結果與參數表不符時複製的是上一次擬合並註明）。同一段文字也寫在報告 TXT 的最後一段。
+  - **格式**（取自 SasView 原始碼：6.1.0 的 `FittingUtilities.formatParameters`、`FittingWidget.getFitParameters／getFitPage／getFitModel／clipboard_paste／updatePageWithParameters／updateFullModel`、`PolydispersityWidget.gatherPolyParams／updateFullPolyModel`；5.0.6 的 `FittingWidget.py` 同名函式與 `onParameterPaste`）：列以「:」相接、欄以「,」相接，沒有跳脫，所以任何欄位都不能含這兩個字元；第一列是 `sasview_parameter_values`；貼上時只讀多於一欄的列。`model_name,<P>`；一般參數 `<名稱>,<True|False>,<值>,<誤差|None>,<下限>,<上限>,()`（6 欄；勾選＝擬合；`inf`／`-inf`；最後是空的限制式）；P@S 的兩個選項參數 `structure_factor_mode,None,<0|1>,None,,,()`、`radius_effective_mode,None,<k>,None,,,()`（值是選項的索引）；多分散 `<名稱>.width,<True|False>,<寬度>,<誤差|None>,<下限>,<上限>,<Npts>,<Nsigs>,<分布>`（8 欄）；`polydisperse_params,<True|False>`、`magnetic_params,False`、`2D_params,False`；`fitpage_model`／`fitpage_structure` 只是資訊（Edit → Paste Params 不會替使用者選模型）。結構因子不在 `model_name` 裡：P@S 的 `model_name` 是 P，參數兩者都列。模型自己定義的 `radius_effective`（模式 > 0）不寫。
+  - **寫什麼**：值與誤差全精度（`SasFitExport.num`）；誤差一律是**未乘**的 1 σ（`FitResult.errors`，SasView 自己的算法；權重不是資料 σ 時說明裡註明本頁顯示的是已乘的值），貼邊界或非有限時寫 `None`；上下限取自參數表（模型已換時用模型預設值並註明）；每個開啟的多分散照這次擬合實際用的寬度、Npts、Nsigs、分布寫（本頁預設 gaussian 35／3、schulz 與 lognormal 80／3，與 SasView 的 80／8 不同，絕不留給 SasView 的預設）；有任何多分散開啟時，其餘可多分散的參數寫成寬度 0 的列（文字與 SasView 新表格相同，貼上不會改動它）。只寫數字與通過白名單／識別字規則的名稱，不含檔名或使用者輸入的文字。
+  - **不能表示就停用**：低 q 冪律附加項（SasView 沒有對應的內建模型）、不在清單內的模型／結構因子／分布、非有限的參數值——按鈕停用，原因寫在按鈕下方（中文）。
+  - **已對真的 SasView 6.1.0 驗證**（本機 `/Applications/SasView6.app`，以它自己的 `FittingWidget` 無頭執行，貼上後從 kernel 讀回）：13 個形狀因子單獨與配兩個結構因子共 25 種組合，參數名稱、順序、可多分散的參數、有效半徑模式清單與預設值都與本頁相同；貼上後每個參數的值、擬合勾選、上下限與兩個模式選項都正確。**SasView 自己的限制**（按下後的說明與報告會列出與該筆擬合有關的幾項）：(1) 貼上的數值只取 5 位有效數字（`%-7.5g`），誤差欄不讀；(2) 6.x 選了結構因子時不貼 `background`（`_n_shells_row` 剛好指到那一列），要手動輸入；(3) 6.1.0 及更早版本不貼分布類型，要在貼上前先選；(4) **6.1.0** 的多分散表格把 Npts／Nsigs 的任何變動（手動輸入、選分布或貼上）寫進計算用的 PD **寬度**，Npts／Nsigs 本身不生效（`PolydispersityWidget.onPolyModelChange` 一律寫 `<名稱>.width`；實測：選 schulz 後 kernel 的寬度變成 8）——貼上後要把寬度改成別的值再改回來，Nsigs 與 SasView 預設不同時兩邊曲線會有差異。5.0.6、6.0.0 與 6.1.0 之後的開發版只讀過原始碼、沒有實際執行：5.0.6 與 6.0.0 把 Npts／Nsigs 寫到正確的鍵，開發版也已修正並會貼上分布類型；5.0.6 沒有第 2 項，6.0.0 有。
+  - **剪貼簿**：`navigator.clipboard.writeText`，不存在或被拒時改用隱藏的 `<textarea class="sr-only">`＋`execCommand('copy')`；兩者都失敗時在 `#sfExportNote` 說明並指向報告 TXT。
 - 下載一律 Blob＋object URL（用完 revoke）；匯出不經 Worker、不重算，完全由已存的 Dataset 與 FitResult 組成。「已停止」的結果沒有曲線，不能匯出。
 
 ## 10. 建置流程（repo 根目錄 `tools/sasfit/`，不部署）
@@ -655,6 +665,8 @@ M4 實作並經審查修正後的規則（決策 34–36、39）。
 | 37 | 3D 的畫法慣例：正交投影；殼／實心藍、核琥珀，不對應 SLD，不畫溶劑；尺寸用圖下的文字清單＋圖上的比例尺；lamellar 單一薄板、橫向示意；柔性圓柱畫成沿中心線的粗線、沒有排除體積、寫明是一個代表性構形；**蠕蟲鏈以 α＝(2l_p/ds−1)/(2l_p/ds+1) 保持蠕蟲鏈的大小，L/b ≥ 200 時改粗粒化並註明輪廓長度是示意**；方向鍵與拖曳同方向；Ctrl＋滾輪縮放、不提供平移；觸控先橫向拖曳即可旋轉 | 見 §6。蠕蟲鏈：原構造在步數封頂後 ⟨Rg²⟩ 偏大到 1.7–5 倍，「按比例」不成立；方向鍵原先與拖曳相反 | 工程（M4 計畫審查、科學審查與 UI 審查 2026-11-19） |
 | 38 | 報告 TXT 的波長以 hc ＝ 12.398 keV·Å 換算，與「SAXS 結構參數」頁相同 | 兩頁對同一個能量顯示不同的波長（CODATA 值與 12.398 在第 5 位有差）會讓使用者懷疑其中一個；SAXS 頁不動 | 使用者 2026-11-19 |
 | 39 | 序列之後被單獨重新擬合的檔：序列表、趨勢圖與序列 CSV 仍用**序列自己的結果**，另加「已單獨重新擬合」註記。**推翻 M4 計畫假設 (a)4**（顯示 `fitResults` 目前的內容） | 單筆擬合可以換權重與範圍：原做法會在同一張表、同一條趨勢線與同一個 CSV 裡混兩種量度（實測：σ 權重的表頭下出現不加權擬合的數字） | 工程（程式審查 2026-11-19） |
+| 40 | 主圖第四種模式 Porod：I·q⁴ 對 q，線性軸，**不扣背景**（資料照載入的畫、模型照算出來的畫），作法與 Kratky 相同 | 與 Kratky 一致：圖上的每一點都是檔案裡的數字乘上 q 的冪次，沒有使用者看不到的處理；要看 Porod 平台就把背景放進模型去擬合 | 工程，依使用者「照你建議」（2026-11-24） |
+| 41 | 匯出 SasView「Paste Params」參數文字（剪貼簿＋報告 TXT 最後一段）。誤差一律寫未乘的 1 σ；多分散的寬度、Npts、Nsigs、分布照這次擬合實際用的寫；低 q 冪律附加項不能表示 → 停用；SasView 貼上時的四項限制（5 位有效數字、6.x 有 S(Q) 時不貼 background、≤ 6.1 不貼分布、6.1.0 貼 Npts／Nsigs 會蓋掉計算用的寬度）以說明告知，不因此停用按鈕 | 格式取自 SasView 原始碼並以本機 SasView 6.1.0 實際貼上驗證（§9）。未乘的誤差是 SasView 在相同權重下自己會顯示的值，而且貼上時根本不讀誤差欄。多分散的問題出在 SasView 6 的表格（手動輸入也一樣），文字本身是對的，5.0.x 與修正後的版本可以正確貼上；主要參數仍然省下逐格輸入 | 工程（2026-11-24；多分散時「不停用、以說明告知」待使用者確認） |
 
 ## 16. 已知限制與 B 版候選
 
