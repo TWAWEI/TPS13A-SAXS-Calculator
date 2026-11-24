@@ -51,7 +51,8 @@
  *
  * Pure: no DOM, no timers, no colours; SasFitShapeGeom, SasFitShapeView, SasFitSqDerived, SasFitMeta, SasFitForm,
  * SasFitJobs, SasFitFormat and SasFitLabels are read at call time. The arrangements (they depend on count and seed
- * only) and the face count of each model and level are memoised. Everything returned is frozen; typed arrays cannot be and must not be written to.
+ * only) and the face count of each model and level are memoised. Everything returned is frozen; typed arrays
+ * cannot be, and must not be written to.
  */
 
 (function () {
