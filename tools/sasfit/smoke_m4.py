@@ -279,6 +279,69 @@ def check_report(ctx):
     check(ctx, '6b report TXT: name, model, every fitted parameter in full precision and as shown, both error columns, measure name, f ≈ Z, software', run)
 
 
+JS_SASVIEW_INFO = """() => {
+  const s = SasFitSection.getState(), r = s.fitResults[s.activeId];
+  return { radius: String(r.params.radius), fitted: r.names, model: r.settings.modelSpec.model, note: document.getElementById('sfExportNote').textContent,
+           help: document.getElementById('sfSasviewNote').textContent };
+}"""
+
+JS_POROD_INFO = """() => {
+  const s = SasFitSection.getState(), file = s.files.find((f) => f.id === s.activeId), d = file.dataset;
+  const chart = __ui.chart('sfMainChart'), data = __ui.activeData(), curve = __ui.curve(), fit = s.fitResults[s.activeId];
+  const i = Math.floor(d.q.length / 3), point = data.data.find((p) => p.x === d.q[i]) || null;
+  const k = Math.floor(curve.data.length / 3), j = Array.from(d.q).indexOf(curve.data[k].x);
+  return { points: data.data.length, n: d.q.length, i, point, want: Math.pow(d.q[i], 4) * d.I[i],
+           bar: point && d.sigma ? [point.yMax - point.y, Math.pow(d.q[i], 4) * d.sigma[i]] : null,
+           curvePoint: curve.data[k], curveWant: j < 0 ? null : Math.pow(d.q[j], 4) * fit.curve[j], kind: d.kind,
+           x: [chart.scales.x.type, chart.options.scales.x.title.text], y: [chart.scales.y.type, chart.options.scales.y.title.text],
+           pressed: document.getElementById('sfModePorod').getAttribute('aria-pressed'), title: document.getElementById('sfPlotTitle').textContent,
+           label: document.getElementById('sfMainChart').getAttribute('aria-label') };
+}"""
+
+
+def check_sasview_copy(ctx):
+    def run():
+        page = ctx.page
+        su.tab(page, 'fit')
+        page.wait_for_function("() => !document.getElementById('sfCopySasview').disabled", timeout=5_000)
+        page.evaluate("() => navigator.clipboard.writeText('')")
+        page.click('#sfCopySasview')
+        page.wait_for_function("() => document.getElementById('sfExportNote').textContent.startsWith('已複製 SasView 參數文字')", timeout=5_000)
+        clip = page.evaluate('() => navigator.clipboard.readText()')
+        info = page.evaluate(JS_SASVIEW_INFO)
+        lines = {line.split(',')[0]: line.split(',')[1:] for line in clip.split(':')[1:]}
+        radius = lines.get('radius', [])
+        _, _, raw = grab(page, '#sfExportTxt')
+        report = raw.decode('utf-8-sig').splitlines()
+        ok = (clip.startswith('sasview_parameter_values:model_name,sphere:') and info['model'] == 'sphere' and len(radius) == 6
+              and radius[0] == 'True' and radius[1] == info['radius'] and float(radius[1]) == float(info['radius']) and radius[5] == '()'
+              and all(lines.get(n, [''])[0] == 'True' for n in info['fitted']) and lines.get('polydisperse_params') == ['False']
+              and 'Paste Params' in info['help'] and '[SasView parameter text]' in report and ('Text: ' + clip) in report)
+        return ok, (f"clipboard ({len(clip)} chars) starts {clip[:52]!r}; radius line {radius} (fit result radius {info['radius']}); "
+                    f"fitted {info['fitted']}; the report TXT has the same text: {('Text: ' + clip) in report}; note {info['note'][:40]!r}")
+    check(ctx, '6f copy SasView parameters: the clipboard text starts with the token and the model, has the fitted radius in full precision and its fit flag, '
+              'and is the text of the report TXT', run)
+
+
+def check_porod(ctx):
+    def run():
+        page = ctx.page
+        page.click('#sfModePorod')
+        page.wait_for_function("() => __ui.chart('sfMainChart').options.scales.y.title.text.startsWith('I(q)·q⁴')", timeout=5_000)
+        i = page.evaluate(JS_POROD_INFO)
+        page.click('#sfModeLogLog')
+        page.wait_for_timeout(300)
+        y_title = 'I(q)·q⁴ (cm⁻¹·Å⁻⁴)' if i['kind'] == 'official' else 'I(q)·q⁴'
+        same = lambda a, b: a is not None and b is not None and abs(a - b) <= 1e-12 * max(abs(a), abs(b), 1e-300)   # noqa: E731
+        ok = (i['points'] > 0 and i['point'] is not None and same(i['point']['y'], i['want']) and (i['bar'] is None or same(i['bar'][0], i['bar'][1]))
+              and same(i['curvePoint']['y'], i['curveWant']) and i['x'] == ['linear', 'q (Å⁻¹)'] and i['y'] == ['linear', y_title]
+              and i['pressed'] == 'true' and i['title'] == 'I·q⁴ – q' and '模式 Porod' in i['label'])
+        return ok, (f"{i['points']} data points drawn (file has {i['n']}); point {i['i']}: y={i['point'] and i['point']['y']!r} want I·q⁴={i['want']!r}; "
+                    f"error bar {i['bar']}; model curve y={i['curvePoint']['y']!r} want {i['curveWant']!r}; axes x={i['x']} y={i['y']}; "
+                    f"title {i['title']!r}; aria-pressed={i['pressed']}")
+    check(ctx, '6g Porod mode: the chart has data, y = I·q⁴ for a data point, its error bar and a model point, linear axes, the y title with its unit', run)
+
+
 def check_sequence_csv(ctx):
     def run():
         page = ctx.page
@@ -362,7 +425,7 @@ def check_iucr_block(ctx):
         labels = ['Data file', 'Model', 'q-range for fitting', 'Number of points', 'Weighting', 'Reduced χ²', 'Status', 'Assumptions', 'Software']
         missing = [n for n in labels if n not in by_label]
         ok = (rows[0] == [IUCR_HEADING] and not missing and param_ok and by_label['Data file'][2] == 'SYNTH_sphere_10.dat' and by_label['Model'][2] == 'sphere'
-              and 'f ≈ Z' in by_label['Assumptions'][2] and ('v' + version) in by_label['Software'][2] and version == '5.6')
+              and 'f ≈ Z' in by_label['Assumptions'][2] and ('v' + version) in by_label['Software'][2] and version == '5.7')
         return ok, (f"note after sending: {note!r}; heading {rows[0]}; parameter rows {[(n, by_label.get(n, ['', '', '', '?'])[3]) for n, _ in params]}; "
                     f"missing rows: {missing or 'none'}; software {by_label.get('Software', ['', '', '?'])[2]!r}")
     check(ctx, '5b send to IUCr: the block has the heading, data file, model, 5 parameter rows (fixed ones marked), q-range, points, weighting, measure, status, assumptions, software', run)
@@ -687,6 +750,8 @@ def run_all(base_url):
                 page.wait_for_function("() => SasFitSection.getState().activeId === 'd1'", timeout=5_000)
                 check_fit_csv(ctx)
                 check_report(ctx)
+                check_sasview_copy(ctx)
+                check_porod(ctx)
                 check_sequence_csv(ctx)
                 themed_pass(ctx)
                 check_iucr_block(ctx)
