@@ -136,7 +136,6 @@ function unlockDndc({ moveFocus = false } = {}) {
     const unlockBtn = document.getElementById('dndcNavUnlock');
     if (navItems) navItems.classList.remove('hidden');
     if (unlockBtn) {
-        unlockBtn.textContent = '🔓 dn/dc 工具';
         unlockBtn.setAttribute('aria-expanded', 'true');
         // 解鎖後已無 dialog 可開：移除 popup 語意並退出 tab 順序，
         // 避免留下一個「可聚焦但按了沒反應」的控制項。

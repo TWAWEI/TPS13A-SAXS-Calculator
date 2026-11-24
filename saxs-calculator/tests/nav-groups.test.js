@@ -99,14 +99,30 @@ test('[nav-groups] dn/dc 子群組在「計算工具」裡面：解鎖鈕在脂�
 });
 
 test('[nav-groups] dn/dc 解鎖鈕的屬性不變（js/dndc-lock.js 依賴）', () => {
-    const button = (NAV.match(/<button\b[^>]*id="dndcNavUnlock"[^>]*>[^<]*<\/button>/) || [])[0];
+    const button = (NAV.match(/<button\b[^>]*id="dndcNavUnlock"[^>]*>[\s\S]*?<\/button>/) || [])[0];
     assert.ok(button, '找不到 #dndcNavUnlock');
     assert.match(button, /\stype="button"/);
     assert.match(button, /\sclass="nav-item nav-item--lock"/);
     assert.match(button, /\saria-haspopup="dialog"/);
     assert.match(button, /\saria-controls="dndcPasswordModal"/);
     assert.match(button, /\saria-expanded="false"/);
-    assert.match(button, />🔒 dn\/dc 工具<\/button>$/);
+});
+
+test('[nav-groups] dn/dc 解鎖鈕的文字是「dn/dc 工具」，不帶鎖的符號；窄欄縮寫與其他項目同一套（v5.6）', () => {
+    const button = (NAV.match(/<button\b[^>]*id="dndcNavUnlock"[^>]*>[\s\S]*?<\/button>/) || [])[0];
+    assert.ok(button, '找不到 #dndcNavUnlock');
+    assert.match(button, />\s*<span class="nav-item-text">dn\/dc 工具<\/span>\s*<\/button>$/);
+    assert.match(button, /\sdata-short="dn\/dc"/);
+    assert.match(button, /\sdata-title="dn\/dc 工具"/);
+    assert.doesNotMatch(NAV, /[\u{1F512}\u{1F513}]/u, '側欄不應再有鎖的符號');
+    // 解鎖時 js/dndc-lock.js 不得改寫按鈕文字，窄欄的 CSS 也不再用 ::after 補符號
+    const lockJs = readCode('js/dndc-lock.js');
+    assert.doesNotMatch(lockJs, /[\u{1F512}\u{1F513}]/u);
+    assert.doesNotMatch(lockJs, /unlockBtn\.(textContent|innerText|innerHTML)\s*=/);
+    const layoutCss = readCode('css/layout.css');
+    assert.doesNotMatch(layoutCss, /[\u{1F512}\u{1F513}]/u);
+    // 解鎖後窄欄隱藏父項目（HPLC dn/dc 的縮寫同為「dn/dc」，避免重複）
+    assert.match(layoutCss, /\.sidebar\.collapsed \.nav-item--lock\[disabled\]\s*\{\s*display:\s*none;\s*\}/);
 });
 
 test('[nav-groups] 起始頁仍是蛋白質分析（.active 與 aria-current 只在它身上）', () => {

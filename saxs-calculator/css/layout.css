@@ -213,13 +213,10 @@
     font-weight: inherit;
 }
 
-/* dn/dc 解鎖鈕（#dndcNavUnlock）：外觀就是一個 .nav-item，但它開的是密碼對話框、不是分頁——
-   沒有 data-section，js/navigation.js 不會接手，也就永遠不會有 .active 膠囊。
+/* dn/dc 解鎖鈕（#dndcNavUnlock）：外觀就是一個 .nav-item（同樣的 .nav-item-text／data-short），但它開的是
+   密碼對話框、不是分頁——沒有 data-section，js/navigation.js 不會接手，也就永遠不會有 .active 膠囊。
+   文字在鎖定與解鎖時都是「dn/dc 工具」，不帶鎖的符號（v5.6）。
    解鎖後 js/dndc-lock.js 把它設成 disabled（純資訊）：字色維持 .nav-item 的主要文字色，只拿掉 hover 底色。 */
-.nav-item--lock {
-    line-height: 1.5;            /* 鎖的符號用 emoji 字型，行高放著不管會比其他項目高 0.5px */
-}
-
 .nav-item--lock[disabled] {
     cursor: default;
 }
@@ -234,22 +231,11 @@
     padding-left: calc(0.75rem + var(--spacing-md));
 }
 
-/* 收合時解鎖鈕只顯示鎖的狀態符號（其他項目顯示 data-short）。文字由 dndc-lock.js 以 textContent 整段改寫，
-   包不住 span，所以用 font-size: 0 藏字（無障礙名稱仍是完整文字），符號由 ::after 補上；
-   「/ ""」讓輔助科技不重複朗讀，不支援這個語法的瀏覽器用前一行。 */
-.sidebar.collapsed .nav-item--lock {
-    font-size: 0;
-}
-
-.sidebar.collapsed .nav-item--lock::after {
-    content: "🔒";
-    content: "🔒" / "";
-    font-size: 0.875rem;
-}
-
-.sidebar.collapsed .nav-item--lock[disabled]::after {
-    content: "🔓";
-    content: "🔓" / "";
+/* 收合成 56px 時：鎖定中的解鎖鈕和其他項目一樣顯示 data-short（「dn/dc」，走上面 .nav-item::after 的通用規則）。
+   解鎖後四個子項出現在窄欄裡，其中 HPLC dn/dc 的縮寫也是「dn/dc」；這時父項目已是 disabled 的純資訊列，
+   整列隱藏以免出現兩個一樣的標籤。 */
+.sidebar.collapsed .nav-item--lock[disabled] {
+    display: none;
 }
 
 /* ===== Theme toggle（側欄底部「自動／淺色／深色」分段控制；js/theme-toggle.js） ===== */
