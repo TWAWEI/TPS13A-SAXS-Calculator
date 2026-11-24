@@ -27,6 +27,9 @@ const SLD_NOTE = '- SLD 若由本頁的化學式計算器求得，是以 f ≈ Z
     + 'Δρ² 的相對誤差至少約為 SLD 相對誤差的兩倍。其他能量下受影響的元素不同。';
 const KERNEL_NOTE = '模型計算核心：SasView sasmodels 1.0.12（BSD-3-Clause），C 原始碼原樣編譯為 WebAssembly';
 
+const SASVIEW_TEXT = 'sasview_parameter_values:model_name,sphere:scale,True,0.98,0.012,0,inf,():background,False,0.001,None,-inf,inf,()'
+    + ':sld,False,1,None,-inf,inf,():sld_solvent,False,6,None,-inf,inf,():radius,True,50.0123456789,0.125,0,60,()'
+    + ':polydisperse_params,False:magnetic_params,False:2D_params,False:fitpage_model,sphere:fitpage_structure,None';
 const REPORT_GOLDEN = [
     'SAS model fitting report（SAS 模型擬合報告）',
     'Generated: 2026-11-19T08:00:00.000Z',
@@ -88,6 +91,12 @@ const REPORT_GOLDEN = [
     '[Notes]',
     SLD_NOTE,
     KERNEL_NOTE,
+    '',
+    '[SasView parameter text]',
+    'SasView「Copy Params／Paste Params」格式的參數文字（下面 Text 之後的一整行；頁面的「複製 SasView 參數」複製的是同一段）',
+    '- 在 SasView 的 Fit 頁先選模型 sphere，再用 Edit → Paste Params 貼上（SasView 5 與 6 相同）。',
+    '- SasView 貼上時每個數值只取 5 位有效數字，誤差欄不會貼上。',
+    'Text: ' + SASVIEW_TEXT,
     '',
 ].join('\r\n');
 
@@ -151,6 +160,20 @@ test('[sasfit-report] 規格 §9 的每一項都有一行（官方檔、core_she
     ];
     REQUIRED.forEach((line) => assert.ok(lines.includes(line), '缺少：' + line));
     assert.ok(lines.includes('File kind: official TPS 13A reduced file（官方還原檔，絕對強度 1/cm）'));
+});
+
+test('[sasfit-report] SasView 參數文字段：與 SasFitSasView.text 逐字相同（上下限照傳入的 bounds）；每筆擬合自己的注意事項；不能表示時寫明原因', () => {
+    const V = globalThis.SasFitSasView;
+    const pd = h.coreShellResult();
+    const lines = linesOf(report({ fitResult: pd, bounds: null }));
+    const at = lines.indexOf('[SasView parameter text]');
+    assert.ok(at > lines.indexOf('[Notes]'), '最後一段');
+    assert.ok(lines.includes('Text: ' + V.text(pd, null)));
+    V.notes(pd, { boundsKnown: false }).forEach((note) => assert.ok(lines.includes('- ' + note), note));
+    assert.ok(linesOf(report()).includes('Text: ' + V.text(h.sphereResult(), BOUNDS)));
+    const lowQ = linesOf(report({ fitResult: h.coreShellResult({ lowQ: true }), bounds: null }));
+    assert.ok(lowQ.includes('Not available（無法產生）: ' + V.check(h.coreShellResult({ lowQ: true })).reason));
+    assert.equal(lowQ.some((line) => line.startsWith('Text: ')), false);
 });
 
 test('[sasfit-report] 檔頭缺欄位寫「-」；能量不可用時波長也是「-」；有條件值時列出', () => {

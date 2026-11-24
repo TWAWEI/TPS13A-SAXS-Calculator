@@ -677,9 +677,11 @@
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfExportCsv" aria-describedby="sfExportNote" disabled>匯出擬合曲線 CSV</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfExportTxt" aria-describedby="sfExportNote" disabled>匯出報告 TXT</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="sfSendIucr" aria-describedby="sfSendIucrNote" disabled>送進 IUCr 表格</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="sfCopySasview" aria-describedby="sfSasviewNote" disabled>複製 SasView 參數</button>
                                 </div>
                                 <p class="stat-sub" id="sfExportNote" role="status"></p>
                                 <p class="stat-sub" id="sfSendIucrNote" role="status"></p>
+                                <p class="stat-sub" id="sfSasviewNote">在 SasView 的 Fit 頁先選同一個模型（與結構因子），再用 Edit → Paste Params 貼上。</p>
                             </div>
                         </div>
 
@@ -2508,6 +2510,7 @@
     <script src="js/sasfit-sequence.js?v=5.6"></script>
     <script src="js/sasfit-seq-view.js?v=5.6"></script>
     <script src="js/sasfit-export.js?v=5.6"></script>
+    <script src="js/sasfit-sasview.js?v=5.6"></script>
     <script src="js/sasfit-report.js?v=5.6"></script>
     <script src="js/sasfit-iucr.js?v=5.6"></script>
     <script src="js/sasfit-data-ui.js?v=5.6"></script>

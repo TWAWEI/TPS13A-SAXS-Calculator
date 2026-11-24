@@ -39,11 +39,20 @@
  *       click. It is enabled only while SasFitIucr.canSend says so (converged, sigma weighting, not blocked, still
  *       the parameters on the page) and no fit runs; #sfSendIucrNote says why not, or that it was
  *       sent. The table keeps what was sent: editing a parameter afterwards changes only the note.
+ *   #sfCopySasview                not a file: SasFitSasView.text of the fit target's result (the limits from the
+ *       form while its model spec is the result's) goes to ctx.deps.copyText -> Promise. Enabled as the CSV and
+ *       TXT buttons are, unless SasFitSasView.check says the fit has no SasView text: then #sfSasviewNote says
+ *       why (otherwise it holds the one-sentence help). After copying, #sfExportNote names the model and lists
+ *       what else this fit needs in SasView (SasFitSasView.notes without its first line, which is that help).
+ *   SasFitExportUi.copyText(text) -> Promise
+ *       the page's own copy (ctx.deps.copyText defaults to it): navigator.clipboard.writeText, and when that is
+ *       missing or refused a hidden <textarea class="sr-only"> with document.execCommand('copy'); it rejects
+ *       when both fail and leaves no node behind.
  * Text files start with a BOM (Excel then reads UTF-8).
  *
  * ctx.deps used here: download(blob, fileName), now() -> ms, version() -> the
  * page version (the ?v= of the scripts) or null, plots.getChart(id),
- * sendIucr(data).
+ * sendIucr(data), copyText(text) -> Promise.
  *
  * Every failure is caught: the message goes to #sfExportNote (textContent)
  * and the detail to console.warn; the rest of the page is not affected.
@@ -60,6 +69,8 @@
     const LOG = '[sasfit]';
     const NOTE_ID = 'sfExportNote';
     const SEND_NOTE_ID = 'sfSendIucrNote';
+    const SASVIEW_ID = 'sfCopySasview';
+    const SASVIEW_NOTE_ID = 'sfSasviewNote';
     const CHARTS = Object.freeze({
         sfMainPng: Object.freeze({ chart: 'sfMainChart', kind: 'png-main' }),
         sfResidualPng: Object.freeze({ chart: 'sfResidualChart', kind: 'png-residual' }),
@@ -79,6 +90,11 @@
         sendRunning: '擬合進行中，結束後才能送出',
         sent: (name) => '已送進 IUCr 表格（' + name + '）；再次送出會取代它',
         sendFailed: (message) => '送出失敗：' + message,
+        sasviewHelp: '在 SasView 的 Fit 頁先選同一個模型（與結構因子），再用 Edit → Paste Params 貼上。',
+        copied: (model) => '已複製 SasView 參數文字（' + model + '）。',
+        copiedStale: '複製的是上一次擬合的結果；之後改過的參數不在其中。',
+        copyFailed: (message) => '複製失敗：' + message + '；可改用「匯出報告 TXT」，參數文字在報告的最後一段',
+        copyBlocked: '瀏覽器不允許寫入剪貼簿',
         done: (name) => '已下載 ' + name,
         failed: (message) => '匯出失敗：' + message,
     });
@@ -115,6 +131,35 @@
             throw err;
         }
         later(release, 0);
+    }
+
+    // ------------------------------------------------------------- clipboard
+
+    /** The copy of browsers without the Clipboard API (or with it refused): a selected, hidden textarea. */
+    function legacyCopy(text) {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.className = 'sr-only';
+        area.setAttribute('readonly', '');
+        area.setAttribute('aria-hidden', 'true');
+        let done = false;
+        try {
+            document.body.appendChild(area);
+            area.select();
+            done = document.execCommand('copy') === true;
+        } catch (err) {
+            done = false;
+        } finally {
+            area.remove();
+        }
+        return done ? Promise.resolve() : Promise.reject(new Error(TEXT.copyBlocked));
+    }
+
+    function copyText(text) {
+        const { navigator } = host();
+        const clipboard = isObject(navigator) ? navigator.clipboard : null;
+        if (!isObject(clipboard) || typeof clipboard.writeText !== 'function') return legacyCopy(text);
+        return Promise.resolve().then(() => clipboard.writeText(text)).catch(() => legacyCopy(text));
     }
 
     // ------------------------------------------------------------- what there is to export
@@ -271,7 +316,51 @@
             .catch((err) => fail(ui, err));
     }
 
+    /** What goes to the clipboard for SasView, and what the note says after it got there. */
+    function sasviewCopy(ctx) {
+        const state = ctx.getState();
+        const form = ctx.getForm();
+        const fitResult = activeResult(state);
+        const sasview = globalThis.SasFitSasView;
+        const bounds = boundsOf(form, fitResult);
+        const stale = globalThis.SasFitJobs.resultMatchesForm(form, fitResult) ? [] : [TEXT.copiedStale];
+        // the first note (choose the model, then paste) is the help line under the buttons: here the model is named instead
+        const notes = sasview.notes(fitResult, { boundsKnown: bounds !== null }).slice(1);
+        return {
+            text: sasview.text(fitResult, bounds),
+            note: [TEXT.copied(globalThis.SasFitExport.modelText(fitResult.settings.modelSpec))].concat(stale, notes).join(''),
+        };
+    }
+
+    /** Copies the SasView parameter text of the fit target's result; nothing it throws or rejects leaves this module. */
+    function copySasview(ui) {
+        const { ctx } = ui;
+        const failed = (err) => {
+            console.warn(LOG + ' 複製 SasView 參數失敗', err);
+            say(ui, TEXT.copyFailed(err instanceof Error ? err.message : String(err)));
+        };
+        if (ctx.el(SASVIEW_ID).disabled) return;
+        try {
+            const copy = sasviewCopy(ctx);
+            Promise.resolve(ctx.deps.copyText(copy.text)).then(() => {
+                say(ui, copy.note);
+                ctx.el(SASVIEW_ID).focus();
+            }).catch(failed);
+        } catch (err) {
+            failed(err);
+        }
+    }
+
     // ------------------------------------------------------------- render
+
+    /** The SasView button: as the fit exports, and off when the fit has no SasView text (its own note says why). */
+    function renderSasview(ctx, fit) {
+        const result = fit.reason === '' ? activeResult(ctx.getState()) : null;
+        const reason = result === null ? '' : globalThis.SasFitSasView.check(result).reason;
+        ctx.el(SASVIEW_ID).disabled = fit.reason !== '' || reason !== '';
+        const note = reason === '' ? TEXT.sasviewHelp : reason;
+        if (ctx.el(SASVIEW_NOTE_ID).textContent !== note) ctx.el(SASVIEW_NOTE_ID).textContent = note;
+    }
 
     /** Disabled with the reason as its title, or enabled without one. */
     function setButton(ctx, id, reason) {
@@ -336,6 +425,7 @@
         const state = ctx.getState();
         const fit = fitExportState(ctx);
         ['sfExportCsv', 'sfExportTxt'].forEach((id) => { ctx.el(id).disabled = fit.reason !== ''; });
+        renderSasview(ctx, fit);
         setButton(ctx, 'sfSeqCsv', isRunning(state) ? TEXT.running : (hasSequence(state) ? '' : TEXT.noSequence));
         setButton(ctx, 'sfResidualPng', ctx.el('sfResidualBox').hidden ? TEXT.noResidual : '');
         setButton(ctx, 'sfSeqTrendPng', ctx.el('sfSeqTrendBox').hidden ? TEXT.noTrend : '');
@@ -356,6 +446,7 @@
         Object.keys(CHARTS).forEach((id) => ctx.el(id).addEventListener('click', exporting(ui, (context) => chartFile(context, CHARTS[id]))));
         ctx.el('sfShapePng').addEventListener('click', () => exportShape(ui));
         ctx.el('sfSendIucr').addEventListener('click', () => sendIucr(ui));
+        ctx.el(SASVIEW_ID).addEventListener('click', () => copySasview(ui));
     }
 
     function create(ctx) {
@@ -364,5 +455,5 @@
         return Object.freeze({ render: () => render(ui) });
     }
 
-    globalThis.SasFitExportUi = Object.freeze({ create, download });
+    globalThis.SasFitExportUi = Object.freeze({ create, download, copyText });
 })();

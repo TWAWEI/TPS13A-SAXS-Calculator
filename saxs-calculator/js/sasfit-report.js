@@ -16,6 +16,8 @@
  *       which one the page shows. generatedAt is a text given by the caller
  *       (no clock here). matchesForm === false adds a line saying that the
  *       parameter table was changed after this fit. Throws for a 'stopped' result.
+ *       The last section, [SasView parameter text], is SasFitSasView.text of the same result and bounds on one
+ *       line after 'Text: ', with SasFitSasView.notes before it -- or the reason why this fit has none.
  *   sequenceCsv({ state, software }) -> string (no BOM; line ends \n).
  *       One row per item of the last run (state.seq.order), skipped and failed
  *       ones included. The numbers are those the sequence table shows -- the
@@ -87,6 +89,9 @@
         atBound: '貼在邊界上的參數（at bound）仍列出有限的誤差，那是把它當自由參數算出來的數字，不代表該參數的不確定度。',
         undetermined: '誤差大於數值的參數（undetermined）與 0 無法區分，或無法由這組資料決定。',
         changed: 'Parameter table at export: changed since this fit（匯出時參數表已在這次擬合之後改過；本報告記錄的是這次擬合當時的參數）',
+        sasviewTitle: 'SasView parameter text',
+        sasviewIntro: 'SasView「Copy Params／Paste Params」格式的參數文字（下面 Text 之後的一整行；頁面的「複製 SasView 參數」複製的是同一段）',
+        sasviewNone: 'Not available（無法產生）',
         seqTitle: 'SAS model fitting: results of a sequence',
         seqRead: 'UTF-8 with BOM; comment lines start with "# "; read with pandas.read_csv(f, comment="#") '
             + '(text columns: file, status, status_text, started_from, note)',
@@ -246,6 +251,16 @@
         return section('Notes', notes.map((note) => '- ' + note).concat([TEXT.kernel(globalThis.SasFitMeta.sasmodelsVersion)]));
     }
 
+    /** The text of SasView's "Paste Params" and what this fit needs in SasView, or why there is none (SasFitSasView). */
+    function sasviewLines(fitResult, bounds) {
+        const sasview = globalThis.SasFitSasView;
+        const checked = sasview.check(fitResult);
+        if (!checked.ok) return section(TEXT.sasviewTitle, [TEXT.sasviewIntro, line(TEXT.sasviewNone, checked.reason)]);
+        const known = isObject(bounds);
+        return section(TEXT.sasviewTitle, [TEXT.sasviewIntro]
+            .concat(sasview.notes(fitResult, { boundsKnown: known }).map((note) => '- ' + note), [line('Text', sasview.text(fitResult, known ? bounds : null))]));
+    }
+
     function reportTxt(input) {
         const { file, fitResult, bounds, software, generatedAt, conditionName, matchesForm } = isObject(input) ? input : {};
         const exporter = globalThis.SasFitExport;
@@ -257,7 +272,7 @@
             matchesForm === false ? [TEXT.changed] : [],
             dataLines(file, conditionName), modelLines(fitResult), dispersityLines(fitResult, rows),
             parameterLines(fitResult, rows, bounds), qualityLines(file, fitResult), algorithmLines(fitResult, rows),
-            noteLines(fitResult, rows));
+            noteLines(fitResult, rows), sasviewLines(fitResult, bounds));
         return lines.join(EOL) + EOL;
     }
 

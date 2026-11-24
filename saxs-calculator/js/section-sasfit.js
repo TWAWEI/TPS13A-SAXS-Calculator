@@ -25,6 +25,7 @@
  *         download(blob, fileName)     default: SasFitExportUi.download (an object URL on a temporary <a download>)
  *         now()                 default: Date.now()
  *         version()             default: SasFitWorkerClient.scriptVersion (the ?v= of the scripts; null without one)
+ *         copyText(text) -> Promise   default: SasFitExportUi.copyText (Clipboard API, else a hidden textarea)
  *         sendIucr(data)        default: setIUCrModelFit(data) of js/section-iucr.js (a top-level function: a window property)
  *   SasFitSection.getState() -> the frozen SasFitState state
  *   SasFitSection.getForm()  -> the frozen SasFitForm form
@@ -133,7 +134,7 @@
         'sfMaxSteps', 'sfMaxStepsError', 'sfFitRevert', 'sfFitRevertNote', 'sfPreFitHints', 'sfFitAlert',
         'sfFitResults', 'sfFitHints', 'sfFitParams',
         // exports and the IUCr table
-        'sfExportRow', 'sfExportCsv', 'sfExportTxt', 'sfExportNote', 'sfSendIucr', 'sfSendIucrNote', 'sfMainPng', 'sfResidualPng',
+        'sfExportRow', 'sfExportCsv', 'sfExportTxt', 'sfExportNote', 'sfSendIucr', 'sfSendIucrNote', 'sfCopySasview', 'sfSasviewNote', 'sfMainPng', 'sfResidualPng',
         // sequence segment
         'sfSeqLock', 'sfSeqChain', 'sfSeqSort', 'sfSeqSettings', 'sfSeqHints', 'sfSeqRun', 'sfSeqProgress', 'sfSeqLive',
         'sfSeqTrendBox', 'sfSeqY', 'sfSeqTrend', 'sfSeqTrendNote', 'sfSeqTrendPng', 'sfSeqAll', 'sfSeqNone', 'sfSeqEmpty',
@@ -207,6 +208,7 @@
             now: g.now || (() => Date.now()),
             version: g.version || (() => globalThis.SasFitWorkerClient.scriptVersion),
             sendIucr: g.sendIucr || ((data) => host().setIUCrModelFit(data)),
+            copyText: g.copyText || ((text) => globalThis.SasFitExportUi.copyText(text)),
         });
     }
 

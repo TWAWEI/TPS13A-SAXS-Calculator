@@ -10,7 +10,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { SasFitExport, SasFitReport, SasFitJobs, SasFitForm, SasFitIucr } = require('./load.js');
+const { SasFitExport, SasFitReport, SasFitJobs, SasFitForm, SasFitIucr, SasFitSasView } = require('./load.js');
 const ui = require('./sasfit-ui-helpers.js');
 const m4 = require('./sasfit-m4-helpers.js');
 
@@ -27,6 +27,7 @@ const realTheme = window.ChartTheme;
 function page({ deps = {}, charts = {} } = {}) {
     const downloads = [];
     const sent = [];
+    const copied = [];
     const exported = [];
     const shapeBlobs = { next: null, calls: 0 };
     window.ChartTheme = Object.freeze({ ...realTheme, exportPng(chart) { exported.push(chart); return PNG_URL; } });
@@ -40,7 +41,7 @@ function page({ deps = {}, charts = {} } = {}) {
             modules: MODULES,
             deps: {
                 download: (blob, name) => { downloads.push({ blob, name }); }, now: () => NOW, version: () => '9.9',
-                sendIucr: (data) => { sent.push(data); }, ...deps,
+                sendIucr: (data) => { sent.push(data); }, copyText: (text) => { copied.push(text); return Promise.resolve(); }, ...deps,
             },
         });
     } finally {
@@ -63,7 +64,7 @@ function page({ deps = {}, charts = {} } = {}) {
         ctx.refresh();
         return { file, result };
     };
-    return { ...booted, downloads, sent, exported, shapeBlobs, fit, note: () => $('sfExportNote').textContent };
+    return { ...booted, downloads, sent, copied, exported, shapeBlobs, fit, note: () => $('sfExportNote').textContent };
 }
 
 const restore = () => { window.ChartTheme = realTheme; ui.restoreGlobals(); };
@@ -439,5 +440,163 @@ test('[sasfit-export-ui] 預設的 sendIucr 是頁面的 setIUCrModelFit（頂�
         assert.equal(received[0].model, 'sphere');
     } finally {
         delete window.setIUCrModelFit;
+    }
+});
+
+// ---------------------------------------------------------------- 複製 SasView 參數（v5.7）
+const sasviewNote = (p) => p.$('sfSasviewNote').textContent;
+const SASVIEW_HELP = '在 SasView 的 Fit 頁先選同一個模型（與結構因子），再用 Edit → Paste Params 貼上。';
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test('[sasfit-export-ui] 複製 SasView 參數：與 CSV／TXT 同樣的條件啟用；沒有結果、擬合進行中停用', () => {
+    const p = page();
+    assert.equal(p.$('sfCopySasview').disabled, true);
+    assert.equal(sasviewNote(p), SASVIEW_HELP);
+    p.fit();
+    assert.equal(p.$('sfCopySasview').disabled, false);
+    assert.equal(sasviewNote(p), SASVIEW_HELP);
+    p.ctx.dispatch({ type: 'fitStarted' });
+    assert.equal(p.$('sfCopySasview').disabled, true);
+    p.ctx.dispatch({ type: 'fitSettled', result: null });
+    assert.equal(p.$('sfCopySasview').disabled, false);
+    p.fit({ status: 'maxiter' });
+    assert.equal(p.$('sfCopySasview').disabled, false, '未收斂的結果也是那次擬合的紀錄，與 CSV／TXT 相同');
+});
+
+test('[sasfit-export-ui] 複製 SasView 參數：結果無法以 SasView 文字表示（低 q 冪律）→ 只有這顆停用，原因寫在它自己的說明', () => {
+    const p = page();
+    p.ctx.setForm(SasFitForm.reduce(p.ctx.getForm(), { type: 'setLowQ', on: true }));
+    const { result } = p.fit();
+    assert.equal(result.settings.modelSpec.lowQPowerLaw, true);
+    assert.equal(p.$('sfCopySasview').disabled, true);
+    assert.equal(sasviewNote(p), SasFitSasView.check(result).reason);
+    assert.match(sasviewNote(p), /低 q 冪律/);
+    assert.equal(p.$('sfExportCsv').disabled, false);
+    p.$('sfCopySasview').fire('click');
+    assert.equal(p.copied.length, 0);
+});
+
+test('[sasfit-export-ui] 複製 SasView 參數：按下後把 SasFitSasView.text（上下限取自表單）交給 deps.copyText，說明已複製與這筆擬合的注意事項', async () => {
+    const p = page();
+    const { result } = p.fit();
+    p.$('sfCopySasview').fire('click');
+    await settle();
+    assert.equal(p.copied.length, 1);
+    assert.match(p.copied[0], /^sasview_parameter_values:model_name,sphere:/);
+    const dict = Object.fromEntries(p.copied[0].split(':').slice(1).map((line) => [line.split(',')[0], line.split(',').slice(1)]));
+    assert.deepEqual(dict.radius.slice(0, 2), ['True', String(result.params.radius)]);
+    assert.deepEqual(dict.radius.slice(3, 5), ['0', 'inf'], '上下限取自表單');
+    assert.match(p.note(), /^已複製 SasView 參數文字（sphere）。/);
+    const notes = SasFitSasView.notes(result, { boundsKnown: true });
+    assert.equal(p.note(), '已複製 SasView 參數文字（sphere）。' + notes.slice(1).join(''), '第一則（先選模型再貼上）就是按鈕下方的說明，不重複');
+    assert.equal(p.downloads.length, 0);
+    assert.equal(p.$('sfCopySasview').focusCount, 1, '焦點留在按鈕');
+});
+
+test('[sasfit-export-ui] 複製 SasView 參數：結果與表單不符 → 複製的是上一次擬合，並說明', async () => {
+    const p = page();
+    const { result } = p.fit();
+    p.ctx.setForm(SasFitForm.reduce(p.ctx.getForm(), { type: 'setValue', name: 'radius', value: '77' }));
+    p.ctx.refresh();
+    assert.equal(p.$('sfCopySasview').disabled, false);
+    p.$('sfCopySasview').fire('click');
+    await settle();
+    assert.ok(p.copied[0].includes(':radius,True,' + String(result.params.radius) + ','));
+    assert.match(p.note(), /複製的是上一次擬合的結果；之後改過的參數不在其中/);
+});
+
+test('[sasfit-export-ui] 複製 SasView 參數：剪貼簿被拒（Promise 拒絕或直接丟例外）→ 說明失敗與替代做法、console.warn，按鈕照常', async () => {
+    for (const copyText of [() => Promise.reject(new Error('NotAllowedError')), () => { throw new Error('no clipboard'); }]) {
+        const p = page({ deps: { copyText } });
+        p.fit();
+        const warnings = await ui.captureConsole('warn', async () => { p.$('sfCopySasview').fire('click'); await settle(); });
+        assert.match(p.note(), /^複製失敗：.*匯出報告 TXT/);
+        assert.equal(warnings.length, 1);
+        assert.equal(p.$('sfCopySasview').disabled, false);
+        restore();
+    }
+});
+
+/** withExportUi for a callback that awaits: the module and the fake document stay until it is done. */
+async function withExportUiAsync(fn) {
+    ui.loadModule('sasfit-export-ui.js');
+    const savedDocument = global.document;
+    try {
+        return await fn(globalThis.SasFitExportUi);
+    } finally {
+        delete globalThis.SasFitExportUi;
+        if (savedDocument === undefined) delete global.document; else global.document = savedDocument;
+    }
+}
+
+/** A document and navigator for the default copyText: records what the fallback does. */
+function copyEnv({ clipboard, execResult = true } = {}) {
+    const env = { written: [], appended: [], removed: [], selected: 0, commands: [] };
+    const area = {
+        value: '', className: '', attrs: {},
+        setAttribute(name, value) { area.attrs[name] = String(value); },
+        select() { env.selected += 1; },
+        remove() { env.removed.push(area); },
+    };
+    env.area = area;
+    global.document = {
+        createElement(tag) { assert.equal(tag, 'textarea'); return area; },
+        body: { appendChild(node) { env.appended.push(node); } },
+        execCommand(command) { env.commands.push(command); if (execResult === 'throw') throw new Error('denied'); return execResult; },
+    };
+    window.navigator = clipboard === undefined ? {} : { clipboard };
+    return env;
+}
+
+test('[sasfit-export-ui] 預設的 copyText：有 navigator.clipboard.writeText 就用它，不建節點', async () => {
+    await withExportUiAsync(async (module) => {
+        const written = [];
+        const env = copyEnv({ clipboard: { writeText(text) { written.push(text); return Promise.resolve(); } } });
+        await module.copyText('sasview_parameter_values:model_name,sphere');
+        assert.deepEqual(written, ['sasview_parameter_values:model_name,sphere']);
+        assert.deepEqual(env.appended, []);
+    });
+    delete window.navigator;
+});
+
+test('[sasfit-export-ui] 預設的 copyText：Clipboard API 不存在或被拒 → 以隱藏的 textarea 與 execCommand 複製，節點一定移除', async () => {
+    for (const clipboard of [undefined, { writeText: () => Promise.reject(new Error('NotAllowedError')) }]) {
+        await withExportUiAsync(async (module) => {
+            const env = copyEnv({ clipboard });
+            await module.copyText('abc');
+            assert.equal(env.area.value, 'abc');
+            assert.equal(env.area.className, 'sr-only');
+            assert.equal(env.area.attrs.readonly, '');
+            assert.equal(env.area.attrs['aria-hidden'], 'true');
+            assert.deepEqual([env.appended.length, env.selected, env.removed.length], [1, 1, 1]);
+            assert.deepEqual(env.commands, ['copy']);
+        });
+    }
+    delete window.navigator;
+});
+
+test('[sasfit-export-ui] 預設的 copyText：兩條路都失敗 → Promise 拒絕（中文原因），節點仍移除', async () => {
+    for (const execResult of [false, 'throw']) {
+        await withExportUiAsync(async (module) => {
+            const env = copyEnv({ execResult });
+            await assert.rejects(() => module.copyText('abc'), /瀏覽器不允許寫入剪貼簿/);
+            assert.equal(env.removed.length, 1);
+        });
+    }
+    delete window.navigator;
+});
+
+test('[sasfit-export-ui] 預設的 deps.copyText 是 SasFitExportUi.copyText', async () => {
+    const written = [];
+    window.navigator = { clipboard: { writeText(text) { written.push(text); return Promise.resolve(); } } };
+    try {
+        const p = page({ deps: { copyText: undefined } });
+        p.fit();
+        p.$('sfCopySasview').fire('click');
+        await settle();
+        assert.equal(written.length, 1);
+        assert.match(written[0], /^sasview_parameter_values:/);
+    } finally {
+        delete window.navigator;
     }
 });
